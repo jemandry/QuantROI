@@ -377,6 +377,8 @@ def main() -> None:
                         help="Run daily check")
     parser.add_argument("--alert-failures", action="store_true",
                         help="Alert on linting failures")
+    parser.add_argument("--log-success", type=str,
+                        help="Log a success message to audit trail")
     parser.add_argument("--approve-milestone", type=str,
                         help="Approve milestone payment")
     parser.add_argument("--reject-milestone", type=str, help="Reject milestone payment")
@@ -387,6 +389,18 @@ def main() -> None:
 
     if args.daily_check or args.alert_failures:
         bot.run_daily_check()
+    elif args.log_success:
+        log_data = {
+            "event_type": "success_log",
+            "message": args.log_success,
+            "timestamp": datetime.now().isoformat(),
+            "automated": True
+        }
+        hash_result = bot.log_to_solana("daily_check_success", log_data)
+        if hash_result:
+            print(f"✅ Success logged to audit trail: {hash_result[:16]}...")
+        else:
+            print("❌ Failed to log to audit trail")
     elif args.approve_milestone:
         bot.process_milestone_payment(args.approve_milestone, True)
     elif args.reject_milestone:

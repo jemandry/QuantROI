@@ -4,6 +4,7 @@ LOG_DIR="/tmp/quantroi-lint-logs"
 LOG_FILE="$LOG_DIR/daily-lint-$(date +%Y%m%d).log"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+LAST_CHECK_FILE="$PROJECT_ROOT/.last-lint-check"
 
 mkdir -p "$LOG_DIR"
 
@@ -35,6 +36,55 @@ log "🚀 Starting daily linting checks for QuantROI platform"
 log "Project root: $PROJECT_ROOT"
 log "Log file: $LOG_FILE"
 
+check_for_changes() {
+    local last_commit=""
+    local current_commit=""
+    
+    current_commit=$(git rev-parse HEAD 2>/dev/null || echo "")
+    
+    if [ -f "$LAST_CHECK_FILE" ]; then
+        last_commit=$(cat "$LAST_CHECK_FILE" 2>/dev/null || echo "")
+    else
+        log "📝 No previous check found, will run full linting"
+        return 0
+    fi
+    
+    if [ "$current_commit" != "$last_commit" ] && [ -n "$current_commit" ]; then
+        log "📋 Code changes detected since last check"
+        log "  Previous: ${last_commit:0:8}"
+        log "  Current:  ${current_commit:0:8}"
+        return 0
+    fi
+    
+    if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
+        log "📋 Uncommitted changes detected"
+        return 0
+    fi
+    
+    if git ls-files --others --exclude-standard 2>/dev/null | grep -E '\.(rs|py|ts|tsx|js|jsx)$' > /dev/null 2>&1; then
+        log "📋 New source files detected"
+        return 0
+    fi
+    
+    log "✨ No code changes detected since last check, skipping linting"
+    return 1
+}
+
+if ! check_for_changes; then
+    log "⏭️  Skipping linting check - no changes detected"
+    
+    if python3 "$SCRIPT_DIR/reminder-bot.py" --log-success "Daily linting check skipped - no code changes detected" >> "$LOG_FILE" 2>&1; then
+        success "Skip event logged to audit trail"
+    else
+        warning "Failed to log skip event to audit trail"
+    fi
+    
+    success "✅ Daily linting check completed (no changes)"
+    exit 0
+fi
+
+log "🚀 Changes detected, proceeding with comprehensive linting..."
+
 chmod +x "$SCRIPT_DIR/lint-all.sh"
 chmod +x "$SCRIPT_DIR/reminder-bot.py"
 
@@ -42,6 +92,12 @@ log "Running comprehensive linting suite..."
 if "$SCRIPT_DIR/lint-all.sh" >> "$LOG_FILE" 2>&1; then
     success "All linting checks passed!"
     LINT_STATUS="success"
+    
+    if git rev-parse HEAD > "$LAST_CHECK_FILE" 2>/dev/null; then
+        log "📝 Updated last check marker"
+    else
+        warning "Failed to update last check marker"
+    fi
 else
     error "Linting checks failed - see log for details"
     LINT_STATUS="failed"
