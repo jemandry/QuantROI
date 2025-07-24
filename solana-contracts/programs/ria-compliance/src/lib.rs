@@ -59,7 +59,7 @@ pub mod ria_compliance {
         signer_type: SignerType,
     ) -> Result<()> {
         let contract = &mut ctx.accounts.ria_contract;
-        let clock = Clock::get()?);
+        let clock = Clock::get()?;
         
         require!(contract.is_active, RiaError::ContractInactive);
         require!(clock.unix_timestamp < contract.expires_at, RiaError::ContractExpired);

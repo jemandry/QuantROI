@@ -1,0 +1,19 @@
+# Clippy configuration for fintech compliance
+disallowed-methods = [
+    "std::env::var_os",  # Use secure environment variable handling
+    "std::process::Command::new",  # Restrict system commands for security
+]
+cognitive-complexity-threshold = 15
+too-many-arguments-threshold = 5
+avoid-breaking-exported-api = false
+msrv = "1.70.0"
+
+# Security-focused lints for fintech
+warn-on-all-wildcard-imports = true
+disallowed-types = [
+    "std::collections::HashMap",  # Prefer BTreeMap for deterministic ordering
+]
+
+# Performance lints
+single-use-lifetimes = "warn"
+trivially-copy-pastes = "warn"
