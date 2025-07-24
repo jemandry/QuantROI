@@ -314,16 +314,38 @@ Action: Approve payment for Week 3 milestone?
 
 ## Automation Scripts
 
-### Daily Automation
-**Script:** `scripts/daily-lint-check.sh`
-- Runs comprehensive linting suite
-- Logs results with timestamps
-- Triggers Reminder Bot on failures
-- Generates daily summary reports
+### Daily Automation with Change Detection
+**Script:** `scripts/daily-lint-check.sh` - **ENHANCED with Smart Change Detection**
+- **Intelligent Change Detection**: Only runs when code changes detected since last check
+- **Git-Based Tracking**: Compares commits and detects uncommitted changes  
+- **Performance Optimization**: Skips unnecessary runs to reduce computational overhead
+- **Comprehensive Coverage**: Full linting across all languages when changes present
+- **RIA Compliance Logging**: SHA-3 audit trails for both runs and skips
+- **Automated Reminder Bot Integration**: Failure alerts and milestone tracking
+- **Detailed Reporting**: Enhanced log management with change detection status
+
+**Change Detection Features:**
+- Compares current git HEAD with `.last-lint-check` marker file
+- Detects uncommitted changes in working directory
+- Identifies new untracked source files (.rs, .py, .ts, .tsx, .js, .jsx)
+- Logs skip events to Solana audit trail for compliance
+- Updates marker file only after successful linting completion
+
+**Usage Examples:**
+```bash
+# No changes since last check:
+[2025-07-24 19:05:56] ✨ No code changes detected since last check, skipping linting
+[SUCCESS] Skip event logged to audit trail
+[SUCCESS] ✅ Daily linting check completed (no changes)
+
+# Changes detected:
+[2025-07-24 19:06:08] 📋 Uncommitted changes detected
+[2025-07-24 19:06:08] 🚀 Changes detected, proceeding with comprehensive linting...
+```
 
 **Cron Setup:**
 ```bash
-# Add to crontab for daily 9 AM checks
+# Add to crontab for daily 9 AM checks with change detection
 0 9 * * * /path/to/quantroi/scripts/daily-lint-check.sh
 ```
 
