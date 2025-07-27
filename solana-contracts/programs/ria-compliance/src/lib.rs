@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use sha3::{Digest, Sha3_256};
 
-declare_id!("RiaComplianceProgram111111111111111111111");
+declare_id!("11111111111111111111111111111114");
 
 #[program]
 pub mod ria_compliance {
@@ -67,7 +67,7 @@ pub mod ria_compliance {
         let mut hasher = Sha3_256::new();
         hasher.update(&contract_id.to_le_bytes());
         hasher.update(&signature_data);
-        hasher.update(&(signer_type as u8).to_le_bytes());
+        hasher.update(&(signer_type.clone() as u8).to_le_bytes());
         hasher.update(ctx.accounts.signer.key().as_ref());
         hasher.update(&clock.unix_timestamp.to_le_bytes());
         let signature_hash = hasher.finalize();
@@ -149,7 +149,7 @@ pub mod ria_compliance {
         
         emit!(ComplianceStatusVerified {
             contract_id,
-            compliance_status: contract.compliance_status,
+            compliance_status: contract.compliance_status.clone(),
             violations_count: compliance_data.violations_count,
             risk_score: compliance_data.risk_score,
             compliance_hash: compliance_hash.to_vec(),
@@ -251,7 +251,7 @@ pub struct ComplianceReport {
     pub report_hash: Vec<u8>,                  // 32 bytes (SHA-3)
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
 pub enum ComplianceStatus {
     Pending,
     Active,
@@ -260,7 +260,7 @@ pub enum ComplianceStatus {
     Suspended,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
 pub enum SignerType {
     Client,
     Ria,
@@ -280,7 +280,7 @@ pub struct RegisterRiaContract<'info> {
         init,
         payer = authority,
         space = 8 + 8 + 32 + 32 + 32 + 4 + 8 + 8 + 1 + 1 + 1 + 33 + 33 + 9 + 9 + 64 + 1,
-        seeds = [b"ria_contract", &contract_id.to_le_bytes()],
+        seeds = [b"ria_contract".as_ref(), contract_id.to_le_bytes().as_ref()],
         bump
     )]
     pub ria_contract: Account<'info, RiaContract>,
@@ -294,7 +294,7 @@ pub struct RegisterRiaContract<'info> {
 pub struct SignContractDigitally<'info> {
     #[account(
         mut,
-        seeds = [b"ria_contract", &contract_id.to_le_bytes()],
+        seeds = [b"ria_contract".as_ref(), contract_id.to_le_bytes().as_ref()],
         bump
     )]
     pub ria_contract: Account<'info, RiaContract>,
@@ -306,7 +306,7 @@ pub struct SignContractDigitally<'info> {
 pub struct VerifyComplianceStatus<'info> {
     #[account(
         mut,
-        seeds = [b"ria_contract", &contract_id.to_le_bytes()],
+        seeds = [b"ria_contract".as_ref(), contract_id.to_le_bytes().as_ref()],
         bump
     )]
     pub ria_contract: Account<'info, RiaContract>,
@@ -314,7 +314,7 @@ pub struct VerifyComplianceStatus<'info> {
         init_if_needed,
         payer = authority,
         space = 8 + 8 + 4 + 4 + 8 + 8 + 1 + 64,
-        seeds = [b"compliance_record", &contract_id.to_le_bytes()],
+        seeds = [b"compliance_record".as_ref(), contract_id.to_le_bytes().as_ref()],
         bump
     )]
     pub compliance_record: Account<'info, ComplianceRecord>,
@@ -327,12 +327,12 @@ pub struct VerifyComplianceStatus<'info> {
 #[instruction(contract_id: u64)]
 pub struct GenerateComplianceReport<'info> {
     #[account(
-        seeds = [b"ria_contract", &contract_id.to_le_bytes()],
+        seeds = [b"ria_contract".as_ref(), contract_id.to_le_bytes().as_ref()],
         bump
     )]
     pub ria_contract: Account<'info, RiaContract>,
     #[account(
-        seeds = [b"compliance_record", &contract_id.to_le_bytes()],
+        seeds = [b"compliance_record".as_ref(), contract_id.to_le_bytes().as_ref()],
         bump
     )]
     pub compliance_record: Account<'info, ComplianceRecord>,
@@ -340,7 +340,7 @@ pub struct GenerateComplianceReport<'info> {
         init,
         payer = authority,
         space = 8 + 8 + 8 + 8 + 4 + 4 + 1 + 8 + 64,
-        seeds = [b"compliance_report", &contract_id.to_le_bytes(), &Clock::get()?.unix_timestamp.to_le_bytes()],
+        seeds = [b"compliance_report".as_ref(), contract_id.to_le_bytes().as_ref(), Clock::get()?.unix_timestamp.to_le_bytes().as_ref()],
         bump
     )]
     pub compliance_report: Account<'info, ComplianceReport>,

@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use sha3::{Digest, Sha3_256};
 
-declare_id!("KnowledgeVerificationProgram1111111111111");
+declare_id!("11111111111111111111111111111113");
 
 #[program]
 pub mod knowledge_verification {
@@ -31,7 +31,7 @@ pub mod knowledge_verification {
         
         test.test_id = test_id;
         test.creator = ctx.accounts.test_creator.key();
-        test.question_hashes = question_hashes;
+        test.question_hashes = question_hashes.clone();
         test.passing_score = passing_score;
         test.time_limit = time_limit;
         test.created_at = clock.unix_timestamp;
@@ -189,7 +189,7 @@ pub mod knowledge_verification {
         
         emit!(UserCompetencyUpdated {
             user: ctx.accounts.user.key(),
-            competency_area,
+            competency_area: competency_area.clone(),
             new_score: match competency_area {
                 CompetencyArea::Trading => competency.trading_competency,
                 CompetencyArea::RiskManagement => competency.risk_management_competency,
@@ -240,7 +240,7 @@ pub struct UserCompetency {
     pub last_updated: i64,                      // 8 bytes
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
 pub enum CompetencyArea {
     Trading,
     RiskManagement,
@@ -255,7 +255,7 @@ pub struct CreateKnowledgeTest<'info> {
         init,
         payer = test_creator,
         space = 8 + 8 + 32 + 4 + (50 * 32) + 1 + 4 + 8 + 1 + 4 + 4 + 64, // Max space for 50 questions
-        seeds = [b"knowledge_test", &test_id.to_le_bytes()],
+        seeds = [b"knowledge_test".as_ref(), test_id.to_le_bytes().as_ref()],
         bump
     )]
     pub knowledge_test: Account<'info, KnowledgeTest>,
@@ -269,7 +269,7 @@ pub struct CreateKnowledgeTest<'info> {
 pub struct SubmitTestAnswers<'info> {
     #[account(
         mut,
-        seeds = [b"knowledge_test", &test_id.to_le_bytes()],
+        seeds = [b"knowledge_test".as_ref(), test_id.to_le_bytes().as_ref()],
         bump
     )]
     pub knowledge_test: Account<'info, KnowledgeTest>,
@@ -277,7 +277,7 @@ pub struct SubmitTestAnswers<'info> {
         init,
         payer = participant,
         space = 8 + 8 + 32 + 4 + 50 + 8 + 1 + 1 + 1 + 9 + 64, // Max space for 50 answers
-        seeds = [b"test_submission", &test_id.to_le_bytes(), participant.key().as_ref()],
+        seeds = [b"test_submission".as_ref(), test_id.to_le_bytes().as_ref(), participant.key().as_ref()],
         bump
     )]
     pub test_submission: Account<'info, TestSubmission>,
@@ -291,13 +291,13 @@ pub struct SubmitTestAnswers<'info> {
 pub struct VerifyTestResults<'info> {
     #[account(
         mut,
-        seeds = [b"knowledge_test", &test_id.to_le_bytes()],
+        seeds = [b"knowledge_test".as_ref(), test_id.to_le_bytes().as_ref()],
         bump
     )]
     pub knowledge_test: Account<'info, KnowledgeTest>,
     #[account(
         mut,
-        seeds = [b"test_submission", &test_id.to_le_bytes(), test_submission.participant.as_ref()],
+        seeds = [b"test_submission".as_ref(), test_id.to_le_bytes().as_ref(), test_submission.participant.as_ref()],
         bump
     )]
     pub test_submission: Account<'info, TestSubmission>,
