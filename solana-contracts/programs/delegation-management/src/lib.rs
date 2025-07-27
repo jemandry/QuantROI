@@ -1,5 +1,4 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 use sha3::{Digest, Sha3_256};
 
 declare_id!("DeLegationManagementProgram11111111111111111");
@@ -141,7 +140,7 @@ pub mod delegation_management {
                 delegation_id: delegation.key(),
                 old_strategy: strategy_manager.current_strategy,
                 new_strategy: optimal_strategy,
-                market_regime: current_regime,
+                market_regime: current_regime.clone(),
                 timestamp: clock.unix_timestamp,
             });
         }
@@ -217,7 +216,7 @@ pub enum DelegationType {
     Full,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
 pub enum TradeDirection {
     Buy,
     Sell,
@@ -337,7 +336,7 @@ pub struct AdaptiveStrategyManager {
     pub strategy_performance_history: Vec<StrategyPerformance>,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq)]
 pub enum RLStrategyType {
     GatedDeepQLearning,
     GatedPolicyGradient,
@@ -377,7 +376,7 @@ pub struct StrategyPerformance {
     pub timestamp: i64,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy)]
 pub enum MarketRegime {
     Bull,
     Bear,
@@ -413,7 +412,7 @@ pub struct AdaptiveTradeResult {
     pub execution_time_ms: u32,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy)]
 pub enum ActionType {
     Buy,
     Sell,

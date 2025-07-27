@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-declare_id!("AiCompetitionProgram111111111111111111111");
+declare_id!("11111111111111111111111111111115");
 
 #[program]
 pub mod ai_competition {
@@ -26,14 +26,16 @@ pub mod ai_competition {
         
         store_experience(&strategy.experience_replay, &market_state, &selected_action, reward)?;
         
-        update_q_network(&mut strategy.q_value_model, &strategy.experience_replay)?;
+        let experience_replay = strategy.experience_replay.clone();
+        update_q_network(&mut strategy.q_value_model, &experience_replay)?;
         
         if should_update_target_network(&strategy.performance_metrics) {
-            update_target_network(&mut strategy.target_network, &strategy.q_value_model)?;
+            let q_value_model = strategy.q_value_model.clone();
+            update_target_network(&mut strategy.target_network, &q_value_model)?;
         }
         
         Ok(QLearningResult {
-            action: selected_action,
+            action: selected_action.clone(),
             q_value: q_values[selected_action.action_index as usize],
             reward,
             epsilon: strategy.q_value_model.epsilon,
@@ -76,7 +78,7 @@ pub mod ai_competition {
         )?;
         
         Ok(PolicyGradientResult {
-            action: selected_action,
+            action: selected_action.clone(),
             action_probability: action_probs[selected_action.action_index as usize],
             state_value,
             advantage,
@@ -106,12 +108,12 @@ pub mod ai_competition {
         )?;
         
         if optimal_strategy != manager.current_strategy {
-            switch_strategy(manager, optimal_strategy)?;
+            switch_strategy(manager, optimal_strategy.clone())?;
             
             emit!(StrategySwitch {
-                old_strategy: manager.current_strategy,
+                old_strategy: manager.current_strategy.clone(),
                 new_strategy: optimal_strategy,
-                market_regime: current_regime,
+                market_regime: current_regime.clone(),
                 performance_score: current_performance,
                 timestamp: Clock::get()?.unix_timestamp,
             });
@@ -216,7 +218,7 @@ pub struct AdvantageEstimation {
     pub normalize_advantages: bool,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
 pub struct ExperienceReplay {
     pub buffer_size: u32,
     pub batch_size: u32,
@@ -261,14 +263,14 @@ pub struct SwitchingCriteria {
     pub qos_latency_threshold: u32,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq)]
 pub enum RLStrategyType {
     GatedDeepQLearning,
     GatedPolicyGradient,
     TemporalFusionTransformer,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy)]
 pub enum MarketRegime {
     Bull,
     Bear,
@@ -286,7 +288,7 @@ pub struct MarketState {
     pub features: Vec<f64>,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy)]
 pub struct TradingAction {
     pub action_type: ActionType,
     pub quantity: f64,
@@ -294,7 +296,7 @@ pub struct TradingAction {
     pub action_index: u32,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy)]
 pub enum ActionType {
     Buy,
     Sell,
