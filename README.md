@@ -242,7 +242,7 @@ frontend/
 ### **Development Setup**
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone https://github.com/Synergy-Cloud-System-LlLC/quantroi.git
 cd ethical-ai-fintech-workspace
 
 # Install Rust dependencies
