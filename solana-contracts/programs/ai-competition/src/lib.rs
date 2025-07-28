@@ -1,4 +1,7 @@
 use anchor_lang::prelude::*;
+use sqlx::PgPool;
+use bigdecimal::BigDecimal;
+use std::str::FromStr;
 
 declare_id!("11111111111111111111111111111115");
 
@@ -33,6 +36,14 @@ pub mod ai_competition {
             let q_value_model = strategy.q_value_model.clone();
             update_target_network(&mut strategy.target_network, &q_value_model)?;
         }
+        
+        store_trade_async(
+            market_state.symbol.clone(),
+            market_state.price,
+            market_state.volume as i32,
+            "GatedDeepQLearning".to_string(),
+            q_values[selected_action.action_index as usize],
+        );
         
         Ok(QLearningResult {
             action: selected_action.clone(),
@@ -281,6 +292,7 @@ pub enum MarketRegime {
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct MarketState {
+    pub symbol: String,
     pub price: f64,
     pub volume: f64,
     pub volatility: f64,
@@ -362,6 +374,10 @@ pub enum AICompetitionError {
     MarketRegimeDetectionFailed,
     #[msg("Strategy switching failed")]
     StrategySwitchingFailed,
+    #[msg("Database connection failed")]
+    DatabaseConnectionFailed,
+    #[msg("Database insert operation failed")]
+    DatabaseInsertFailed,
 }
 
 fn extract_gru_features(market_state: &MarketState, _config: &GRUNetworkConfig) -> Result<Vec<f64>> {
@@ -553,5 +569,33 @@ fn determine_optimal_strategy(
 
 fn switch_strategy(manager: &mut AdaptiveStrategyManager, new_strategy: RLStrategyType) -> Result<()> {
     manager.current_strategy = new_strategy;
+    Ok(())
+}
+
+pub async fn store_trade_async(
+    symbol: String,
+    price: f64,
+    volume: i32,
+    strategy_type: String,
+    confidence: f64,
+) -> Result<()> {
+    let database_url = "postgresql://postgres:postgres@localhost:5432/fintech_db";
+    let pool = PgPool::connect(database_url).await
+        .map_err(|_| AICompetitionError::DatabaseConnectionFailed)?;
+    
+    let price_decimal = BigDecimal::from_str(&price.to_string())
+        .map_err(|_| AICompetitionError::DatabaseInsertFailed)?;
+    let confidence_decimal = BigDecimal::from_str(&confidence.to_string())
+        .map_err(|_| AICompetitionError::DatabaseInsertFailed)?;
+    
+    sqlx::query!(
+        "INSERT INTO trades (time, symbol, price, volume, strategy_type, confidence) VALUES (NOW(), $1, $2, $3, $4, $5)",
+        symbol, price_decimal, volume, strategy_type, confidence_decimal
+    )
+    .execute(&pool)
+    .await
+    .map_err(|_| AICompetitionError::DatabaseInsertFailed)?;
+    
+    pool.close().await;
     Ok(())
 }
