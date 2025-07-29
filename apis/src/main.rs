@@ -17,6 +17,7 @@ mod payments;
 mod nft;
 mod solana_client;
 mod error;
+mod strategy_verification;
 
 use auth::AuthService;
 use trading::TradingService;
@@ -77,6 +78,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/objectives/create", post(portfolio::create_wealth_objective))
         .route("/api/objectives/progress", post(portfolio::update_objective_progress))
         .route("/api/objectives/timeline", post(portfolio::generate_ai_timeline))
+        .route("/api/strategy/health", get(strategy_verification::get_strategy_health))
+        .route("/api/strategy/copy-trade", post(strategy_verification::execute_trade_copy))
         .layer(CorsLayer::permissive())
         .layer(Extension(app_state));
 
