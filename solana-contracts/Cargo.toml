@@ -4,7 +4,8 @@ members = [
     "programs/knowledge-verification",
     "programs/ria-compliance", 
     "programs/payment-system",
-    "programs/ai-competition"
+    "programs/ai-competition",
+    "programs/nft-marketplace"
 ]
 resolver = "2"
 

@@ -1,9 +1,8 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Token, TokenAccount, Transfer, Mint};
-use mpl_token_metadata::state::Metadata;
+use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 use sha3::{Digest, Sha3_256};
 
-declare_id!("NFTMarketplaceProgram1111111111111111111111");
+declare_id!("NFTMktProg111111111111111111111111111111111");
 
 #[program]
 pub mod nft_marketplace {
@@ -294,13 +293,11 @@ pub struct Marketplace {
 pub struct NFTAccount {
     pub nft_type: NFTType,
     pub owner: Pubkey,
-    #[max_len(500)]
     pub metadata: NFTMetadata,
     pub metadata_hash: [u8; 32],
     pub mint_timestamp: i64,
     pub quiz_score: Option<u8>,
     pub competency_level: Option<CompetencyLevel>,
-    #[max_len(200)]
     pub position_data: Option<PositionData>,
     pub reward_type: Option<RewardType>,
     #[max_len(100)]
@@ -340,14 +337,14 @@ pub struct PositionData {
     pub delegation_timestamp: i64,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, InitSpace)]
 pub enum NFTType {
     Certification,
     InvestmentPosition,
     Reward,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, InitSpace)]
 pub enum CompetencyLevel {
     Beginner,
     Intermediate,
@@ -355,7 +352,7 @@ pub enum CompetencyLevel {
     Expert,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, InitSpace)]
 pub enum RewardType {
     ROIMilestone,
     ReferralBonus,
@@ -399,7 +396,6 @@ pub struct NFTPurchased {
 pub struct NFTBurned {
     pub nft_account: Pubkey,
     pub owner: Pubkey,
-    #[max_len(100)]
     pub reason: String,
     pub timestamp: i64,
 }
