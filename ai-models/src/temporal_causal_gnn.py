@@ -7,6 +7,9 @@ import time
 from datetime import datetime, timedelta
 from collections import defaultdict, deque
 import asyncio
+import pandas as pd
+from scipy import stats
+from sklearn.preprocessing import StandardScaler
 
 try:
     from torch_geometric.nn import GATConv
@@ -220,6 +223,118 @@ class CausalGraphDiscovery:
             edges = self._fallback_edges(len(symbols))
         
         return torch.tensor(edges, dtype=torch.long).t().contiguous()
+    
+    def discover_option_causal_relationships(self, option_data: np.ndarray, 
+                                           price_data: np.ndarray, 
+                                           symbols: List[str]) -> Dict[str, Any]:
+        """
+        Discover causal relationships from option signals using Granger causality and VAR
+        Determines if option activity leads price moves for fused signal generation
+        """
+        try:
+            if len(option_data) < 10 or len(price_data) < 10:
+                self.logger.warning("Insufficient data for causal analysis")
+                return {'error': 'Insufficient data'}
+            
+            min_length = min(len(option_data), len(price_data))
+            option_aligned = option_data[:min_length]
+            price_aligned = price_data[:min_length]
+            
+            causal_results = {
+                'granger_causality': {},
+                'lead_lag_relationships': {},
+                'causal_graph_edges': [],
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            # Simplified Granger causality tests for real-time processing
+            for i, symbol in enumerate(symbols):
+                if i < option_aligned.shape[1] and i < price_aligned.shape[1]:
+                    try:
+                        option_series = option_aligned[:, i]
+                        price_series = price_aligned[:, i]
+                        
+                        max_lag = min(5, len(option_series) // 4)
+                        causality_scores = []
+                        
+                        for lag in range(1, max_lag + 1):
+                            if len(option_series) > lag:
+                                corr = np.corrcoef(option_series[:-lag], price_series[lag:])[0, 1]
+                                if not np.isnan(corr):
+                                    causality_scores.append(abs(corr))
+                        
+                        if causality_scores:
+                            max_causality = max(causality_scores)
+                            optimal_lag = causality_scores.index(max_causality) + 1
+                            
+                            causal_results['granger_causality'][symbol] = {
+                                'causality_score': float(max_causality),
+                                'is_causal': max_causality > 0.3,
+                                'optimal_lag': optimal_lag,
+                                'all_scores': [float(s) for s in causality_scores]
+                            }
+                            
+                            if max_causality > 0.3:
+                                causal_results['causal_graph_edges'].append([i, i])
+                        
+                    except Exception as e:
+                        self.logger.warning(f"Causal analysis failed for {symbol}: {e}")
+                        continue
+            
+            # Lead-lag analysis for option-price relationships
+            for i, symbol in enumerate(symbols):
+                if i < option_aligned.shape[1] and i < price_aligned.shape[1]:
+                    try:
+                        option_series = option_aligned[:, i]
+                        price_series = price_aligned[:, i]
+                        
+                        max_lag = min(10, len(option_series) // 4)
+                        correlations = []
+                        
+                        for lag in range(-max_lag, max_lag + 1):
+                            if lag == 0:
+                                corr = np.corrcoef(option_series, price_series)[0, 1]
+                            elif lag > 0:
+                                if len(option_series) > lag:
+                                    corr = np.corrcoef(
+                                        option_series[:-lag], 
+                                        price_series[lag:]
+                                    )[0, 1]
+                                else:
+                                    corr = 0
+                            else:
+                                lag_abs = abs(lag)
+                                if len(price_series) > lag_abs:
+                                    corr = np.corrcoef(
+                                        price_series[:-lag_abs], 
+                                        option_series[lag_abs:]
+                                    )[0, 1]
+                                else:
+                                    corr = 0
+                            
+                            correlations.append(corr)
+                        
+                        max_corr_idx = np.argmax(np.abs(correlations))
+                        optimal_lag = max_corr_idx - max_lag
+                        max_correlation = correlations[max_corr_idx]
+                        
+                        causal_results['lead_lag_relationships'][symbol] = {
+                            'optimal_lag': int(optimal_lag),
+                            'max_correlation': float(max_correlation),
+                            'option_leads_price': optimal_lag > 0,
+                            'correlation_strength': 'strong' if abs(max_correlation) > 0.5 else 'moderate' if abs(max_correlation) > 0.3 else 'weak'
+                        }
+                        
+                    except Exception as e:
+                        self.logger.warning(f"Lead-lag analysis failed for {symbol}: {e}")
+                        continue
+            
+            self.logger.info(f"Causal analysis completed. Found {len(causal_results['granger_causality'])} relationships")
+            return causal_results
+            
+        except Exception as e:
+            self.logger.error(f"Error in option causal relationship discovery: {e}")
+            return {'error': str(e)}
     
     def _fallback_edges(self, n_symbols: int) -> List[List[int]]:
         """Generate fallback edge structure"""

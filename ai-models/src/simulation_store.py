@@ -136,3 +136,117 @@ class TimescaleSimulationStore:
             self.logger.error(f"Error retrieving simulation: {e}")
             
         return None
+    
+    async def store_nft_strategy(self, nft_id: str, strategy_data: Dict[str, Any]) -> bool:
+        """Store NFT strategy data for competitions and royalty tracking"""
+        if not self.pool:
+            await self.initialize()
+            
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS nft_strategies (
+                        time TIMESTAMPTZ NOT NULL,
+                        nft_id TEXT NOT NULL,
+                        creator_address TEXT,
+                        strategy_name TEXT,
+                        performance_score NUMERIC,
+                        sharpe_ratio NUMERIC,
+                        total_return NUMERIC,
+                        accuracy NUMERIC,
+                        max_drawdown NUMERIC,
+                        trades_count INTEGER,
+                        royalties_earned NUMERIC,
+                        metadata JSONB
+                    );
+                """)
+                
+                try:
+                    await conn.execute("SELECT create_hypertable('nft_strategies', 'time', if_not_exists => TRUE);")
+                except Exception as e:
+                    self.logger.warning(f"NFT strategies hypertable creation warning: {e}")
+                
+                await conn.execute("""
+                    INSERT INTO nft_strategies (time, nft_id, creator_address, strategy_name, 
+                                              performance_score, sharpe_ratio, total_return, accuracy, 
+                                              max_drawdown, trades_count, royalties_earned, metadata)
+                    VALUES (NOW(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                """, 
+                nft_id,
+                strategy_data.get('creator_address', ''),
+                strategy_data.get('strategy_name', ''),
+                strategy_data.get('performance_score', 0.0),
+                strategy_data.get('sharpe_ratio', 0.0),
+                strategy_data.get('total_return', 0.0),
+                strategy_data.get('accuracy', 0.0),
+                strategy_data.get('max_drawdown', 0.0),
+                strategy_data.get('trades_count', 0),
+                strategy_data.get('royalties_earned', 0.0),
+                json.dumps(strategy_data.get('metadata', {}))
+                )
+                
+                return True
+                
+        except Exception as e:
+            self.logger.error(f"Error storing NFT strategy: {e}")
+            return False
+    
+    async def store_option_chain_data(self, symbol: str, option_data: Dict[str, Any]) -> bool:
+        """Store option chain data for analysis and sniffing"""
+        if not self.pool:
+            await self.initialize()
+            
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS option_chains (
+                        time TIMESTAMPTZ NOT NULL,
+                        symbol TEXT NOT NULL,
+                        strike NUMERIC,
+                        expiration DATE,
+                        option_type TEXT,
+                        volume INTEGER,
+                        open_interest INTEGER,
+                        implied_volatility NUMERIC,
+                        delta NUMERIC,
+                        gamma NUMERIC,
+                        theta NUMERIC,
+                        vega NUMERIC,
+                        pcr_volume NUMERIC,
+                        iv_change NUMERIC,
+                        volume_spike_ratio NUMERIC
+                    );
+                """)
+                
+                try:
+                    await conn.execute("SELECT create_hypertable('option_chains', 'time', if_not_exists => TRUE);")
+                except Exception as e:
+                    self.logger.warning(f"Option chains hypertable creation warning: {e}")
+                
+                await conn.execute("""
+                    INSERT INTO option_chains (time, symbol, strike, expiration, option_type, volume, 
+                                             open_interest, implied_volatility, delta, gamma, theta, vega,
+                                             pcr_volume, iv_change, volume_spike_ratio)
+                    VALUES (NOW(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                """, 
+                symbol,
+                option_data.get('strike', 0.0),
+                option_data.get('expiration', '2025-12-31'),
+                option_data.get('option_type', 'call'),
+                option_data.get('volume', 0),
+                option_data.get('open_interest', 0),
+                option_data.get('implied_volatility', 0.0),
+                option_data.get('delta', 0.0),
+                option_data.get('gamma', 0.0),
+                option_data.get('theta', 0.0),
+                option_data.get('vega', 0.0),
+                option_data.get('pcr_volume', 0.0),
+                option_data.get('iv_change', 0.0),
+                option_data.get('volume_spike_ratio', 1.0)
+                )
+                
+                return True
+                
+        except Exception as e:
+            self.logger.error(f"Error storing option chain data: {e}")
+            return False

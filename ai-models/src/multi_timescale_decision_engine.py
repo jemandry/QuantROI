@@ -183,3 +183,66 @@ class MultiTimescaleDecisionEngine:
         except Exception as e:
             self.logger.error(f"Error in hour macro processing: {e}")
             return {"type": "ERROR", "message": str(e)}
+    
+    async def handle_option_sniffing(self, event: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle option chain sniffing for unusual activity detection"""
+        try:
+            symbol = event.get('symbol', 'UNKNOWN')
+            option_data = event.get('option_data', {})
+            
+            if not option_data:
+                return {"type": "HOLD", "reason": "no_option_data"}
+            
+            put_volume = option_data.get('put_volume', 0)
+            call_volume = option_data.get('call_volume', 0)
+            pcr_volume = put_volume / call_volume if call_volume > 0 else 0
+            
+            iv_change = option_data.get('iv_change', 0)
+            volume_spike = option_data.get('volume_spike_ratio', 1.0)
+            gamma_exposure = option_data.get('gamma_exposure', 0)
+            
+            unusual_activity_score = 0.0
+            
+            if pcr_volume > 1.5:  # High put activity
+                unusual_activity_score += 0.3
+            elif pcr_volume < 0.5:  # High call activity
+                unusual_activity_score += 0.3
+            
+            if volume_spike > 2.0:
+                unusual_activity_score += 0.4
+            
+            if abs(iv_change) > 0.1:
+                unusual_activity_score += 0.2
+            
+            if abs(gamma_exposure) > 1000000:  # Large gamma exposure
+                unusual_activity_score += 0.1
+            
+            if unusual_activity_score > 0.6:  # 60% threshold for action
+                action = "buy" if pcr_volume < 0.8 else "sell"
+                confidence = min(unusual_activity_score, 1.0)
+                
+                return {
+                    "type": "ORDER",
+                    "action": action,
+                    "quantity": int(500 * confidence),
+                    "symbol": symbol,
+                    "strategy": "option_sniffing",
+                    "confidence": confidence,
+                    "uoa_score": unusual_activity_score,
+                    "indicators": {
+                        "pcr_volume": pcr_volume,
+                        "iv_change": iv_change,
+                        "volume_spike": volume_spike,
+                        "gamma_exposure": gamma_exposure
+                    }
+                }
+            
+            return {
+                "type": "HOLD", 
+                "reason": f"uoa_score_below_threshold={unusual_activity_score:.3f}",
+                "uoa_score": unusual_activity_score
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error in option sniffing processing: {e}")
+            return {"type": "ERROR", "message": str(e)}

@@ -241,6 +241,162 @@ class NewsSentimentAnalyzer:
         
         return None
     
+    def correlate_with_option_spikes(self, news_text: str, sentiment_score: float, 
+                                   option_data: Dict[str, Any], symbol: str) -> Dict[str, Any]:
+        """
+        Correlate FinBERT sentiment outputs with option spikes for integrated sniffing
+        Implements Bloomberg 2017 approach with option activity correlation
+        """
+        try:
+            correlation_result = {
+                'symbol': symbol,
+                'sentiment_score': sentiment_score,
+                'option_correlation': 0.0,
+                'integrated_signal': 'neutral',
+                'confidence': 0.0,
+                'option_indicators': {},
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            if not option_data:
+                return correlation_result
+            
+            put_volume = option_data.get('put_volume', 0)
+            call_volume = option_data.get('call_volume', 0)
+            pcr_volume = put_volume / call_volume if call_volume > 0 else 0
+            
+            iv_change = option_data.get('iv_change', 0)
+            volume_spike = option_data.get('volume_spike_ratio', 1.0)
+            
+            correlation_result['option_indicators'] = {
+                'pcr_volume': pcr_volume,
+                'iv_change': iv_change,
+                'volume_spike': volume_spike,
+                'put_volume': put_volume,
+                'call_volume': call_volume
+            }
+            
+            if sentiment_score < -0.2 and pcr_volume > 1.2:
+                correlation_score = abs(sentiment_score) * min(pcr_volume / 1.2, 2.0)
+                correlation_result['integrated_signal'] = 'strong_bearish'
+                correlation_result['confidence'] = min(correlation_score, 1.0)
+            
+            elif sentiment_score > 0.2 and pcr_volume < 0.8:
+                correlation_score = sentiment_score * min(2.0 / max(pcr_volume, 0.1), 2.0)
+                correlation_result['integrated_signal'] = 'strong_bullish'
+                correlation_result['confidence'] = min(correlation_score, 1.0)
+            
+            elif abs(sentiment_score) > 0.15 and volume_spike > 1.5:
+                correlation_score = abs(sentiment_score) * min(volume_spike / 1.5, 1.5)
+                signal_direction = 'bullish' if sentiment_score > 0 else 'bearish'
+                correlation_result['integrated_signal'] = f'moderate_{signal_direction}'
+                correlation_result['confidence'] = min(correlation_score * 0.7, 1.0)
+            
+            elif abs(sentiment_score) > 0.1 and abs(iv_change) > 0.05:
+                if (sentiment_score > 0 and iv_change > 0) or (sentiment_score < 0 and iv_change > 0):
+                    correlation_score = abs(sentiment_score) * min(abs(iv_change) / 0.05, 2.0)
+                    signal_direction = 'bullish' if sentiment_score > 0 else 'bearish'
+                    correlation_result['integrated_signal'] = f'iv_{signal_direction}'
+                    correlation_result['confidence'] = min(correlation_score * 0.6, 1.0)
+            
+            correlation_result['option_correlation'] = correlation_result['confidence']
+            
+            self._store_correlation_data(symbol, sentiment_score, option_data, correlation_result)
+            
+            self.logger.info(f"Option correlation for {symbol}: {correlation_result['integrated_signal']} "
+                           f"(confidence: {correlation_result['confidence']:.3f})")
+            
+            return correlation_result
+            
+        except Exception as e:
+            self.logger.error(f"Error correlating with option spikes: {e}")
+            return {
+                'symbol': symbol,
+                'sentiment_score': sentiment_score,
+                'option_correlation': 0.0,
+                'integrated_signal': 'error',
+                'confidence': 0.0,
+                'error': str(e)
+            }
+    
+    def generate_enhanced_trading_signal(self, sentiment_score: float, symbol: str,
+                                       option_data: Dict[str, Any] = None) -> Optional[Dict[str, Any]]:
+        """
+        Generate enhanced trading signal incorporating both sentiment and option correlation
+        Replaces basic generate_trading_signal with option-aware logic
+        """
+        try:
+            if option_data:
+                correlation_result = self.correlate_with_option_spikes(
+                    "", sentiment_score, option_data, symbol
+                )
+                
+                integrated_signal = correlation_result['integrated_signal']
+                confidence = correlation_result['confidence']
+                
+                if integrated_signal == 'strong_bullish' and confidence > 0.7:
+                    return {
+                        "type": "ORDER",
+                        "action": "buy",
+                        "quantity": int(200 * confidence),  # Scale quantity by confidence
+                        "symbol": symbol,
+                        "reason": f"strong_bullish_sentiment_option_correlation={confidence:.3f}",
+                        "confidence": confidence,
+                        "signal_type": "enhanced_sentiment_option"
+                    }
+                elif integrated_signal == 'strong_bearish' and confidence > 0.7:
+                    return {
+                        "type": "ORDER",
+                        "action": "sell",
+                        "quantity": int(200 * confidence),
+                        "symbol": symbol,
+                        "reason": f"strong_bearish_sentiment_option_correlation={confidence:.3f}",
+                        "confidence": confidence,
+                        "signal_type": "enhanced_sentiment_option"
+                    }
+                elif 'moderate' in integrated_signal and confidence > 0.5:
+                    action = "buy" if "bullish" in integrated_signal else "sell"
+                    return {
+                        "type": "ORDER",
+                        "action": action,
+                        "quantity": int(100 * confidence),
+                        "symbol": symbol,
+                        "reason": f"moderate_sentiment_option_correlation={confidence:.3f}",
+                        "confidence": confidence,
+                        "signal_type": "enhanced_sentiment_option"
+                    }
+            
+            return self.generate_trading_signal(sentiment_score, symbol)
+            
+        except Exception as e:
+            self.logger.error(f"Error generating enhanced trading signal: {e}")
+            return None
+    
+    def _store_correlation_data(self, symbol: str, sentiment_score: float, 
+                              option_data: Dict[str, Any], correlation_result: Dict[str, Any]):
+        """Store correlation data for pattern learning"""
+        try:
+            if not self.mongo_available:
+                return
+            
+            correlation_record = {
+                'symbol': symbol,
+                'sentiment_score': sentiment_score,
+                'pcr_volume': option_data.get('put_volume', 0) / max(option_data.get('call_volume', 1), 1),
+                'iv_change': option_data.get('iv_change', 0),
+                'volume_spike_ratio': option_data.get('volume_spike_ratio', 1.0),
+                'integrated_signal': correlation_result['integrated_signal'],
+                'confidence': correlation_result['confidence'],
+                'timestamp': datetime.now(),
+                'created_at': datetime.now()
+            }
+            
+            correlation_collection = self.mongo["trading_db"]["news_option_correlations"]
+            correlation_collection.insert_one(correlation_record)
+            
+        except Exception as e:
+            self.logger.error(f"Error storing correlation data: {e}")
+    
     async def process_news_stream(self, news_stream) -> Dict[str, Any]:
         """
         Process continuous news stream for real-time sentiment analysis
