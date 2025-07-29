@@ -82,9 +82,23 @@ class RealTimeTradingEngine:
         
         self.monitoring_enabled = PROMETHEUS_AVAILABLE
         if PROMETHEUS_AVAILABLE:
-            self.active_events = Gauge('active_events_total', 'Number of active events in queue')
-            self.processed_events = Counter('processed_events_total', 'Total processed events')
-            self.processing_latency = Histogram('event_processing_seconds', 'Event processing latency')
+            try:
+                self.active_events = Gauge('active_events_total', 'Number of active events in queue')
+                self.processed_events = Counter('processed_events_total', 'Total processed events')
+                self.processing_latency = Histogram('event_processing_seconds', 'Event processing latency')
+            except ValueError as e:
+                if "Duplicated timeseries" in str(e):
+                    from prometheus_client import REGISTRY
+                    for collector in list(REGISTRY._collector_to_names.keys()):
+                        if hasattr(collector, '_name') and collector._name in ['active_events_total', 'processed_events_total', 'event_processing_seconds']:
+                            if collector._name == 'active_events_total':
+                                self.active_events = collector
+                            elif collector._name == 'processed_events_total':
+                                self.processed_events = collector
+                            elif collector._name == 'event_processing_seconds':
+                                self.processing_latency = collector
+                else:
+                    raise e
         
     async def initialize(self):
         """Initialize all components"""
