@@ -1,6 +1,9 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 use sha3::{Digest, Sha3_256};
+use sqlx::PgPool;
+use bigdecimal::BigDecimal;
+use std::str::FromStr;
 
 declare_id!("ZKPStrategyVerif11111111111111111111111111");
 
@@ -146,6 +149,14 @@ pub mod zkp_strategy_verification {
         
         let start_time = clock.unix_timestamp;
         
+        let _ = store_strategy_trade_async(
+            trade_data.symbol.clone(),
+            trade_data.price,
+            trade_data.quantity as i32,
+            "zkp_strategy_copy".to_string(),
+            0.95, // High confidence for strategy copies
+        );
+        
         let execution_result = TradeExecutionResult {
             trade_id: trade_data.trade_id,
             symbol: trade_data.symbol.clone(),
@@ -239,6 +250,84 @@ pub enum TradeDirection {
     Sell,
 }
 
+async fn store_strategy_trade_async(
+    symbol: String,
+    price: f64,
+    volume: i32,
+    strategy_type: String,
+    confidence: f64,
+) -> Result<()> {
+    let database_url = "postgresql://postgres:postgres@localhost:5432/fintech_db";
+    let pool = PgPool::connect(database_url).await
+        .map_err(|_| StrategyError::DatabaseConnectionFailed)?;
+    
+    let price_decimal = BigDecimal::from_str(&price.to_string())
+        .map_err(|_| StrategyError::DatabaseInsertFailed)?;
+    let confidence_decimal = BigDecimal::from_str(&confidence.to_string())
+        .map_err(|_| StrategyError::DatabaseInsertFailed)?;
+    
+    sqlx::query!(
+        "INSERT INTO trades (time, symbol, price, volume, strategy_type, confidence) VALUES (NOW(), $1, $2, $3, $4, $5)",
+        symbol, price_decimal, volume, strategy_type, confidence_decimal
+    )
+    .execute(&pool)
+    .await
+    .map_err(|_| StrategyError::DatabaseInsertFailed)?;
+    
+    pool.close().await;
+    Ok(())
+}
+
+async fn store_strategy_health_async(
+    nft_id: String,
+    health_status: String,
+    performance_score: f64,
+    last_check_timestamp: i64,
+) -> Result<()> {
+    let database_url = "postgresql://postgres:postgres@localhost:5432/fintech_db";
+    let pool = PgPool::connect(database_url).await
+        .map_err(|_| StrategyError::DatabaseConnectionFailed)?;
+    
+    let performance_decimal = BigDecimal::from_str(&performance_score.to_string())
+        .map_err(|_| StrategyError::DatabaseInsertFailed)?;
+    
+    sqlx::query!(
+        "INSERT INTO strategy_health (time, nft_id, health_status, performance_score, last_check) VALUES (NOW(), $1, $2, $3, to_timestamp($4))",
+        nft_id, health_status, performance_decimal, last_check_timestamp
+    )
+    .execute(&pool)
+    .await
+    .map_err(|_| StrategyError::DatabaseInsertFailed)?;
+    
+    pool.close().await;
+    Ok(())
+}
+
+async fn query_strategy_performance_async(
+    nft_id: String,
+    time_window_hours: i32,
+) -> Result<f64> {
+    let database_url = "postgresql://postgres:postgres@localhost:5432/fintech_db";
+    let pool = PgPool::connect(database_url).await
+        .map_err(|_| StrategyError::DatabaseConnectionFailed)?;
+    
+    let result = sqlx::query!(
+        "SELECT AVG(performance_score) as avg_performance FROM strategy_health WHERE nft_id = $1 AND time >= NOW() - INTERVAL '%d hours'",
+        nft_id, time_window_hours
+    )
+    .fetch_one(&pool)
+    .await
+    .map_err(|_| StrategyError::DatabaseQueryFailed)?;
+    
+    pool.close().await;
+    
+    let avg_performance = result.avg_performance
+        .and_then(|d| d.to_string().parse::<f64>().ok())
+        .unwrap_or(0.0);
+    
+    Ok(avg_performance)
+}
+
 #[derive(Accounts)]
 pub struct CreateStrategyNFT<'info> {
     #[account(init, payer = creator, space = 8 + StrategyNFT::INIT_SPACE)]
@@ -325,4 +414,10 @@ pub enum StrategyError {
     TradeCopyingDisabled,
     #[msg("Access has expired")]
     AccessExpired,
+    #[msg("Database connection failed")]
+    DatabaseConnectionFailed,
+    #[msg("Database insert operation failed")]
+    DatabaseInsertFailed,
+    #[msg("Database query operation failed")]
+    DatabaseQueryFailed,
 }
