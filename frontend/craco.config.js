@@ -20,6 +20,11 @@ module.exports = {
         '.mjs': ['.mjs', '.js'],
       };
       
+      webpackConfig.resolve.alias = {
+        ...webpackConfig.resolve.alias,
+        'process/browser': require.resolve('process/browser'),
+      };
+      
       webpackConfig.plugins = [
         ...webpackConfig.plugins,
         new webpack.ProvidePlugin({
