@@ -346,7 +346,7 @@ Action: Approve payment for Week 3 milestone?
 **Cron Setup:**
 ```bash
 # Add to crontab for daily 9 AM checks with change detection
-0 9 * * * /path/to/quantroi/scripts/daily-lint-check.sh
+0 9 * * * /home/ubuntu/repos/quantroi/scripts/daily-lint-check.sh
 ```
 
 ### Comprehensive Linting
