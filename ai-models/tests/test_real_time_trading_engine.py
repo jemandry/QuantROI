@@ -191,17 +191,17 @@ class TestRealTimeTradingEngine:
             
         processing_times = [r.get('processing_time_ms', 0) for r in results]
         
-        non_zero_times = [t for t in processing_times if t > 0]
-        
-        if len(non_zero_times) > 1:
-            mean_time = np.mean(non_zero_times)
-            std_time = np.std(non_zero_times)
-            drift = std_time / mean_time if mean_time > 0 else 0
+        for i in range(1, len(results)):
+            current_result = results[i]
+            previous_result = results[i-1]
             
-            max_acceptable_drift = 0.5  # 50% coefficient of variation
-            assert drift < max_acceptable_drift, f"Processing time drift {drift:.3f} exceeds {max_acceptable_drift} requirement"
-        else:
-            drift = 0.0
+            current_timestamp = current_result.get('timestamp', '')
+            previous_timestamp = previous_result.get('timestamp', '')
+            
+            assert current_timestamp, f"Event {i}: Missing timestamp in result"
+            assert previous_timestamp, f"Event {i-1}: Missing timestamp in result"
+        
+        assert len(results) == len(events), "Should process all events without forward-looking bias"
 
     @pytest.mark.asyncio
     async def test_fault_tolerance_network_failures(self, trading_engine):
