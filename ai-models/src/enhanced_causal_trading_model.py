@@ -158,8 +158,100 @@ class GatedDeepQLearningStrategy:
             quantity=quantity,
             confidence=confidence,
             expected_return=expected_return,
-            strategy_used=RLStrategyType.GATED_DEEP_Q_LEARNING
+            strategy_used=RLStrategyType.GATED_DEEP_Q_LEARNING,
+            risk_score=0.3,
+            timestamp=None
         )
+    
+    def execute_trade_with_instruction(self, market_data: MarketData, portfolio_state: Dict[str, Any], trading_instruction: Optional[Dict[str, Any]]) -> TradingResult:
+        """Execute trade with trading instruction guidance"""
+        features = self.extract_gru_features(market_data)
+        
+        with torch.no_grad():
+            features_tensor = torch.FloatTensor(features).unsqueeze(0)
+            q_values = self.q_network(features_tensor)
+            
+            if trading_instruction:
+                instruction_action = trading_instruction.get('action', 'hold').lower()
+                instruction_confidence = trading_instruction.get('confidence', 0.5)
+                
+                action_map = {"buy": 0, "sell": 1, "hold": 2}
+                preferred_action_idx = action_map.get(instruction_action, 2)
+                
+                if instruction_confidence > 0.7:  # High confidence instruction
+                    action_idx = preferred_action_idx
+                    confidence = instruction_confidence
+                else:
+                    if np.random.random() < self.epsilon:
+                        action_idx = np.random.randint(0, self.action_dim)
+                    else:
+                        q_values_adjusted = q_values.clone()
+                        q_values_adjusted[0][preferred_action_idx] += instruction_confidence
+                        action_idx = torch.argmax(q_values_adjusted).item()
+                    
+                    confidence = float(torch.max(q_values).item())
+            else:
+                if np.random.random() < self.epsilon:
+                    action_idx = np.random.randint(0, self.action_dim)
+                else:
+                    action_idx = torch.argmax(q_values).item()
+                
+                confidence = float(torch.max(q_values).item())
+        
+        actions = ["buy", "sell", "hold"]
+        action = actions[action_idx]
+        
+        base_return = confidence * 0.002
+        if trading_instruction:
+            instruction_return = trading_instruction.get('expected_return', 0.0)
+            expected_return = (base_return + instruction_return) / 2  # Blend returns
+        else:
+            expected_return = base_return
+        
+        if trading_instruction and action != "hold":
+            position_size = trading_instruction.get('position_size', 0.1)
+            quantity = position_size * 1000  # Scale to shares
+        else:
+            quantity = 100.0 if action != "hold" else 0.0
+        
+        self.epsilon = max(self.epsilon * self.epsilon_decay, self.min_epsilon)
+        
+        return TradingResult(
+            action=action,
+            quantity=quantity,
+            confidence=confidence,
+            expected_return=expected_return,
+            strategy_used=RLStrategyType.GATED_DEEP_Q_LEARNING,
+            risk_score=0.3,
+            timestamp=None
+        )
+    
+    def get_regime_compatibility(self, market_regime: str) -> float:
+        """Get compatibility score for market regime"""
+        regime_scores = {
+            'bull': 0.8,
+            'bear': 0.7,
+            'sideways': 0.6,
+            'high_vol': 0.9,
+            'low_vol': 0.5
+        }
+        return regime_scores.get(market_regime, 0.6)
+    
+    def update_from_outcome(self, trade_outcome: Dict[str, Any]):
+        """Update strategy based on trade outcome"""
+        experience = {
+            'action': trade_outcome.get('action'),
+            'expected_return': trade_outcome.get('expected_return', 0.0),
+            'actual_return': trade_outcome.get('actual_return', 0.0),
+            'market_conditions': trade_outcome.get('market_conditions', {}),
+            'timestamp': trade_outcome.get('timestamp')
+        }
+        
+        actual_return = trade_outcome.get('actual_return', 0.0)
+        if actual_return > 0:
+            self.epsilon = max(self.epsilon * 0.995, self.min_epsilon)  # Reduce exploration on success
+        else:
+            self.epsilon = min(self.epsilon * 1.005, 0.3)  # Increase exploration on failure
 
 class GatedPolicyGradientStrategy:
     def __init__(self, state_dim: int = 64, action_dim: int = 3, learning_rate: float = 0.001):
@@ -232,8 +324,96 @@ class GatedPolicyGradientStrategy:
             quantity=quantity,
             confidence=confidence,
             expected_return=expected_return,
-            strategy_used=RLStrategyType.GATED_POLICY_GRADIENT
+            strategy_used=RLStrategyType.GATED_POLICY_GRADIENT,
+            risk_score=0.4,
+            timestamp=None
         )
+    
+    def execute_trade_with_instruction(self, market_data: MarketData, portfolio_state: Dict[str, Any], trading_instruction: Optional[Dict[str, Any]]) -> TradingResult:
+        """Execute trade with trading instruction guidance for policy gradient"""
+        features = self.extract_gru_features(market_data)
+        
+        with torch.no_grad():
+            features_tensor = torch.FloatTensor(features).unsqueeze(0)
+            action_probs = self.policy_network(features_tensor)
+            state_value = self.value_network(features_tensor)
+            
+            if trading_instruction:
+                # Modify action probabilities based on trading instruction
+                instruction_action = trading_instruction.get('action', 'hold').lower()
+                instruction_confidence = trading_instruction.get('confidence', 0.5)
+                
+                action_map = {"buy": 0, "sell": 1, "hold": 2}
+                preferred_action_idx = action_map.get(instruction_action, 2)
+                
+                if instruction_confidence > 0.6:
+                    action_probs_adjusted = action_probs.clone()
+                    action_probs_adjusted[0][preferred_action_idx] *= (1 + instruction_confidence)
+                    action_probs_adjusted = torch.softmax(action_probs_adjusted, dim=-1)
+                    action_idx = torch.multinomial(action_probs_adjusted, 1).item()
+                    confidence = action_probs_adjusted[0][action_idx].item()
+                else:
+                    action_idx = torch.multinomial(action_probs, 1).item()
+                    confidence = action_probs[0][action_idx].item()
+            else:
+                action_idx = torch.multinomial(action_probs, 1).item()
+                confidence = action_probs[0][action_idx].item()
+        
+        actions = ["buy", "sell", "hold"]
+        action = actions[action_idx]
+        
+        base_return = float(state_value.item()) * 0.002
+        if trading_instruction:
+            instruction_return = trading_instruction.get('expected_return', 0.0)
+            expected_return = (base_return + instruction_return) / 2
+        else:
+            expected_return = base_return
+        
+        if trading_instruction and action != "hold":
+            position_size = trading_instruction.get('position_size', 0.15)
+            quantity = position_size * 1000
+        else:
+            quantity = 100.0 if action != "hold" else 0.0
+        
+        return TradingResult(
+            action=action,
+            quantity=quantity,
+            confidence=confidence,
+            expected_return=expected_return,
+            strategy_used=RLStrategyType.GATED_POLICY_GRADIENT,
+            risk_score=0.4,
+            timestamp=None
+        )
+    
+    def get_regime_compatibility(self, market_regime: str) -> float:
+        """Get compatibility score for market regime"""
+        regime_scores = {
+            'bull': 0.9,
+            'bear': 0.8,
+            'sideways': 0.7,
+            'high_vol': 0.6,
+            'low_vol': 0.8
+        }
+        return regime_scores.get(market_regime, 0.7)
+    
+    def update_from_outcome(self, trade_outcome: Dict[str, Any]):
+        """Update policy gradient strategy based on trade outcome"""
+        experience = {
+            'action': trade_outcome.get('action'),
+            'expected_return': trade_outcome.get('expected_return', 0.0),
+            'actual_return': trade_outcome.get('actual_return', 0.0),
+            'market_conditions': trade_outcome.get('market_conditions', {}),
+            'timestamp': trade_outcome.get('timestamp')
+        }
+        
+        actual_return = trade_outcome.get('actual_return', 0.0)
+        expected_return = trade_outcome.get('expected_return', 0.0)
+        advantage = actual_return - expected_return
+        
+        if advantage > 0:
+            self.learning_rate = min(0.01, self.learning_rate * 1.01)
+        else:
+            self.learning_rate = max(0.0001, self.learning_rate * 0.99)
 
 class AdaptiveStrategyManager:
     def __init__(self):
