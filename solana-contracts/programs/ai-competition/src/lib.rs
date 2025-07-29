@@ -109,7 +109,11 @@ pub mod ai_competition {
         let ai_timeline = AITimeline {
             milestones: generate_milestones(&goal_params)?,
             risk_assessments: generate_risk_assessments(&goal_params)?,
-            recommended_strategies: generate_strategies(&goal_params)?.join(","),
+            recommended_strategies: generate_strategies(&goal_params)?
+                .iter()
+                .map(|pubkey| pubkey.to_string())
+                .collect::<Vec<String>>()
+                .join(","),
             inspector_rotation_schedule: generate_rotation_schedule()?,
         };
         
