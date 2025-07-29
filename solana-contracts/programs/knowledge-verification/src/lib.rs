@@ -155,7 +155,7 @@ pub mod knowledge_verification {
         
         if competency.user == Pubkey::default() {
             competency.user = ctx.accounts.user.key();
-            competency.trading_competency = 50; // Start at neutral
+            competency.trading_competency = 50;
             competency.risk_management_competency = 50;
             competency.compliance_competency = 50;
             competency.ai_understanding_competency = 50;
@@ -201,6 +201,150 @@ pub mod knowledge_verification {
         
         Ok(())
     }
+
+    pub fn toggle_profile_switch(
+        ctx: Context<ToggleSwitch>,
+        switch_type: SwitchType,
+        enabled: bool,
+    ) -> Result<()> {
+        let user_profile = &mut ctx.accounts.user_profile;
+        
+        require!(user_profile.owner == ctx.accounts.user.key(), KnowledgeError::UnauthorizedProfileAccess);
+        
+        match switch_type {
+            SwitchType::AutoPauseOnQuizFail => user_profile.auto_pause_on_quiz_fail = enabled,
+            SwitchType::RandomInspectorRotation => user_profile.random_inspector_rotation = enabled,
+            SwitchType::AIPolicyAlerts => user_profile.ai_policy_alerts = enabled,
+            SwitchType::ComplianceView => user_profile.compliance_view_enabled = enabled,
+            SwitchType::RiskMonitoring => user_profile.risk_monitoring_enabled = enabled,
+        }
+        
+        user_profile.last_switch_update = Clock::get()?.unix_timestamp;
+        
+        emit!(ProfileSwitchToggled {
+            user: ctx.accounts.user.key(),
+            switch_type,
+            enabled,
+            timestamp: Clock::get()?.unix_timestamp,
+        });
+        
+        Ok(())
+    }
+
+    pub fn update_inspector_rotation(
+        ctx: Context<UpdateRotation>,
+        frequency: RotationFrequency,
+        inspector_pool: Vec<Pubkey>,
+    ) -> Result<()> {
+        let user_profile = &mut ctx.accounts.user_profile;
+        
+        require!(user_profile.owner == ctx.accounts.user.key(), KnowledgeError::UnauthorizedProfileAccess);
+        require!(inspector_pool.len() <= 10, KnowledgeError::TooManyInspectors);
+        
+        user_profile.inspector_rotation_frequency = frequency;
+        user_profile.inspector_pool = inspector_pool;
+        user_profile.last_rotation_timestamp = Clock::get()?.unix_timestamp;
+        
+        let next_rotation = calculate_next_rotation_time(frequency)?;
+        user_profile.next_rotation_timestamp = next_rotation;
+        
+        emit!(InspectorRotationUpdated {
+            user: ctx.accounts.user.key(),
+            frequency,
+            inspector_count: user_profile.inspector_pool.len() as u8,
+            next_rotation,
+            timestamp: Clock::get()?.unix_timestamp,
+        });
+        
+        Ok(())
+    }
+
+    pub fn configure_ai_policy_alerts(
+        ctx: Context<ConfigureAlerts>,
+        alert_settings: AlertSettings,
+    ) -> Result<()> {
+        let user_profile = &mut ctx.accounts.user_profile;
+        
+        require!(user_profile.owner == ctx.accounts.user.key(), KnowledgeError::UnauthorizedProfileAccess);
+        
+        user_profile.alert_settings = Some(alert_settings.clone());
+        user_profile.last_alert_config_update = Clock::get()?.unix_timestamp;
+        
+        emit!(AlertSettingsConfigured {
+            user: ctx.accounts.user.key(),
+            roi_threshold: alert_settings.roi_threshold,
+            volatility_threshold: alert_settings.volatility_threshold,
+            notification_frequency: alert_settings.notification_frequency,
+            timestamp: Clock::get()?.unix_timestamp,
+        });
+        
+        Ok(())
+    }
+
+    pub fn initialize_user_profile(ctx: Context<InitializeUserProfile>) -> Result<()> {
+        let user_profile = &mut ctx.accounts.user_profile;
+        
+        user_profile.owner = ctx.accounts.user.key();
+        user_profile.auto_pause_on_quiz_fail = true;
+        user_profile.random_inspector_rotation = false;
+        user_profile.ai_policy_alerts = true;
+        user_profile.compliance_view_enabled = true;
+        user_profile.risk_monitoring_enabled = true;
+        user_profile.inspector_rotation_frequency = RotationFrequency::Weekly;
+        user_profile.inspector_pool = Vec::new();
+        user_profile.current_inspector = None;
+        user_profile.creation_timestamp = Clock::get()?.unix_timestamp;
+        user_profile.last_switch_update = Clock::get()?.unix_timestamp;
+        user_profile.last_rotation_timestamp = 0;
+        user_profile.next_rotation_timestamp = 0;
+        user_profile.last_alert_config_update = Clock::get()?.unix_timestamp;
+        user_profile.alert_settings = None;
+        
+        emit!(UserProfileInitialized {
+            user: ctx.accounts.user.key(),
+            timestamp: Clock::get()?.unix_timestamp,
+        });
+        
+        Ok(())
+    }
+
+    pub fn execute_inspector_rotation(ctx: Context<ExecuteRotation>) -> Result<()> {
+        let user_profile = &mut ctx.accounts.user_profile;
+        
+        require!(user_profile.random_inspector_rotation, KnowledgeError::RotationNotEnabled);
+        require!(
+            Clock::get()?.unix_timestamp >= user_profile.next_rotation_timestamp,
+            KnowledgeError::RotationNotDue
+        );
+        require!(!user_profile.inspector_pool.is_empty(), KnowledgeError::NoInspectorsAvailable);
+        
+        let current_time = Clock::get()?.unix_timestamp;
+        let random_seed = (current_time % user_profile.inspector_pool.len() as i64) as usize;
+        let selected_inspector = user_profile.inspector_pool[random_seed];
+        
+        user_profile.current_inspector = Some(selected_inspector);
+        user_profile.last_rotation_timestamp = current_time;
+        user_profile.next_rotation_timestamp = calculate_next_rotation_time(user_profile.inspector_rotation_frequency)?;
+        
+        emit!(InspectorRotationExecuted {
+            user: ctx.accounts.user.key(),
+            selected_inspector,
+            rotation_timestamp: current_time,
+            next_rotation: user_profile.next_rotation_timestamp,
+        });
+        
+        Ok(())
+    }
+}
+
+fn calculate_next_rotation_time(frequency: RotationFrequency) -> Result<i64> {
+    let current_time = Clock::get()?.unix_timestamp;
+    let seconds_to_add = match frequency {
+        RotationFrequency::Daily => 24 * 60 * 60,
+        RotationFrequency::Weekly => 7 * 24 * 60 * 60,
+        RotationFrequency::Monthly => 30 * 24 * 60 * 60,
+    };
+    Ok(current_time + seconds_to_add)
 }
 
 #[account]
@@ -232,12 +376,31 @@ pub struct TestSubmission {
 
 #[account]
 pub struct UserCompetency {
-    pub user: Pubkey,                           // 32 bytes
-    pub trading_competency: u8,                 // 1 byte (0-100)
-    pub risk_management_competency: u8,         // 1 byte (0-100)
-    pub compliance_competency: u8,              // 1 byte (0-100)
-    pub ai_understanding_competency: u8,        // 1 byte (0-100)
-    pub last_updated: i64,                      // 8 bytes
+    pub user: Pubkey,
+    pub trading_competency: u8,
+    pub risk_management_competency: u8,
+    pub compliance_competency: u8,
+    pub ai_understanding_competency: u8,
+    pub last_updated: i64,
+}
+
+#[account]
+pub struct UserProfile {
+    pub owner: Pubkey,
+    pub auto_pause_on_quiz_fail: bool,
+    pub random_inspector_rotation: bool,
+    pub ai_policy_alerts: bool,
+    pub compliance_view_enabled: bool,
+    pub risk_monitoring_enabled: bool,
+    pub inspector_rotation_frequency: RotationFrequency,
+    pub inspector_pool: Vec<Pubkey>,
+    pub current_inspector: Option<Pubkey>,
+    pub creation_timestamp: i64,
+    pub last_switch_update: i64,
+    pub last_rotation_timestamp: i64,
+    pub next_rotation_timestamp: i64,
+    pub last_alert_config_update: i64,
+    pub alert_settings: Option<AlertSettings>,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]
@@ -246,6 +409,29 @@ pub enum CompetencyArea {
     RiskManagement,
     Compliance,
     AiUnderstanding,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
+pub enum SwitchType {
+    AutoPauseOnQuizFail,
+    RandomInspectorRotation,
+    AIPolicyAlerts,
+    ComplianceView,
+    RiskMonitoring,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
+pub enum RotationFrequency {
+    Daily,
+    Weekly,
+    Monthly,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct AlertSettings {
+    pub roi_threshold: f64,
+    pub volatility_threshold: f64,
+    pub notification_frequency: RotationFrequency,
 }
 
 #[derive(Accounts)]
@@ -319,6 +505,49 @@ pub struct TrackUserCompetency<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[derive(Accounts)]
+pub struct ToggleSwitch<'info> {
+    #[account(mut)]
+    pub user_profile: Account<'info, UserProfile>,
+    pub user: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct UpdateRotation<'info> {
+    #[account(mut)]
+    pub user_profile: Account<'info, UserProfile>,
+    pub user: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct ConfigureAlerts<'info> {
+    #[account(mut)]
+    pub user_profile: Account<'info, UserProfile>,
+    pub user: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct InitializeUserProfile<'info> {
+    #[account(
+        init,
+        payer = user,
+        space = 8 + 32 + 1 + 1 + 1 + 1 + 1 + 1 + 4 + (10 * 32) + 33 + 8 + 8 + 8 + 8 + 8 + 4 + 100,
+        seeds = [b"user_profile", user.key().as_ref()],
+        bump
+    )]
+    pub user_profile: Account<'info, UserProfile>,
+    #[account(mut)]
+    pub user: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct ExecuteRotation<'info> {
+    #[account(mut)]
+    pub user_profile: Account<'info, UserProfile>,
+    pub user: Signer<'info>,
+}
+
 #[event]
 pub struct KnowledgeTestCreated {
     pub test_id: u64,
@@ -355,6 +584,46 @@ pub struct UserCompetencyUpdated {
     pub timestamp: i64,
 }
 
+#[event]
+pub struct ProfileSwitchToggled {
+    pub user: Pubkey,
+    pub switch_type: SwitchType,
+    pub enabled: bool,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct InspectorRotationUpdated {
+    pub user: Pubkey,
+    pub frequency: RotationFrequency,
+    pub inspector_count: u8,
+    pub next_rotation: i64,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct AlertSettingsConfigured {
+    pub user: Pubkey,
+    pub roi_threshold: f64,
+    pub volatility_threshold: f64,
+    pub notification_frequency: RotationFrequency,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct UserProfileInitialized {
+    pub user: Pubkey,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct InspectorRotationExecuted {
+    pub user: Pubkey,
+    pub selected_inspector: Pubkey,
+    pub rotation_timestamp: i64,
+    pub next_rotation: i64,
+}
+
 #[error_code]
 pub enum KnowledgeError {
     #[msg("Invalid passing score")]
@@ -367,4 +636,14 @@ pub enum KnowledgeError {
     AnswerCountMismatch,
     #[msg("Test already graded")]
     AlreadyGraded,
+    #[msg("Unauthorized profile access")]
+    UnauthorizedProfileAccess,
+    #[msg("Too many inspectors in pool")]
+    TooManyInspectors,
+    #[msg("Inspector rotation not enabled")]
+    RotationNotEnabled,
+    #[msg("Rotation not due yet")]
+    RotationNotDue,
+    #[msg("No inspectors available for rotation")]
+    NoInspectorsAvailable,
 }

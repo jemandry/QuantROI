@@ -4,7 +4,8 @@ members = [
     "programs/knowledge-verification",
     "programs/ria-compliance", 
     "programs/payment-system",
-    "programs/ai-competition"
+    "programs/ai-competition",
+    "programs/nft-marketplace"
 ]
 resolver = "2"
 
@@ -72,6 +73,16 @@ trivial_casts = "warn"
 trivial_numeric_casts = "warn"
 unused_import_braces = "warn"
 unused_qualifications = "warn"
+
+[workspace.dependencies]
+mpl-token-metadata = "4.1.2"
+mpl-core = "0.7.2"
+anchor-lang = "0.29.0"
+anchor-spl = "0.29.0"
+solana-program = "~1.16.0"
+sha3 = "0.10.8"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 
 [profile.release]
 overflow-checks = true
