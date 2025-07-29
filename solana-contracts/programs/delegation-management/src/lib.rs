@@ -229,7 +229,7 @@ pub mod delegation_management {
         update_wealth_milestone_progress(delegation, clock.unix_timestamp)?;
         
         emit!(WeeklyReconsentProcessed {
-            delegation_id: delegation.key(),
+            delegation_id: delegation.bank_authority,
             user: delegation.bank_authority,
             knowledge_score: knowledge_test_score,
             reconsent_streak: delegation.reconsent_streak,
@@ -315,7 +315,6 @@ pub mod delegation_management {
         
         Ok(())
     }
-
 }
 
 pub fn update_wealth_milestone_progress(
