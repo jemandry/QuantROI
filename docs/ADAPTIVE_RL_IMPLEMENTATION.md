@@ -53,7 +53,7 @@ This document describes the implementation of two key reinforcement learning str
 ### Accuracy Requirements
 - **>95% accuracy** across both strategies
 - **Bias <0.1** for ethical AI compliance
-- **Sharpe ratio >1.5** for risk-adjusted returns
+- **Sharpe ratio >1.5** for individual strategies (>2.0 for overall business metrics)
 
 ### Throughput Requirements
 - **20K+ events/second** system throughput
