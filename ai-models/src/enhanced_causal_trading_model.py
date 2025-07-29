@@ -1,5 +1,6 @@
 import numpy as np
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
+from .trading_instructions import TradingInstructionEngine
 from dataclasses import dataclass
 from enum import Enum
 import torch
@@ -439,6 +440,148 @@ class WealthGenerationAITrainer:
         """Update model performance tracking"""
         pass
 
+class MasterStrategyLearningEngine:
+    def __init__(self):
+        self.strategy_performance_history = {}
+        self.learning_rate = 0.01
+        self.exploration_rate = 0.1
+        self.performance_window = 100
+        self.strategy_weights = {
+            RLStrategyType.GATED_DEEP_Q_LEARNING: 0.33,
+            RLStrategyType.GATED_POLICY_GRADIENT: 0.33,
+            RLStrategyType.TEMPORAL_FUSION_TRANSFORMER: 0.34
+        }
+        self.trade_outcomes = []
+        self.causal_features = {}
+        
+    def update_strategy_performance(self, strategy: RLStrategyType, trade_result: TradingResult, market_data: MarketData):
+        """Update performance metrics for a specific strategy based on trade outcomes"""
+        if strategy not in self.strategy_performance_history:
+            self.strategy_performance_history[strategy] = {
+                'returns': [],
+                'sharpe_ratio': 0.0,
+                'win_rate': 0.0,
+                'avg_return': 0.0,
+                'volatility': 0.0,
+                'max_drawdown': 0.0,
+                'total_trades': 0
+            }
+        
+        performance = self.strategy_performance_history[strategy]
+        performance['total_trades'] += 1
+        
+        trade_return = trade_result.expected_return * trade_result.confidence
+        performance['returns'].append(trade_return)
+        
+        if len(performance['returns']) > self.performance_window:
+            performance['returns'] = performance['returns'][-self.performance_window:]
+        
+        returns = np.array(performance['returns'])
+        performance['avg_return'] = np.mean(returns)
+        performance['volatility'] = np.std(returns)
+        performance['sharpe_ratio'] = performance['avg_return'] / (performance['volatility'] + 1e-8)
+        performance['win_rate'] = np.mean(returns > 0)
+        
+        cumulative_returns = np.cumsum(returns)
+        running_max = np.maximum.accumulate(cumulative_returns)
+        drawdown = (cumulative_returns - running_max) / (running_max + 1e-8)
+        performance['max_drawdown'] = np.min(drawdown)
+        
+        self._update_strategy_weights()
+        
+        self._extract_causal_features(strategy, trade_result, market_data)
+    
+    def _update_strategy_weights(self):
+        """Update strategy selection weights based on recent performance"""
+        total_sharpe = 0.0
+        strategy_sharpes = {}
+        
+        for strategy, performance in self.strategy_performance_history.items():
+            sharpe = max(performance['sharpe_ratio'], 0.1)  # Minimum weight
+            strategy_sharpes[strategy] = sharpe
+            total_sharpe += sharpe
+        
+        for strategy in self.strategy_weights:
+            if strategy in strategy_sharpes:
+                performance_weight = strategy_sharpes[strategy] / total_sharpe
+                self.strategy_weights[strategy] = (
+                    (1 - self.exploration_rate) * performance_weight + 
+                    self.exploration_rate * (1.0 / len(self.strategy_weights))
+                )
+            else:
+                self.strategy_weights[strategy] = 1.0 / len(self.strategy_weights)
+    
+    def _extract_causal_features(self, strategy: RLStrategyType, trade_result: TradingResult, market_data: MarketData):
+        """Extract causal features for strategy learning"""
+        feature_key = f"{strategy.value}_{market_data.symbol}"
+        
+        if feature_key not in self.causal_features:
+            self.causal_features[feature_key] = {
+                'market_conditions': [],
+                'trade_outcomes': [],
+                'volatility_patterns': [],
+                'volume_profiles': []
+            }
+        
+        features = self.causal_features[feature_key]
+        features['market_conditions'].append({
+            'price': market_data.price,
+            'volatility': market_data.volatility,
+            'volume': market_data.volume,
+            'sentiment': market_data.sentiment_score
+        })
+        features['trade_outcomes'].append({
+            'action': trade_result.action,
+            'confidence': trade_result.confidence,
+            'expected_return': trade_result.expected_return,
+            'actual_return': trade_result.expected_return * trade_result.confidence  # Simplified
+        })
+        
+        max_history = 1000
+        for key in features:
+            if len(features[key]) > max_history:
+                features[key] = features[key][-max_history:]
+    
+    def select_optimal_strategy(self, market_data: MarketData, qos_requirements: QoSRequirements) -> RLStrategyType:
+        """Select optimal strategy based on learned performance and current conditions"""
+        
+        if qos_requirements.latency_requirement < 5:  # Ultra-low latency
+            base_strategy = RLStrategyType.GATED_DEEP_Q_LEARNING
+        elif market_data.volatility > 0.02:  # High volatility
+            base_strategy = RLStrategyType.GATED_DEEP_Q_LEARNING
+        elif abs(market_data.sentiment_score) > 0.5:  # Strong sentiment
+            base_strategy = RLStrategyType.GATED_POLICY_GRADIENT
+        else:
+            base_strategy = RLStrategyType.TEMPORAL_FUSION_TRANSFORMER
+        
+        weighted_scores = {}
+        for strategy, weight in self.strategy_weights.items():
+            base_boost = 1.5 if strategy == base_strategy else 1.0
+            weighted_scores[strategy] = weight * base_boost
+        
+        optimal_strategy = max(weighted_scores.items(), key=lambda x: x[1])[0]
+        
+        return optimal_strategy
+    
+    def get_learning_insights(self) -> Dict[str, Any]:
+        """Get insights from the learning process"""
+        insights = {
+            'strategy_weights': self.strategy_weights.copy(),
+            'performance_summary': {},
+            'total_trades': sum(perf['total_trades'] for perf in self.strategy_performance_history.values()),
+            'causal_features_count': len(self.causal_features)
+        }
+        
+        for strategy, performance in self.strategy_performance_history.items():
+            insights['performance_summary'][strategy.value] = {
+                'sharpe_ratio': round(performance['sharpe_ratio'], 3),
+                'win_rate': round(performance['win_rate'], 3),
+                'avg_return': round(performance['avg_return'], 4),
+                'total_trades': performance['total_trades']
+            }
+        
+        return insights
+
 class EnhancedCausalTradingModel:
     def __init__(self):
         self.causal_model = None
@@ -446,6 +589,22 @@ class EnhancedCausalTradingModel:
         self.gated_pg = GatedPolicyGradientStrategy()
         self.strategy_manager = AdaptiveStrategyManager()
         self.qos_router = QoSRouter()
+        
+        self.master_learning_engine = MasterStrategyLearningEngine()
+        
+        try:
+            from .trading_instructions import TradingInstructionEngine, EnhancedMasterStrategy
+            self.trading_instruction_engine = TradingInstructionEngine()
+            self.enhanced_master_strategy = EnhancedMasterStrategy(
+                self.master_learning_engine, 
+                self.trading_instruction_engine
+            )
+        except ImportError:
+            logging.basicConfig(level=logging.INFO)
+            logger = logging.getLogger(__name__)
+            logger.warning("Trading instructions module not available, using basic master strategy")
+            self.trading_instruction_engine = None
+            self.enhanced_master_strategy = None
         
         self.kafka_integration = KafkaIntegration()
         self.db_integration = DatabaseIntegration()
@@ -491,7 +650,30 @@ class EnhancedCausalTradingModel:
     
     def execute_adaptive_trading(self, market_data: MarketData, qos_requirements: QoSRequirements) -> TradingResult:
         start_time = datetime.now()
-        optimal_strategy = self.strategy_manager.determine_strategy(market_data, qos_requirements)
+        
+        if self.enhanced_master_strategy:
+            result = self.enhanced_master_strategy.execute_enhanced_trading(market_data, qos_requirements)
+            if not result.timestamp:
+                result.timestamp = datetime.now().isoformat()
+            
+            self.kafka_integration.publish_trade_result(result)
+            
+            try:
+                self.learning_queue.put_nowait((result, market_data))
+            except asyncio.QueueFull:
+                self.logger.warning("Learning queue full, skipping trade result")
+            
+            execution_time = (datetime.now() - start_time).total_seconds() * 1000
+            
+            comprehensive_insights = self.enhanced_master_strategy.get_comprehensive_insights()
+            self.logger.info(f"Enhanced Master Strategy Trade: {result.strategy_used.value} - {result.action} "
+                            f"(confidence: {result.confidence:.3f}, time: {execution_time:.2f}ms)")
+            self.logger.debug(f"Learning insights: {comprehensive_insights['learning_engine']}")
+            self.logger.debug(f"Instruction insights: {comprehensive_insights['instruction_engine']}")
+            
+            return result
+        
+        optimal_strategy = self.master_learning_engine.select_optimal_strategy(market_data, qos_requirements)
         
         if optimal_strategy == RLStrategyType.GATED_DEEP_Q_LEARNING:
             result = self.gated_dql.execute_trade(market_data)
@@ -511,6 +693,8 @@ class EnhancedCausalTradingModel:
         if not result.timestamp:
             result.timestamp = datetime.now().isoformat()
         
+        self.master_learning_engine.update_strategy_performance(optimal_strategy, result, market_data)
+        
         self.kafka_integration.publish_trade_result(result)
         
         try:
@@ -519,8 +703,11 @@ class EnhancedCausalTradingModel:
             self.logger.warning("Learning queue full, skipping trade result")
         
         execution_time = (datetime.now() - start_time).total_seconds() * 1000
-        self.logger.info(f"Trade executed: {result.strategy_used.value} - {result.action} "
+        
+        learning_insights = self.master_learning_engine.get_learning_insights()
+        self.logger.info(f"Master Strategy Trade: {result.strategy_used.value} - {result.action} "
                         f"(confidence: {result.confidence:.3f}, time: {execution_time:.2f}ms)")
+        self.logger.debug(f"Strategy weights: {learning_insights['strategy_weights']}")
         
         return result
     

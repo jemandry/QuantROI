@@ -1,6 +1,8 @@
 use anchor_lang::prelude::*;
 use sha3::{Digest, Sha3_256};
 
+pub mod master_strategy;
+
 declare_id!("DeLegationManagementProgram11111111111111111");
 
 #[program]
@@ -224,7 +226,7 @@ pub mod delegation_management {
         
         delegation.reconsent_schedule.next_required = clock.unix_timestamp + frequency_seconds;
         
-        Self::update_wealth_milestone_progress(delegation, clock.unix_timestamp)?;
+        update_wealth_milestone_progress(delegation, clock.unix_timestamp)?;
         
         emit!(WeeklyReconsentProcessed {
             delegation_id: delegation.key(),
@@ -314,30 +316,31 @@ pub mod delegation_management {
         Ok(())
     }
 
-    fn update_wealth_milestone_progress(
-        delegation: &mut DelegationAccount,
-        timestamp: i64,
-    ) -> Result<()> {
-        if delegation.total_profit_loss > 0 {
-            delegation.wealth_milestone_tracking.current_progress = delegation.total_profit_loss as u64;
-            
-            for milestone in &mut delegation.wealth_milestone_tracking.milestones {
-                if !milestone.achieved && delegation.wealth_milestone_tracking.current_progress >= milestone.amount {
-                    milestone.achieved = true;
-                    milestone.date = Some(timestamp);
-                    
-                    emit!(WealthMilestoneAchieved {
-                        delegation_id: delegation.key(),
-                        user: delegation.bank_authority,
-                        milestone_amount: milestone.amount,
-                        timestamp,
-                    });
-                }
+}
+
+pub fn update_wealth_milestone_progress(
+    delegation: &mut DelegationAccount,
+    timestamp: i64,
+) -> Result<()> {
+    if delegation.total_profit_loss > 0 {
+        delegation.wealth_milestone_tracking.current_progress = delegation.total_profit_loss as u64;
+        
+        for milestone in &mut delegation.wealth_milestone_tracking.milestones {
+            if !milestone.achieved && delegation.wealth_milestone_tracking.current_progress >= milestone.amount {
+                milestone.achieved = true;
+                milestone.date = Some(timestamp);
+                
+                emit!(WealthMilestoneAchieved {
+                    delegation_id: delegation.bank_authority,
+                    user: delegation.bank_authority,
+                    milestone_amount: milestone.amount,
+                    timestamp,
+                });
             }
         }
-        
-        Ok(())
     }
+    
+    Ok(())
 }
 
 #[account]
@@ -441,6 +444,7 @@ pub struct RevokeDelegation<'info> {
     )]
     pub delegation: Account<'info, DelegationAccount>,
     pub bank_authority: Signer<'info>,
+}
 
 #[derive(Accounts)]
 pub struct ProcessWeeklyReconsent<'info> {
@@ -467,8 +471,6 @@ pub struct CreateForeverContract<'info> {
     #[account(mut)]
     pub bank_authority: Signer<'info>,
     pub system_program: Program<'info, System>,
-}
-
 }
 
 #[event]
