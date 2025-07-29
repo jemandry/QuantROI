@@ -370,6 +370,75 @@ class DatabaseIntegration:
         if self.pool:
             await self.pool.close()
 
+class WealthGenerationAITrainer:
+    def __init__(self, kafka_consumer, timescale_connection):
+        self.kafka_consumer = kafka_consumer
+        self.db = timescale_connection
+        self.causal_model = None
+        self.tft_model = None
+        
+    async def train_wealth_prediction_models(self):
+        """Train AI models on wealth generation patterns"""
+        
+        historical_data = await self.db.fetch("""
+            SELECT 
+                user_pubkey,
+                milestone_amount,
+                achieved,
+                achieved_date,
+                EXTRACT(EPOCH FROM (achieved_date - created_at)) as time_to_achieve
+            FROM wealth_milestones 
+            WHERE achieved = true
+            ORDER BY achieved_date DESC
+            LIMIT 10000
+        """)
+        
+        if historical_data:
+            causal_features = self.extract_causal_features(historical_data)
+            if self.causal_model:
+                self.causal_model.fit(causal_features)
+            
+            time_series_data = self.prepare_time_series_data(historical_data)
+            if self.tft_model:
+                self.tft_model.fit(time_series_data)
+        
+        await self.update_model_performance_metrics()
+        
+    async def predict_5m_milestone_probability(self, user_pubkey: str) -> float:
+        """Predict probability of user reaching $5M milestone"""
+        
+        user_data = await self.get_user_wealth_data(user_pubkey)
+        
+        if not self.causal_model or not self.tft_model:
+            return 0.5  # Default probability if models not trained
+            
+        causal_prediction = self.causal_model.predict(user_data)
+        tft_prediction = self.tft_model.predict(user_data)
+        
+        ensemble_prediction = (causal_prediction * 0.6) + (tft_prediction * 0.4)
+        
+        return min(max(ensemble_prediction, 0.0), 1.0)
+    
+    def extract_causal_features(self, data):
+        """Extract features for causal model training"""
+        return data
+    
+    def prepare_time_series_data(self, data):
+        """Prepare time series data for TFT model"""
+        return data
+    
+    async def get_user_wealth_data(self, user_pubkey: str):
+        """Get user wealth data for prediction"""
+        return await self.db.fetch("""
+            SELECT * FROM wealth_milestones 
+            WHERE user_pubkey = $1 
+            ORDER BY created_at DESC
+        """, user_pubkey)
+    
+    async def update_model_performance_metrics(self):
+        """Update model performance tracking"""
+        pass
+
 class EnhancedCausalTradingModel:
     def __init__(self):
         self.causal_model = None
