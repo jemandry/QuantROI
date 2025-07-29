@@ -15,6 +15,11 @@ module.exports = {
         process: require.resolve('process/browser'),
       };
       
+      webpackConfig.resolve.extensionAlias = {
+        '.js': ['.js', '.ts', '.tsx'],
+        '.mjs': ['.mjs', '.js'],
+      };
+      
       webpackConfig.plugins = [
         ...webpackConfig.plugins,
         new webpack.ProvidePlugin({
