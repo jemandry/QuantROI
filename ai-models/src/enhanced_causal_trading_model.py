@@ -535,31 +535,64 @@ class QoSRouter:
             return "tier_3_batch"
     
     def get_processing_config(self, tier: str) -> Dict[str, Any]:
-        """Get processing configuration for each tier"""
+        """Get processing configuration for each tier with multi-timescale support"""
         configs = {
             "tier_1_ultra_low_latency": {
                 "max_latency_ms": 1,
                 "processing_mode": "edge_optimized",
                 "state_compression": True,
                 "batch_size": 1,
-                "priority": "critical"
+                "priority": "critical",
+                "timescale": "millisecond"
             },
             "tier_2_standard": {
                 "max_latency_ms": 100,
-                "processing_mode": "standard",
+                "processing_mode": "standard", 
                 "state_compression": False,
                 "batch_size": 10,
-                "priority": "high"
+                "priority": "high",
+                "timescale": "second"
             },
             "tier_3_batch": {
                 "max_latency_ms": 5000,
                 "processing_mode": "batch_optimized",
                 "state_compression": False,
                 "batch_size": 100,
-                "priority": "normal"
+                "priority": "normal",
+                "timescale": "minute"
+            },
+            "tier_4_macro": {
+                "max_latency_ms": 60000,  # 1 minute for macro decisions
+                "processing_mode": "macro_analysis",
+                "state_compression": False,
+                "batch_size": 1000,
+                "priority": "low",
+                "timescale": "hour"
             }
         }
         return configs.get(tier, configs["tier_3_batch"])
+    
+    def route_request_enhanced(self, qos_requirements: QoSRequirements, market_data: MarketData = None, event_type: str = None) -> str:
+        """Enhanced QoS routing with multi-timescale and event-type awareness"""
+        
+        # Millisecond tier for HFT and ultra-low latency
+        if (qos_requirements.latency_requirement < self.ultra_low_latency_threshold or
+            (market_data and market_data.symbol in self.high_frequency_symbols) or
+            (market_data and market_data.volatility > self.volatility_threshold) or
+            event_type == "hft_signal"):
+            return "tier_1_ultra_low_latency"
+        
+        elif (qos_requirements.latency_requirement < self.standard_latency_threshold or
+              (market_data and abs(market_data.sentiment_score) > self.sentiment_threshold) or
+              event_type in ["news", "sentiment_update"]):
+            return "tier_2_standard"
+        
+        elif (qos_requirements.latency_requirement < self.batch_latency_threshold or
+              event_type in ["strategy_signal", "market_regime_change"]):
+            return "tier_3_batch"
+        
+        else:
+            return "tier_4_macro"
 
 class HierarchicalEventProcessor:
     """

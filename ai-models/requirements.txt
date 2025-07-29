@@ -39,3 +39,16 @@ psutil>=5.9.0
 memory-profiler>=0.61.0
 # Advanced analytics
 statsmodels>=0.14.0
+# Trading engine dependencies
+transformers>=4.21.0
+torch-geometric>=2.3.0
+pymongo>=4.5.0
+influxdb-client>=1.37.0
+# News sentiment analysis
+datasets>=2.14.0
+# Causal AI enhancements
+networkx>=3.1.0
+# Enhanced performance monitoring
+redis>=4.5.0
+prometheus-client>=0.17.0
+pytest-benchmark>=4.0.0

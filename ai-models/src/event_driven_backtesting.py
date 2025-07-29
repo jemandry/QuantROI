@@ -64,6 +64,37 @@ class PortfolioUpdateEvent:
     timestamp: datetime
     event_id: str
 
+@dataclass
+class NewsEvent:
+    event_type: str
+    news_text: str
+    sentiment_score: float
+    source: str
+    symbol: str
+    timestamp: datetime
+    event_id: str
+
+@dataclass
+class OrderEvent:
+    event_type: str
+    action: str  # buy/sell
+    quantity: int
+    symbol: str
+    price: float
+    order_type: str  # market/limit
+    timestamp: datetime
+    event_id: str
+
+@dataclass
+class FillEvent:
+    event_type: str
+    order_id: str
+    filled_quantity: int
+    fill_price: float
+    symbol: str
+    timestamp: datetime
+    event_id: str
+
 class EventBus:
     def __init__(self, kafka_servers: List[str] = ['localhost:9092']):
         self.kafka_servers = kafka_servers
