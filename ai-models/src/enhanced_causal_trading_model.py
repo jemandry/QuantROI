@@ -1,14 +1,42 @@
 import numpy as np
 from typing import Dict, List, Optional, Tuple, Any
-from .trading_instructions import TradingInstructionEngine
 from dataclasses import dataclass
+
+try:
+    from .trading_instructions import TradingInstructionEngine, EnhancedMasterStrategy
+except ImportError:
+    try:
+        from trading_instructions import TradingInstructionEngine, EnhancedMasterStrategy
+    except ImportError:
+        TradingInstructionEngine = None
+        EnhancedMasterStrategy = None
 from enum import Enum
 import torch
 import torch.nn as nn
-from causalnex.structure import StructureModel
-from causalnex.network import BayesianNetwork
-from kafka import KafkaConsumer, KafkaProducer
-import asyncpg
+
+try:
+    from causalnex.structure import StructureModel
+    from causalnex.network import BayesianNetwork
+    CAUSALNX_AVAILABLE = True
+except ImportError:
+    StructureModel = None
+    BayesianNetwork = None
+    CAUSALNX_AVAILABLE = False
+
+try:
+    from kafka import KafkaConsumer, KafkaProducer
+    KAFKA_AVAILABLE = True
+except ImportError:
+    KafkaConsumer = None
+    KafkaProducer = None
+    KAFKA_AVAILABLE = False
+try:
+    import asyncpg
+    ASYNCPG_AVAILABLE = True
+except ImportError:
+    asyncpg = None
+    ASYNCPG_AVAILABLE = False
+
 import asyncio
 import json
 import logging
@@ -132,6 +160,27 @@ class GatedDeepQLearningStrategy:
     def extract_microstructure_features(self, gru_output: torch.Tensor) -> float:
         return float(torch.min(gru_output).item())
     
+    def select_action(self, state: np.ndarray) -> int:
+        """Select action using epsilon-greedy policy for backtesting compatibility"""
+        with torch.no_grad():
+            state_tensor = torch.FloatTensor(state).unsqueeze(0)
+            q_values = self.q_network(state_tensor)
+            
+            if np.random.random() < self.epsilon:
+                action_idx = np.random.randint(0, self.action_dim)
+            else:
+                action_idx = torch.argmax(q_values).item()
+        
+        return action_idx - 1  # Convert to -1, 0, 1 for sell, hold, buy
+    
+    def calculate_expected_return(self, state: np.ndarray, action: int) -> float:
+        """Calculate expected return for given state and action"""
+        with torch.no_grad():
+            state_tensor = torch.FloatTensor(state).unsqueeze(0)
+            q_values = self.q_network(state_tensor)
+            action_idx = action + 1  # Convert from -1,0,1 to 0,1,2
+            return float(q_values[0][action_idx].item()) * 0.002
+
     def execute_trade(self, market_data: MarketData) -> TradingResult:
         features = self.extract_gru_features(market_data)
         
@@ -302,6 +351,22 @@ class GatedPolicyGradientStrategy:
             
         return combined_features[:self.state_dim]
     
+    def select_action(self, state: np.ndarray) -> int:
+        """Select action using policy gradient for backtesting compatibility"""
+        with torch.no_grad():
+            state_tensor = torch.FloatTensor(state).unsqueeze(0)
+            action_probs = self.policy_network(state_tensor)
+            action_idx = torch.multinomial(action_probs, 1).item()
+        
+        return action_idx - 1  # Convert to -1, 0, 1 for sell, hold, buy
+    
+    def calculate_expected_return(self, state: np.ndarray, action: int) -> float:
+        """Calculate expected return for given state and action"""
+        with torch.no_grad():
+            state_tensor = torch.FloatTensor(state).unsqueeze(0)
+            state_value = self.value_network(state_tensor)
+            return float(state_value.item()) * 0.002
+
     def execute_trade(self, market_data: MarketData) -> TradingResult:
         features = self.extract_gru_features(market_data)
         
@@ -448,14 +513,102 @@ class QoSRouter:
     def __init__(self):
         self.ultra_low_latency_threshold = 1
         self.standard_latency_threshold = 100
+        self.batch_latency_threshold = 5000
         
-    def route_request(self, qos_requirements: QoSRequirements) -> str:
-        if qos_requirements.latency_requirement < self.ultra_low_latency_threshold:
-            return "ultra_low_latency"
-        elif qos_requirements.latency_requirement < self.standard_latency_threshold:
-            return "standard"
+        self.high_frequency_symbols = {'SPY', 'QQQ', 'AAPL', 'MSFT', 'TSLA'}
+        self.volatility_threshold = 0.05
+        self.sentiment_threshold = 0.7
+        
+    def route_request(self, qos_requirements: QoSRequirements, market_data: MarketData = None) -> str:
+        """Enhanced QoS routing with financial-specific criteria"""
+        
+        if (qos_requirements.latency_requirement < self.ultra_low_latency_threshold or
+            (market_data and market_data.symbol in self.high_frequency_symbols) or
+            (market_data and market_data.volatility > self.volatility_threshold)):
+            return "tier_1_ultra_low_latency"
+        
+        elif (qos_requirements.latency_requirement < self.standard_latency_threshold or
+              (market_data and abs(market_data.sentiment_score) > self.sentiment_threshold)):
+            return "tier_2_standard"
+        
         else:
-            return "research"
+            return "tier_3_batch"
+    
+    def get_processing_config(self, tier: str) -> Dict[str, Any]:
+        """Get processing configuration for each tier"""
+        configs = {
+            "tier_1_ultra_low_latency": {
+                "max_latency_ms": 1,
+                "processing_mode": "edge_optimized",
+                "state_compression": True,
+                "batch_size": 1,
+                "priority": "critical"
+            },
+            "tier_2_standard": {
+                "max_latency_ms": 100,
+                "processing_mode": "standard",
+                "state_compression": False,
+                "batch_size": 10,
+                "priority": "high"
+            },
+            "tier_3_batch": {
+                "max_latency_ms": 5000,
+                "processing_mode": "batch_optimized",
+                "state_compression": False,
+                "batch_size": 100,
+                "priority": "normal"
+            }
+        }
+        return configs.get(tier, configs["tier_3_batch"])
+
+class HierarchicalEventProcessor:
+    """
+    Hierarchical event processing with tier-based routing
+    """
+    
+    def __init__(self, qos_router: QoSRouter):
+        self.qos_router = qos_router
+        self.tier_processors = {
+            "tier_1_ultra_low_latency": self._process_tier_1,
+            "tier_2_standard": self._process_tier_2,
+            "tier_3_batch": self._process_tier_3
+        }
+        self.logger = logging.getLogger(__name__)
+        
+    async def process_event(self, event: Dict[str, Any], qos_requirements: QoSRequirements):
+        """Route and process event based on QoS requirements"""
+        
+        market_data = MarketData(**event.get('market_data', {})) if 'market_data' in event else None
+        tier = self.qos_router.route_request(qos_requirements, market_data)
+        
+        processor = self.tier_processors.get(tier, self._process_tier_3)
+        config = self.qos_router.get_processing_config(tier)
+        
+        start_time = datetime.now()
+        result = await processor(event, config)
+        processing_time = (datetime.now() - start_time).total_seconds() * 1000
+        
+        if processing_time > config['max_latency_ms']:
+            self.logger.warning(f"Latency violation: {processing_time:.2f}ms > {config['max_latency_ms']}ms")
+        
+        return {
+            'result': result,
+            'tier': tier,
+            'processing_time_ms': processing_time,
+            'config': config
+        }
+    
+    async def _process_tier_1(self, event: Dict[str, Any], config: Dict[str, Any]):
+        """Tier 1: Critical trading events with compressed states"""
+        return {'action': 'execute_trade', 'latency_optimized': True}
+    
+    async def _process_tier_2(self, event: Dict[str, Any], config: Dict[str, Any]):
+        """Tier 2: Portfolio rebalancing with intermediate states"""
+        return {'action': 'update_portfolio', 'causal_analysis': True}
+    
+    async def _process_tier_3(self, event: Dict[str, Any], config: Dict[str, Any]):
+        """Tier 3: Batch recommendations with full states"""
+        return {'action': 'generate_recommendations', 'full_analysis': True}
 
 class KafkaIntegration:
     def __init__(self, bootstrap_servers: List[str] = ['localhost:9092']):
@@ -770,16 +923,22 @@ class EnhancedCausalTradingModel:
         self.strategy_manager = AdaptiveStrategyManager()
         self.qos_router = QoSRouter()
         
+        from .mnpi_detection import MNPIDetectionEngine
+        from .memory_efficient_training import OnlineLearningOptimizer
+        
+        self.mnpi_detector = MNPIDetectionEngine()
+        self.online_optimizer = OnlineLearningOptimizer()
+        self.hierarchical_processor = HierarchicalEventProcessor(self.qos_router)
+        
         self.master_learning_engine = MasterStrategyLearningEngine()
         
-        try:
-            from .trading_instructions import TradingInstructionEngine, EnhancedMasterStrategy
+        if TradingInstructionEngine is not None and EnhancedMasterStrategy is not None:
             self.trading_instruction_engine = TradingInstructionEngine()
             self.enhanced_master_strategy = EnhancedMasterStrategy(
                 self.master_learning_engine, 
                 self.trading_instruction_engine
             )
-        except ImportError:
+        else:
             logging.basicConfig(level=logging.INFO)
             logger = logging.getLogger(__name__)
             logger.warning("Trading instructions module not available, using basic master strategy")
@@ -796,8 +955,9 @@ class EnhancedCausalTradingModel:
         self.logger = logging.getLogger(__name__)
         
     async def start_learning_pipeline(self):
-        """Start asynchronous learning pipeline"""
+        """Start asynchronous learning pipeline with enhanced components"""
         await self.db_integration.initialize()
+        
         self.learning_task = asyncio.create_task(self._learning_worker())
     
     async def _learning_worker(self):

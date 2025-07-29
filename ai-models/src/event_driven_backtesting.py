@@ -1,8 +1,21 @@
 import asyncio
 import logging
 import json
-import redis
-from kafka import KafkaProducer, KafkaConsumer
+
+try:
+    import redis
+    REDIS_AVAILABLE = True
+except ImportError:
+    redis = None
+    REDIS_AVAILABLE = False
+
+try:
+    from kafka import KafkaProducer, KafkaConsumer
+    KAFKA_AVAILABLE = True
+except ImportError:
+    KafkaProducer = None
+    KafkaConsumer = None
+    KAFKA_AVAILABLE = False
 from typing import Dict, List, Any, Callable
 from dataclasses import dataclass, asdict
 from datetime import datetime
@@ -110,31 +123,38 @@ class EventBus:
 
 class RedisStateManager:
     def __init__(self, redis_host: str = 'localhost', redis_port: int = 6379):
-        self.redis_client = redis.Redis(host=redis_host, port=redis_port, decode_responses=True)
+        if redis is not None:
+            self.redis_client = redis.Redis(host=redis_host, port=redis_port, decode_responses=True)
+        else:
+            self.redis_client = None
         
     def update_portfolio_state(self, portfolio_id: str, state: Dict[str, Any]):
         try:
-            state_key = f"portfolio:{portfolio_id}"
-            self.redis_client.hset(state_key, mapping=state)
-            self.redis_client.expire(state_key, 3600)
-            
-            logging.info(f"Updated portfolio state for {portfolio_id}")
+            if self.redis_client is not None:
+                state_key = f"portfolio:{portfolio_id}"
+                self.redis_client.hset(state_key, mapping=state)
+                self.redis_client.expire(state_key, 3600)
+                
+                logging.info(f"Updated portfolio state for {portfolio_id}")
             
         except Exception as e:
             logging.error(f"Failed to update portfolio state: {e}")
     
     def get_portfolio_state(self, portfolio_id: str) -> Dict[str, Any]:
         try:
-            state_key = f"portfolio:{portfolio_id}"
-            state = self.redis_client.hgetall(state_key)
-            
-            for key, value in state.items():
-                try:
-                    state[key] = float(value)
-                except ValueError:
-                    pass
-            
-            return state
+            if self.redis_client is not None:
+                state_key = f"portfolio:{portfolio_id}"
+                state = self.redis_client.hgetall(state_key)
+                
+                for key, value in state.items():
+                    try:
+                        state[key] = float(value)
+                    except ValueError:
+                        pass
+                
+                return state
+            else:
+                return {}
             
         except Exception as e:
             logging.error(f"Failed to get portfolio state: {e}")
@@ -142,21 +162,25 @@ class RedisStateManager:
     
     def update_strategy_performance(self, strategy_name: str, metrics: Dict[str, float]):
         try:
-            metrics_key = f"strategy_performance:{strategy_name}"
-            self.redis_client.hset(metrics_key, mapping=metrics)
-            self.redis_client.expire(metrics_key, 7200)
-            
-            logging.info(f"Updated strategy performance for {strategy_name}")
+            if self.redis_client is not None:
+                metrics_key = f"strategy_performance:{strategy_name}"
+                self.redis_client.hset(metrics_key, mapping=metrics)
+                self.redis_client.expire(metrics_key, 7200)
+                
+                logging.info(f"Updated strategy performance for {strategy_name}")
             
         except Exception as e:
             logging.error(f"Failed to update strategy performance: {e}")
     
     def get_strategy_performance(self, strategy_name: str) -> Dict[str, float]:
         try:
-            metrics_key = f"strategy_performance:{strategy_name}"
-            metrics = self.redis_client.hgetall(metrics_key)
-            
-            return {key: float(value) for key, value in metrics.items()}
+            if self.redis_client is not None:
+                metrics_key = f"strategy_performance:{strategy_name}"
+                metrics = self.redis_client.hgetall(metrics_key)
+                
+                return {key: float(value) for key, value in metrics.items()}
+            else:
+                return {}
             
         except Exception as e:
             logging.error(f"Failed to get strategy performance: {e}")
@@ -341,19 +365,60 @@ class StrategySelectionAgent(EventDrivenAgent):
     async def _handle_market_regime_change(self, event: Dict[str, Any]):
         volatility = event.get('volatility', 0.02)
         trend_strength = event.get('trend_strength', 0.5)
+        sentiment_score = event.get('sentiment_score', 0.0)
         
         if volatility > 0.04:
             selected_strategy = 'gated_dql'
+            reason = f"high_volatility={volatility:.3f}"
+        elif abs(sentiment_score) > 0.7:
+            selected_strategy = 'gated_pg'
+            reason = f"strong_sentiment={sentiment_score:.3f}"
         elif trend_strength > 0.7:
             selected_strategy = 'gated_pg'
+            reason = f"strong_trend={trend_strength:.3f}"
         else:
-            selected_strategy = 'master_strategy'
+            selected_strategy = 'enhanced_master'
+            reason = f"balanced_conditions"
+        
+        regime_change_event = {
+            'event_type': 'market_regime_change',
+            'old_strategy': getattr(self, 'current_strategy', 'unknown'),
+            'new_strategy': selected_strategy,
+            'volatility': volatility,
+            'trend_strength': trend_strength,
+            'sentiment_score': sentiment_score,
+            'reason': reason,
+            'confidence': 0.8,
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        self.publish_event('market_regime_change', regime_change_event)
+        self.current_strategy = selected_strategy
+        
+        if hasattr(self, 'mnpi_detector'):
+            mnpi_result = await self.mnpi_detector.detect_mnpi_violation({
+                'volatility_zscore': (volatility - 0.02) / 0.01,
+                'sentiment_score': sentiment_score,
+                'sentiment_change': abs(sentiment_score),
+                'volume_zscore': event.get('volume_zscore', 0.0),
+                'time_since_news': event.get('time_since_news', 24.0)
+            })
+            
+            if mnpi_result['prediction']:
+                self.publish_event('mnpi_alert', {
+                    'event_type': 'mnpi_alert',
+                    'mnpi_risk': mnpi_result['mnpi_risk'],
+                    'confidence': mnpi_result['confidence'],
+                    'strategy_context': selected_strategy,
+                    'timestamp': datetime.now().isoformat()
+                })
         
         strategy_event = {
             'event_type': 'strategy_selected',
             'selected_strategy': selected_strategy,
-            'reason': f"volatility={volatility:.3f}, trend={trend_strength:.3f}",
-            'confidence': 0.8
+            'reason': reason,
+            'confidence': 0.8,
+            'regime_change_triggered': True
         }
         
         self.publish_event('strategy_selected', strategy_event)
@@ -433,14 +498,38 @@ class EventDrivenBacktestingOrchestrator:
         self.state_manager = RedisStateManager()
         self.causal_engine = CausalEventEngine()
         
+        try:
+            from .mnpi_detection import MNPIDetectionEngine
+            from .memory_efficient_training import OnlineLearningOptimizer
+            from .enhanced_causal_trading_model import QoSRouter, HierarchicalEventProcessor
+            
+            self.mnpi_detector = MNPIDetectionEngine()
+            self.online_optimizer = OnlineLearningOptimizer()
+            self.qos_router = QoSRouter()
+            self.hierarchical_processor = HierarchicalEventProcessor(self.qos_router)
+        except ImportError:
+            self.mnpi_detector = None
+            self.online_optimizer = None
+            self.qos_router = None
+            self.hierarchical_processor = None
+        
         self.portfolio_agent = PortfolioAgent('portfolio_1', self.event_bus, self.state_manager)
+        if self.mnpi_detector:
+            self.portfolio_agent.mnpi_detector = self.mnpi_detector
+        
         self.risk_agent = RiskAssessmentAgent('risk_1', self.event_bus, self.state_manager)
         self.strategy_agent = StrategySelectionAgent('strategy_1', self.event_bus, self.state_manager)
+        if self.mnpi_detector:
+            self.strategy_agent.mnpi_detector = self.mnpi_detector
         
         self.event_stats = {
             'total_events': 0,
             'events_per_second': 0,
-            'last_stats_update': datetime.now()
+            'last_stats_update': datetime.now(),
+            'tier_1_events': 0,
+            'tier_2_events': 0,
+            'tier_3_events': 0,
+            'mnpi_alerts': 0
         }
     
     async def start_event_driven_backtesting(self):
@@ -458,6 +547,7 @@ class EventDrivenBacktestingOrchestrator:
             volume = np.random.randint(1000, 10000)
             volatility = np.random.uniform(0.01, 0.08)
             trend_strength = np.random.uniform(0.1, 0.9)
+            sentiment_score = np.random.uniform(-1, 1)
             
             market_event = MarketEvent(
                 event_type='market_update',
@@ -470,8 +560,18 @@ class EventDrivenBacktestingOrchestrator:
                 event_id=f"market_{i}_{datetime.now().timestamp()}"
             )
             
-            self.event_bus.publish_event('events.market_update', asdict(market_event))
-            self.causal_engine.add_event(asdict(market_event), 'market_simulator')
+            event_dict = asdict(market_event)
+            event_dict['sentiment_score'] = sentiment_score
+            
+            self.event_bus.publish_event('events.market_update', event_dict)
+            self.causal_engine.add_event(event_dict, 'market_simulator')
+            
+            await self.portfolio_agent.handle_event(event_dict)
+            await self.risk_agent.handle_event(event_dict)
+            await self.strategy_agent.handle_event(event_dict)
+            
+            if self.hierarchical_processor:
+                await self.process_enhanced_event(event_dict)
             
             self.event_stats['total_events'] += 1
             
@@ -520,6 +620,36 @@ class EventDrivenBacktestingOrchestrator:
         logging.info(f"   Performance Ratio: {benchmark_results['performance_ratio']:.2f}")
         
         return benchmark_results
+    
+    async def process_enhanced_event(self, event: Dict[str, Any]):
+        """Process event through hierarchical tiers with MNPI detection"""
+        
+        try:
+            from .enhanced_causal_trading_model import QoSRequirements
+            
+            qos_requirements = QoSRequirements(
+                latency_requirement=1 if event.get('event_type') == 'market_update' else 100,
+                throughput_requirement=20000,
+                accuracy_requirement=0.95,
+                priority_level=1
+            )
+            
+            if self.hierarchical_processor:
+                result = await self.hierarchical_processor.process_event(event, qos_requirements)
+                
+                tier = result['tier']
+                if tier == 'tier_1_ultra_low_latency':
+                    self.event_stats['tier_1_events'] += 1
+                elif tier == 'tier_2_standard':
+                    self.event_stats['tier_2_events'] += 1
+                else:
+                    self.event_stats['tier_3_events'] += 1
+                
+                return result
+        except ImportError:
+            pass
+        
+        return {'result': 'processed', 'tier': 'default'}
     
     async def run_causal_analysis(self, symbol: str) -> Dict[str, float]:
         market_events = self.causal_engine.causal_chains.get(f"{symbol}_market_update", [])
