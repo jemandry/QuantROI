@@ -194,6 +194,150 @@ pub mod delegation_management {
         
         Ok(())
     }
+
+    pub fn process_weekly_reconsent(
+        ctx: Context<ProcessWeeklyReconsent>,
+        knowledge_test_score: u8,
+        user_confirmation: bool,
+    ) -> Result<()> {
+        let delegation = &mut ctx.accounts.delegation;
+        let clock = Clock::get()?;
+        
+        if delegation.knowledge_test_required {
+            require!(
+                knowledge_test_score >= delegation.reconsent_schedule.knowledge_test_threshold,
+                DelegationError::InsufficientKnowledgeScore
+            );
+        }
+        
+        require!(user_confirmation, DelegationError::UserConsentRequired);
+        
+        delegation.last_reconsent = clock.unix_timestamp;
+        delegation.reconsent_streak += 1;
+        
+        let frequency_seconds = match delegation.reconsent_schedule.frequency {
+            ReconsentFrequency::Weekly => 604800,      // 7 days
+            ReconsentFrequency::BiWeekly => 1209600,   // 14 days
+            ReconsentFrequency::Monthly => 2592000,    // 30 days
+            ReconsentFrequency::Quarterly => 7776000,  // 90 days
+        };
+        
+        delegation.reconsent_schedule.next_required = clock.unix_timestamp + frequency_seconds;
+        
+        Self::update_wealth_milestone_progress(delegation, clock.unix_timestamp)?;
+        
+        emit!(WeeklyReconsentProcessed {
+            delegation_id: delegation.key(),
+            user: delegation.bank_authority,
+            knowledge_score: knowledge_test_score,
+            reconsent_streak: delegation.reconsent_streak,
+            next_required: delegation.reconsent_schedule.next_required,
+            timestamp: clock.unix_timestamp,
+        });
+        
+        Ok(())
+    }
+
+    pub fn create_forever_contract(
+        ctx: Context<CreateForeverContract>,
+        delegation_amount: u64,
+        weekly_confirmation_required: bool,
+        knowledge_test_frequency: ReconsentFrequency,
+    ) -> Result<()> {
+        let delegation = &mut ctx.accounts.delegation;
+        let clock = Clock::get()?;
+        
+        delegation.contract_type = ContractType::Forever;
+        delegation.delegation_amount = delegation_amount;
+        delegation.bank_authority = ctx.accounts.bank_authority.key();
+        delegation.created_at = clock.unix_timestamp;
+        delegation.is_active = true;
+        
+        delegation.memory_switches = DelegationMemoryState {
+            auto_renewal_enabled: true,
+            weekly_confirmation_required,
+            risk_tolerance_memory: RiskToleranceHistory {
+                entries: Vec::new(),
+                last_updated: clock.unix_timestamp,
+            },
+            performance_memory: PerformanceHistory {
+                monthly_returns: Vec::new(),
+                sharpe_ratio_history: Vec::new(),
+                max_drawdown_history: Vec::new(),
+            },
+            compliance_memory: ComplianceHistory {
+                ria_compliance_status: true,
+                sec_rule_10b5_checks: Vec::new(),
+                recordkeeping_hours: 0.0,
+                audit_trail_hashes: Vec::new(),
+                last_compliance_review: clock.unix_timestamp,
+            },
+            user_preference_memory: UserPreferenceHistory {
+                strategy_preferences: Vec::new(),
+                risk_tolerance_changes: Vec::new(),
+                notification_preferences: Vec::new(),
+            },
+        };
+        
+        delegation.reconsent_schedule = ReconsentSchedule {
+            frequency: knowledge_test_frequency,
+            next_required: clock.unix_timestamp + 604800, // First reconsent in 1 week
+            grace_period_hours: 48,
+            auto_pause_on_miss: true,
+            knowledge_test_threshold: 80, // 80% minimum score
+        };
+        
+        delegation.last_reconsent = clock.unix_timestamp;
+        delegation.reconsent_streak = 0;
+        delegation.knowledge_test_required = true;
+        
+        delegation.wealth_milestone_tracking = WealthMilestoneTracker {
+            target_amount: 5_000_000_000_000, // $5M in lamports
+            current_progress: 0,
+            milestones: vec![
+                WealthMilestone { amount: 100_000_000_000, achieved: false, date: None }, // $100K
+                WealthMilestone { amount: 500_000_000_000, achieved: false, date: None }, // $500K
+                WealthMilestone { amount: 1_000_000_000_000, achieved: false, date: None }, // $1M
+                WealthMilestone { amount: 5_000_000_000_000, achieved: false, date: None }, // $5M
+            ],
+            auto_rewards_enabled: true,
+        };
+        
+        emit!(ForeverContractCreated {
+            delegation_id: delegation.key(),
+            user: ctx.accounts.bank_authority.key(),
+            amount: delegation_amount,
+            weekly_confirmation: weekly_confirmation_required,
+            timestamp: clock.unix_timestamp,
+        });
+        
+        Ok(())
+    }
+
+    fn update_wealth_milestone_progress(
+        delegation: &mut DelegationAccount,
+        timestamp: i64,
+    ) -> Result<()> {
+        if delegation.total_profit_loss > 0 {
+            delegation.wealth_milestone_tracking.current_progress = delegation.total_profit_loss as u64;
+            
+            for milestone in &mut delegation.wealth_milestone_tracking.milestones {
+                if !milestone.achieved && delegation.wealth_milestone_tracking.current_progress >= milestone.amount {
+                    milestone.achieved = true;
+                    milestone.date = Some(timestamp);
+                    
+                    emit!(WealthMilestoneAchieved {
+                        delegation_id: delegation.key(),
+                        user: delegation.bank_authority,
+                        milestone_amount: milestone.amount,
+                        timestamp,
+                    });
+                }
+            }
+        }
+        
+        Ok(())
+    }
 }
 
 #[account]
@@ -208,6 +352,14 @@ pub struct DelegationAccount {
     pub total_trades: u64,                // 8 bytes
     pub total_profit_loss: i64,           // 8 bytes
     pub cryptographic_hash: Vec<u8>,      // 32 bytes (SHA-3)
+    
+    pub memory_switches: DelegationMemoryState,
+    pub contract_type: ContractType,
+    pub reconsent_schedule: ReconsentSchedule,
+    pub last_reconsent: i64,
+    pub reconsent_streak: u32,
+    pub knowledge_test_required: bool,
+    pub wealth_milestone_tracking: WealthMilestoneTracker,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]
@@ -289,6 +441,34 @@ pub struct RevokeDelegation<'info> {
     )]
     pub delegation: Account<'info, DelegationAccount>,
     pub bank_authority: Signer<'info>,
+
+#[derive(Accounts)]
+pub struct ProcessWeeklyReconsent<'info> {
+    #[account(
+        mut,
+        seeds = [b"delegation", delegation.bank_authority.as_ref()],
+        bump,
+        constraint = delegation.is_active @ DelegationError::DelegationInactive
+    )]
+    pub delegation: Account<'info, DelegationAccount>,
+    pub bank_authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct CreateForeverContract<'info> {
+    #[account(
+        init,
+        payer = bank_authority,
+        space = 8 + 32 + 32 + 8 + 1 + 8 + 1 + 4 + 8 + 8 + 4 + 2000, // Base + memory system space
+        seeds = [b"delegation", bank_authority.key().as_ref()],
+        bump
+    )]
+    pub delegation: Account<'info, DelegationAccount>,
+    #[account(mut)]
+    pub bank_authority: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
 }
 
 #[event]
@@ -325,6 +505,33 @@ pub struct DelegationRevoked {
     pub timestamp: i64,
 }
 
+#[event]
+pub struct WeeklyReconsentProcessed {
+    pub delegation_id: Pubkey,
+    pub user: Pubkey,
+    pub knowledge_score: u8,
+    pub reconsent_streak: u32,
+    pub next_required: i64,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct ForeverContractCreated {
+    pub delegation_id: Pubkey,
+    pub user: Pubkey,
+    pub amount: u64,
+    pub weekly_confirmation: bool,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct WealthMilestoneAchieved {
+    pub delegation_id: Pubkey,
+    pub user: Pubkey,
+    pub milestone_amount: u64,
+    pub timestamp: i64,
+}
+
 #[account]
 pub struct AdaptiveStrategyManager {
     pub manager_id: u64,
@@ -341,6 +548,85 @@ pub enum RLStrategyType {
     GatedDeepQLearning,
     GatedPolicyGradient,
     TemporalFusionTransformer,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq)]
+pub enum ContractType {
+    Standard,      // 3, 6, 12, 24 month terms
+    Forever,       // Perpetual with weekly confirmation
+    Milestone,     // Tied to wealth milestones
+    Performance,   // Performance-based duration
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq)]
+pub enum ReconsentFrequency {
+    Weekly,
+    BiWeekly,
+    Monthly,
+    Quarterly,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct ReconsentSchedule {
+    pub frequency: ReconsentFrequency,
+    pub next_required: i64,
+    pub grace_period_hours: u32,
+    pub auto_pause_on_miss: bool,
+    pub knowledge_test_threshold: u8,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct WealthMilestone {
+    pub amount: u64,
+    pub achieved: bool,
+    pub date: Option<i64>,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct WealthMilestoneTracker {
+    pub target_amount: u64,
+    pub current_progress: u64,
+    pub milestones: Vec<WealthMilestone>,
+    pub auto_rewards_enabled: bool,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct RiskToleranceHistory {
+    pub entries: Vec<(i64, u8)>, // (timestamp, risk_score)
+    pub last_updated: i64,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct PerformanceHistory {
+    pub monthly_returns: Vec<(i64, f64)>, // (timestamp, return_percentage)
+    pub sharpe_ratio_history: Vec<(i64, f64)>,
+    pub max_drawdown_history: Vec<(i64, f64)>,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct ComplianceHistory {
+    pub ria_compliance_status: bool,
+    pub sec_rule_10b5_checks: Vec<(i64, bool)>, // (timestamp, passed)
+    pub recordkeeping_hours: f64,
+    pub audit_trail_hashes: Vec<[u8; 32]>,
+    pub last_compliance_review: i64,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct UserPreferenceHistory {
+    pub strategy_preferences: Vec<(i64, RLStrategyType)>,
+    pub risk_tolerance_changes: Vec<(i64, u8)>,
+    pub notification_preferences: Vec<(i64, bool)>,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct DelegationMemoryState {
+    pub auto_renewal_enabled: bool,
+    pub weekly_confirmation_required: bool,
+    pub risk_tolerance_memory: RiskToleranceHistory,
+    pub performance_memory: PerformanceHistory,
+    pub compliance_memory: ComplianceHistory,
+    pub user_preference_memory: UserPreferenceHistory,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
@@ -447,6 +733,14 @@ pub enum DelegationError {
     InsufficientFunds,
     #[msg("Unauthorized access")]
     UnauthorizedAccess,
+    #[msg("Knowledge test score below required threshold")]
+    InsufficientKnowledgeScore,
+    #[msg("User consent required for reconsenting")]
+    UserConsentRequired,
+    #[msg("Knowledge test submission is too old")]
+    StaleKnowledgeTest,
+    #[msg("Exceeded recordkeeping time limit")]
+    ExceededRecordkeepingLimit,
 }
 
 fn calculate_performance_score(total_profit_loss: i64, total_trades: u64) -> u32 {

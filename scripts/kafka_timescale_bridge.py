@@ -24,12 +24,22 @@ logger = logging.getLogger(__name__)
 class KafkaTimescaleBridge:
     def __init__(self, 
                  kafka_servers: List[str] = ['localhost:9092'],
-                 topics: List[str] = ['trades', 'exegy-feed', 'news-analysis', 'risk-assessment', 'compliance-monitoring'],
+                 topics: List[str] = ['trades', 'exegy-feed', 'news-analysis', 'risk-assessment', 'compliance-monitoring', 'wealth-milestones', 'weekly-reconsents', 'revenue-events', 'contract-expirations'],
                  db_connection: str = "postgresql://postgres:postgres@localhost:5432/fintech_db",
                  batch_size: int = 1000,
                  flush_interval: float = 5.0):
         self.kafka_servers = kafka_servers
-        self.topics = topics
+        self.topics = [
+            'trades',
+            'exegy-feed', 
+            'news-analysis',
+            'risk-assessment',
+            'compliance-monitoring',
+            'wealth-milestones',
+            'weekly-reconsents',
+            'revenue-events',
+            'contract-expirations'
+        ]
         self.db_connection = db_connection
         self.batch_size = batch_size
         self.flush_interval = flush_interval
@@ -53,6 +63,8 @@ class KafkaTimescaleBridge:
             command_timeout=1.0
         )
         logger.info("Database connection pool initialized")
+        
+        await self.create_tables()
     
     async def batch_insert_trades(self, messages: List[Dict[str, Any]]):
         """Batch insert messages to TimescaleDB for optimal performance"""
@@ -189,6 +201,94 @@ class KafkaTimescaleBridge:
                 
                 self.log_stats()
                 logger.info("Kafka to TimescaleDB bridge stopped")
+    
+    async def create_tables(self):
+        """Create TimescaleDB tables and hypertables"""
+        try:
+            await self.pool.execute("""
+                CREATE TABLE IF NOT EXISTS trades (
+                    id SERIAL PRIMARY KEY,
+                    time TIMESTAMPTZ NOT NULL,
+                    symbol TEXT NOT NULL,
+                    price NUMERIC NOT NULL,
+                    volume INTEGER NOT NULL,
+                    strategy_type TEXT,
+                    confidence NUMERIC,
+                    user_id TEXT,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                )
+            """)
+            
+            await self.pool.execute("""
+                CREATE TABLE IF NOT EXISTS wealth_milestones (
+                    id SERIAL PRIMARY KEY,
+                    user_pubkey TEXT NOT NULL,
+                    delegation_id TEXT NOT NULL,
+                    milestone_amount BIGINT NOT NULL,
+                    achieved BOOLEAN DEFAULT FALSE,
+                    achieved_date TIMESTAMPTZ,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                )
+            """)
+            
+            await self.pool.execute("""
+                CREATE TABLE IF NOT EXISTS weekly_reconsents (
+                    id SERIAL PRIMARY KEY,
+                    delegation_id TEXT NOT NULL,
+                    user_pubkey TEXT NOT NULL,
+                    reconsent_date TIMESTAMPTZ NOT NULL,
+                    knowledge_test_score INTEGER,
+                    confirmation_status BOOLEAN NOT NULL,
+                    streak_count INTEGER DEFAULT 0,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                )
+            """)
+            
+            await self.pool.execute("""
+                CREATE TABLE IF NOT EXISTS revenue_tracking (
+                    id SERIAL PRIMARY KEY,
+                    revenue_type TEXT NOT NULL,
+                    user_pubkey TEXT NOT NULL,
+                    amount_usd DECIMAL(15,2) NOT NULL,
+                    amount_sol DECIMAL(15,9),
+                    transaction_hash TEXT,
+                    recorded_at TIMESTAMPTZ DEFAULT NOW()
+                )
+            """)
+            
+            try:
+                await self.pool.execute("SELECT create_hypertable('trades', 'time')")
+                logger.info("✅ Created hypertable for trades")
+            except Exception as e:
+                if "already exists" not in str(e):
+                    logger.warning(f"⚠️  Hypertable creation warning: {e}")
+            
+            try:
+                await self.pool.execute("SELECT create_hypertable('wealth_milestones', 'created_at')")
+                logger.info("✅ Created hypertable for wealth_milestones")
+            except Exception as e:
+                if "already exists" not in str(e):
+                    logger.warning(f"⚠️  Hypertable creation warning: {e}")
+            
+            try:
+                await self.pool.execute("SELECT create_hypertable('weekly_reconsents', 'reconsent_date')")
+                logger.info("✅ Created hypertable for weekly_reconsents")
+            except Exception as e:
+                if "already exists" not in str(e):
+                    logger.warning(f"⚠️  Hypertable creation warning: {e}")
+            
+            try:
+                await self.pool.execute("SELECT create_hypertable('revenue_tracking', 'recorded_at')")
+                logger.info("✅ Created hypertable for revenue_tracking")
+            except Exception as e:
+                if "already exists" not in str(e):
+                    logger.warning(f"⚠️  Hypertable creation warning: {e}")
+            
+            logger.info("✅ Database tables created successfully")
+            
+        except Exception as e:
+            logger.error(f"Error creating database tables: {e}")
+            raise
 
 def signal_handler(signum, frame):
     """Handle shutdown signals"""
