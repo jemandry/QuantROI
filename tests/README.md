@@ -47,7 +47,7 @@ performance/
 - Smart contract execution: <1ms
 - API response time: <10ms
 - Data processing: 20K+ events/second
-- System throughput: 1000+ TPS
+- System throughput: 1000+ TPS application-level (65K TPS Solana blockchain capability)
 
 ### **Coverage Requirements**
 - Unit test coverage: >95%

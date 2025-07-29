@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 use sha3::{Digest, Sha3_256};
 
-declare_id!("PaymentSystemProgram11111111111111111111");
+declare_id!("11111111111111111111111111111112");
 
 #[program]
 pub mod payment_system {
@@ -32,7 +32,7 @@ pub mod payment_system {
         hasher.update(ctx.accounts.payer.key().as_ref());
         hasher.update(recipient.as_ref());
         hasher.update(&amount.to_le_bytes());
-        hasher.update(&(frequency as u8).to_le_bytes());
+        hasher.update(&(frequency.clone() as u8).to_le_bytes());
         hasher.update(&start_time.to_le_bytes());
         hasher.update(&clock.unix_timestamp.to_le_bytes());
         let schedule_hash = hasher.finalize();
@@ -41,7 +41,7 @@ pub mod payment_system {
         payment_schedule.payer = ctx.accounts.payer.key();
         payment_schedule.recipient = recipient;
         payment_schedule.amount = amount;
-        payment_schedule.frequency = frequency;
+        payment_schedule.frequency = frequency.clone();
         payment_schedule.start_time = start_time;
         payment_schedule.end_time = end_time;
         payment_schedule.next_payment_due = start_time;
@@ -368,7 +368,7 @@ pub struct LimitedContract {
     pub contract_hash: Vec<u8>,                // 32 bytes (SHA-3)
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
 pub enum PaymentFrequency {
     Daily,
     Weekly,
@@ -392,7 +392,7 @@ pub struct IndividualDistribution {
     pub is_paid: bool,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
 pub enum DistributionType {
     DataSupplier,
     Referral,
@@ -407,7 +407,7 @@ pub struct SetupPeriodicPayments<'info> {
         init,
         payer = payer,
         space = 8 + 8 + 32 + 32 + 8 + 1 + 8 + 9 + 8 + 4 + 8 + 1 + 8 + 9 + 64,
-        seeds = [b"payment_schedule", &payment_id.to_le_bytes()],
+        seeds = [b"payment_schedule".as_ref(), payment_id.to_le_bytes().as_ref()],
         bump
     )]
     pub payment_schedule: Account<'info, PaymentSchedule>,
@@ -421,7 +421,7 @@ pub struct SetupPeriodicPayments<'info> {
 pub struct ExecuteSmartWithdrawal<'info> {
     #[account(
         mut,
-        seeds = [b"payment_schedule", &payment_id.to_le_bytes()],
+        seeds = [b"payment_schedule".as_ref(), payment_id.to_le_bytes().as_ref()],
         bump
     )]
     pub payment_schedule: Account<'info, PaymentSchedule>,
@@ -440,7 +440,7 @@ pub struct ProcessCentralBilling<'info> {
         init,
         payer = user,
         space = 8 + 8 + 32 + 4 + 8 + 8 + 8 + 1 + 8 + 9 + 64,
-        seeds = [b"billing_record", &billing_id.to_le_bytes()],
+        seeds = [b"billing_record".as_ref(), billing_id.to_le_bytes().as_ref()],
         bump
     )]
     pub billing_record: Account<'info, BillingRecord>,
@@ -456,7 +456,7 @@ pub struct ManageProfitDistribution<'info> {
         init,
         payer = authority,
         space = 8 + 8 + 8 + 4 + (10 * 48) + 4 + (10 * 49) + 1 + 8 + 9 + 64, // Max 10 distribution rules
-        seeds = [b"profit_distribution", &distribution_id.to_le_bytes()],
+        seeds = [b"profit_distribution".as_ref(), distribution_id.to_le_bytes().as_ref()],
         bump
     )]
     pub profit_distribution: Account<'info, ProfitDistribution>,
@@ -472,7 +472,7 @@ pub struct HandleLimitedTimeContracts<'info> {
         init,
         payer = contract_owner,
         space = 8 + 8 + 32 + 4 + 8 + 8 + 1 + 1 + 4 + 64,
-        seeds = [b"limited_contract", &contract_id.to_le_bytes()],
+        seeds = [b"limited_contract".as_ref(), contract_id.to_le_bytes().as_ref()],
         bump
     )]
     pub limited_contract: Account<'info, LimitedContract>,
@@ -486,7 +486,7 @@ pub struct HandleLimitedTimeContracts<'info> {
 pub struct ProcessContractExpiration<'info> {
     #[account(
         mut,
-        seeds = [b"limited_contract", &contract_id.to_le_bytes()],
+        seeds = [b"limited_contract".as_ref(), contract_id.to_le_bytes().as_ref()],
         bump
     )]
     pub limited_contract: Account<'info, LimitedContract>,

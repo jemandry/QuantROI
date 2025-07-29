@@ -9,6 +9,15 @@ members = [
 ]
 resolver = "2"
 
+[workspace.dependencies]
+anchor-lang = "0.28.0"
+anchor-spl = "0.28.0"
+spl-token = { version = "4.0.0", features = ["no-entrypoint"] }
+spl-memo = { version = "4.0.0", features = ["no-entrypoint"] }
+solana-program = "1.16.0"
+sha3 = "0.10.8"
+rand = "0.8.5"
+
 [workspace.lints.clippy]
 # Strict linting for fintech security and code quality
 pedantic = "warn"

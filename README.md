@@ -242,7 +242,7 @@ frontend/
 ### **Development Setup**
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone https://github.com/Synergy-Cloud-System-LlLC/quantroi.git
 cd ethical-ai-fintech-workspace
 
 # Install Rust dependencies
@@ -264,7 +264,7 @@ docker-compose up -d
 
 ### **Target Performance**
 - **Transaction Speed**: <1ms smart contract execution
-- **Throughput**: 1000+ TPS sustained performance
+- **Throughput**: 1000+ TPS application-level sustained performance (65K TPS Solana blockchain capability)
 - **API Latency**: <10ms response time
 - **Data Processing**: 20K+ events/second real-time processing
 - **AI Accuracy**: >95% prediction accuracy
