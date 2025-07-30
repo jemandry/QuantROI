@@ -243,6 +243,94 @@ class HighPerformanceOptionAnalyzer:
         high_confidence_events = [e for e in uoa_events if e['confidence'] > 0.7]
         return min(0.95, 0.65 + 0.1 * len(high_confidence_events) / len(uoa_events))
     
+    def capture_option_conditions_for_learning(self, symbol: str, option_data: OptionData, 
+                                                     greeks: GreeksResult, uoa_result: Dict[str, Any],
+                                                     max_pain_strike: float) -> Dict[str, Any]:
+        """
+        Capture option chain conditions for retroactive learning integration
+        Stores conditions that led to trading decisions for future neural network updates
+        """
+        option_conditions = {
+            'symbol': symbol,
+            'timestamp': time.time(),
+            'underlying_price': option_data.underlying_price,
+            'max_pain_strike': max_pain_strike,
+            'max_pain_distance': abs(option_data.underlying_price - max_pain_strike) / option_data.underlying_price if max_pain_strike > 0 else 0,
+            
+            'total_delta_exposure': np.sum(greeks.delta),
+            'total_gamma_exposure': np.sum(greeks.gamma),
+            'total_theta_decay': np.sum(greeks.theta),
+            'total_vega_exposure': np.sum(greeks.vega),
+            
+            'uoa_events_count': uoa_result.get('total_anomalies', 0),
+            'uoa_confidence_avg': np.mean([e.get('confidence', 0) for e in uoa_result.get('uoa_events', [])]) if uoa_result.get('uoa_events') else 0,
+            'volume_spike_detected': any(e.get('anomaly_type') == 'volume_spike' for e in uoa_result.get('uoa_events', [])),
+            'oi_spike_detected': any(e.get('anomaly_type') == 'oi_spike' for e in uoa_result.get('uoa_events', [])),
+            
+            'iv_skew': self._calculate_iv_skew(option_data),
+            'put_call_ratio': self._calculate_pcr(option_data),
+            'volume_weighted_iv': self._calculate_volume_weighted_iv(option_data),
+            
+            'gamma_risk_level': self._assess_gamma_risk(greeks.gamma),
+            'theta_decay_pressure': self._assess_theta_pressure(greeks.theta),
+            'vega_volatility_risk': self._assess_vega_risk(greeks.vega)
+        }
+        
+        return option_conditions
+    
+    def _calculate_iv_skew(self, option_data: OptionData) -> float:
+        """Calculate implied volatility skew"""
+        if len(option_data.volatilities) < 2:
+            return 0.0
+        
+        return float(np.max(option_data.volatilities) - np.min(option_data.volatilities))
+    
+    def _calculate_pcr(self, option_data: OptionData) -> float:
+        """Calculate Put-Call Ratio"""
+        call_volume = np.sum(option_data.volumes[option_data.option_types > 0])
+        put_volume = np.sum(option_data.volumes[option_data.option_types < 0])
+        
+        return float(put_volume / call_volume) if call_volume > 0 else 0.0
+    
+    def _calculate_volume_weighted_iv(self, option_data: OptionData) -> float:
+        """Calculate volume-weighted implied volatility"""
+        total_volume = np.sum(option_data.volumes)
+        if total_volume == 0:
+            return 0.0
+        
+        weighted_iv = np.sum(option_data.volatilities * option_data.volumes) / total_volume
+        return float(weighted_iv)
+    
+    def _assess_gamma_risk(self, gamma: np.ndarray) -> str:
+        """Assess gamma risk level"""
+        total_gamma = np.sum(np.abs(gamma))
+        if total_gamma > 0.5:
+            return 'high'
+        elif total_gamma > 0.2:
+            return 'medium'
+        else:
+            return 'low'
+    
+    def _assess_theta_pressure(self, theta: np.ndarray) -> str:
+        """Assess theta decay pressure"""
+        total_theta = np.sum(np.abs(theta))
+        if total_theta > 0.1:
+            return 'high'
+        elif total_theta > 0.05:
+            return 'medium'
+        else:
+            return 'low'
+    
+    def _assess_vega_risk(self, vega: np.ndarray) -> str:
+        """Assess vega volatility risk"""
+        total_vega = np.sum(np.abs(vega))
+        if total_vega > 0.3:
+            return 'high'
+        elif total_vega > 0.15:
+            return 'medium'
+        else:
+            return 'low'
+
     @ray.remote
     def process_symbol_distributed(self, symbol: str, option_data: OptionData) -> Dict[str, Any]:
         """Distributed processing for multiple symbols using Ray"""
@@ -279,6 +367,11 @@ class HighPerformanceOptionAnalyzer:
         
         uoa_result = self.detect_unusual_option_activity(option_data)
         
+        # Capture conditions for retroactive learning
+        option_conditions = self.capture_option_conditions_for_learning(
+            symbol, option_data, greeks, uoa_result, max_pain_strike
+        )
+        
         processing_time = time.time() - start_time
         
         return {
@@ -293,5 +386,6 @@ class HighPerformanceOptionAnalyzer:
             'max_pain_strike': max_pain_strike,
             'max_pain_value': max_pain_value,
             'uoa_result': uoa_result,
+            'option_conditions': option_conditions,
             'processing_time_ms': processing_time * 1000
         }

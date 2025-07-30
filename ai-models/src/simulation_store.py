@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import time
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
@@ -320,3 +321,99 @@ class TimescaleSimulationStore:
         except Exception as e:
             self.logger.error(f"Error storing option analysis results: {e}")
             return False
+    
+    async def store_option_trade_outcome(self, trade_id: str, symbol: str, option_conditions: Dict[str, Any], 
+                                       trade_action: str, entry_price: float, exit_price: Optional[float] = None,
+                                       profit_loss: Optional[float] = None, success: Optional[bool] = None) -> bool:
+        """Store option trade outcomes for retroactive learning correlation"""
+        if not self.pool:
+            await self.initialize()
+            
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS option_trade_outcomes (
+                        time TIMESTAMPTZ NOT NULL,
+                        trade_id TEXT NOT NULL,
+                        symbol TEXT NOT NULL,
+                        trade_action TEXT NOT NULL,
+                        entry_price NUMERIC,
+                        exit_price NUMERIC,
+                        profit_loss NUMERIC,
+                        success BOOLEAN,
+                        trade_duration_minutes INTEGER,
+                        option_conditions JSONB,
+                        learning_processed BOOLEAN DEFAULT FALSE
+                    );
+                """)
+                
+                try:
+                    await conn.execute("SELECT create_hypertable('option_trade_outcomes', 'time', if_not_exists => TRUE);")
+                except Exception as e:
+                    self.logger.warning(f"Option trade outcomes hypertable creation warning: {e}")
+                
+                trade_duration = None
+                if exit_price is not None and option_conditions.get('timestamp'):
+                    trade_duration = int((time.time() - option_conditions['timestamp']) / 60)
+                
+                await conn.execute("""
+                    INSERT INTO option_trade_outcomes (
+                        time, trade_id, symbol, trade_action, entry_price, exit_price, 
+                        profit_loss, success, trade_duration_minutes, option_conditions
+                    ) VALUES (NOW(), $1, $2, $3, $4, $5, $6, $7, $8, $9)
+                """, 
+                trade_id, symbol, trade_action, entry_price, exit_price, 
+                profit_loss, success, trade_duration, json.dumps(option_conditions)
+                )
+                
+                return True
+                
+        except Exception as e:
+            self.logger.error(f"Error storing option trade outcome: {e}")
+            return False
+    
+    async def get_unprocessed_option_learning_data(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """Retrieve unprocessed option trade outcomes for retroactive learning"""
+        if not self.pool:
+            await self.initialize()
+            
+        try:
+            async with self.pool.acquire() as conn:
+                results = await conn.fetch("""
+                    SELECT trade_id, symbol, trade_action, entry_price, exit_price, 
+                           profit_loss, success, trade_duration_minutes, option_conditions
+                    FROM option_trade_outcomes 
+                    WHERE learning_processed = FALSE AND exit_price IS NOT NULL
+                    ORDER BY time ASC
+                    LIMIT $1
+                """, limit)
+                
+                learning_data = []
+                trade_ids_to_mark = []
+                
+                for row in results:
+                    learning_data.append({
+                        'trade_id': row['trade_id'],
+                        'symbol': row['symbol'],
+                        'trade_action': row['trade_action'],
+                        'entry_price': float(row['entry_price']) if row['entry_price'] else 0.0,
+                        'exit_price': float(row['exit_price']) if row['exit_price'] else 0.0,
+                        'profit_loss': float(row['profit_loss']) if row['profit_loss'] else 0.0,
+                        'success': row['success'],
+                        'trade_duration_minutes': row['trade_duration_minutes'],
+                        'option_conditions': row['option_conditions'] or {}
+                    })
+                    trade_ids_to_mark.append(row['trade_id'])
+                
+                if trade_ids_to_mark:
+                    await conn.execute("""
+                        UPDATE option_trade_outcomes 
+                        SET learning_processed = TRUE 
+                        WHERE trade_id = ANY($1)
+                    """, trade_ids_to_mark)
+                
+                return learning_data
+                
+        except Exception as e:
+            self.logger.error(f"Error retrieving option learning data: {e}")
+            return []

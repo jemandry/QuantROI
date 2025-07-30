@@ -17,10 +17,10 @@ from datetime import datetime
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
-from enhanced_causal_trading_model import EnhancedCausalTradingModel
+from .enhanced_causal_trading_model import EnhancedCausalTradingModel
 from real_time_trading_engine import RealTimeTradingEngine
-from risk_management import RiskManager
-from mnpi_detection import MNPIDetector
+from .risk_management import PortfolioRiskManager
+from .mnpi_detection import MNPIDetectionEngine
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -41,8 +41,8 @@ class KafkaAIConsumer:
         
         self.causal_model = EnhancedCausalTradingModel()
         self.trading_engine = RealTimeTradingEngine()
-        self.risk_manager = RiskManager()
-        self.mnpi_detector = MNPIDetector()
+        self.risk_manager = PortfolioRiskManager()
+        self.mnpi_detector = MNPIDetectionEngine()
         
         self.stats = {
             'messages_processed': 0,
@@ -341,18 +341,26 @@ class KafkaAIConsumer:
                                            analysis_result: Dict[str, Any]):
         """Generate trading signals based on UOA detection and Greeks analysis"""
         try:
+            if not hasattr(self, 'retroactive_learning'):
+                from .retroactive_option_learning import RetroactiveOptionLearning
+                self.retroactive_learning = RetroactiveOptionLearning()
+                await self.retroactive_learning.start_learning_worker()
+            
             call_events = [e for e in uoa_events if e.get('option_type') == 'call']
             put_events = [e for e in uoa_events if e.get('option_type') == 'put']
             
             signal_strength = 0.0
             signal_direction = 'neutral'
+            trade_action = 'hold'
             
             if len(call_events) > len(put_events):
                 signal_direction = 'bullish'
                 signal_strength = min(0.9, 0.5 + 0.1 * len(call_events))
+                trade_action = 'buy_call'
             elif len(put_events) > len(call_events):
                 signal_direction = 'bearish'
                 signal_strength = min(0.9, 0.5 + 0.1 * len(put_events))
+                trade_action = 'buy_put'
             
             max_pain_strike = analysis_result.get('max_pain_strike', 0)
             underlying_price = analysis_result.get('underlying_price', 0)
@@ -371,8 +379,34 @@ class KafkaAIConsumer:
                     'confidence': np.mean([e.get('confidence', 0) for e in uoa_events]),
                     'uoa_events_count': len(uoa_events),
                     'max_pain_strike': max_pain_strike,
-                    'timestamp': datetime.now().isoformat()
+                    'timestamp': datetime.now().isoformat(),
+                    'trade_action': trade_action
                 }
+                
+                option_conditions = analysis_result.get('option_conditions', {})
+                if option_conditions:
+                    trade_id = f"{symbol}_{int(time.time())}_{signal_direction}"
+                    entry_price = underlying_price  # Use underlying price as proxy
+                    
+                    await self.retroactive_learning.record_option_trade_entry(
+                        trade_id=trade_id,
+                        symbol=symbol,
+                        option_conditions=option_conditions,
+                        trade_action=trade_action,
+                        entry_price=entry_price
+                    )
+                    
+                    from .simulation_store import TimescaleSimulationStore
+                    store = TimescaleSimulationStore()
+                    await store.store_option_trade_outcome(
+                        trade_id=trade_id,
+                        symbol=symbol,
+                        option_conditions=option_conditions,
+                        trade_action=trade_action,
+                        entry_price=entry_price
+                    )
+                    
+                    trading_signal['trade_id'] = trade_id
                 
                 await self.trading_engine.process_option_signal(trading_signal)
                 
@@ -381,6 +415,23 @@ class KafkaAIConsumer:
         
         except Exception as e:
             logger.error(f"Error generating option trading signal: {e}")
+    
+    async def record_option_trade_outcome(self, trade_id: str, exit_price: float, profit_loss: float):
+        """Record option trade outcome for retroactive learning"""
+        try:
+            if hasattr(self, 'retroactive_learning'):
+                await self.retroactive_learning.record_option_trade_exit(
+                    trade_id=trade_id,
+                    exit_price=exit_price,
+                    profit_loss=profit_loss
+                )
+                
+                from .simulation_store import TimescaleSimulationStore
+                store = TimescaleSimulationStore()
+                
+                logger.debug(f"Recorded option trade outcome: {trade_id}, P&L: {profit_loss:.4f}")
+        except Exception as e:
+            logger.error(f"Error recording option trade outcome: {e}")
 
 async def main():
     """Main entry point for Kafka AI consumer"""

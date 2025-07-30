@@ -1004,6 +1004,8 @@ class EnhancedCausalTradingModel:
                 if trade_results:
                     await self._update_neural_networks(trade_results)
                 
+                await self._process_option_learning_updates()
+                
                 await asyncio.sleep(0.01)  # 10ms interval
                 
             except Exception as e:
@@ -1020,6 +1022,90 @@ class EnhancedCausalTradingModel:
             
         except Exception as e:
             self.logger.error(f"Neural network update error: {e}")
+    
+    async def _process_option_learning_updates(self):
+        """Process retroactive learning updates from option chain analysis"""
+        try:
+            from .simulation_store import TimescaleSimulationStore
+            store = TimescaleSimulationStore()
+            
+            learning_data = await store.get_unprocessed_option_learning_data(limit=50)
+            
+            if learning_data:
+                self.logger.info(f"Processing {len(learning_data)} option learning updates")
+                
+                for trade_data in learning_data:
+                    await self._integrate_option_learning_update(trade_data)
+                    
+        except Exception as e:
+            self.logger.error(f"Error processing option learning updates: {e}")
+    
+    async def _integrate_option_learning_update(self, trade_data: Dict[str, Any]):
+        """Integrate option learning update into existing neural networks"""
+        try:
+            option_conditions = trade_data.get('option_conditions', {})
+            profit_loss = trade_data.get('profit_loss', 0.0)
+            success = trade_data.get('success', False)
+            
+            if not option_conditions:
+                return
+            
+            gru_features = self._convert_option_features_to_gru_format(option_conditions)
+            
+            market_data = MarketData(
+                symbol=trade_data.get('symbol', 'UNKNOWN'),
+                price=option_conditions.get('underlying_price', 100.0),
+                volume=1000,  # Placeholder
+                timestamp=datetime.now().isoformat(),
+                time_series=gru_features.numpy().flatten().tolist()
+            )
+            
+            trading_result = TradingResult(
+                action=trade_data.get('trade_action', 'hold'),
+                quantity=1.0,
+                confidence=option_conditions.get('uoa_confidence_avg', 0.5),
+                expected_return=profit_loss,
+                strategy_used=RLStrategyType.GATED_DEEP_Q_LEARNING,  # Default
+                risk_score=0.5,
+                timestamp=datetime.now().isoformat()
+            )
+            
+            if hasattr(self, 'master_learning_engine'):
+                self.master_learning_engine.update_strategy_performance(
+                    strategy_type=RLStrategyType.GATED_DEEP_Q_LEARNING,
+                    market_data=market_data,
+                    trade_result=trading_result,
+                    causal_context={'option_conditions': option_conditions}
+                )
+            
+            self.logger.debug(f"Integrated option learning update for {trade_data.get('symbol')}")
+            
+        except Exception as e:
+            self.logger.error(f"Error integrating option learning update: {e}")
+    
+    def _convert_option_features_to_gru_format(self, option_conditions: Dict[str, Any]) -> torch.Tensor:
+        """Convert option chain features to format compatible with GRU networks"""
+        try:
+            features = [
+                option_conditions.get('max_pain_distance', 0.0),
+                option_conditions.get('total_delta_exposure', 0.0),
+                option_conditions.get('total_gamma_exposure', 0.0),
+                option_conditions.get('total_theta_decay', 0.0),
+                option_conditions.get('total_vega_exposure', 0.0),
+                option_conditions.get('uoa_events_count', 0.0) / 10.0,  # Normalize
+                option_conditions.get('uoa_confidence_avg', 0.0),
+                option_conditions.get('iv_skew', 0.0),
+                option_conditions.get('put_call_ratio', 1.0),
+                option_conditions.get('volume_weighted_iv', 0.0)
+            ]
+            
+            gru_features = features[:10] if len(features) >= 10 else features + [0.0] * (10 - len(features))
+            
+            return torch.tensor([gru_features], dtype=torch.float32).unsqueeze(0)
+            
+        except Exception as e:
+            self.logger.error(f"Error converting option features to GRU format: {e}")
+            return torch.zeros(1, 1, 10, dtype=torch.float32)
     
     def execute_adaptive_trading(self, market_data: MarketData, qos_requirements: QoSRequirements) -> TradingResult:
         start_time = datetime.now()
