@@ -12,6 +12,7 @@ import time
 from typing import Dict, Any, List, Optional
 from confluent_kafka import Consumer, KafkaError
 import numpy as np
+import ray
 from datetime import datetime
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -289,10 +290,102 @@ class KafkaAIConsumer:
                 self.log_performance_stats()
                 logger.info("Kafka AI consumer stopped")
 
+    async def process_option_chain_message(self, message_data: Dict[str, Any]):
+        """Process option chain messages with high-performance analysis"""
+        try:
+            from high_performance_option_analyzer import HighPerformanceOptionAnalyzer, OptionData
+            
+            symbol = message_data.get('symbol', 'UNKNOWN')
+            option_chain = message_data.get('option_chain', {})
+            
+            if not option_chain:
+                return
+            
+            option_data = OptionData(
+                strikes=np.array(option_chain.get('strikes', [])),
+                expiries=np.array(option_chain.get('expiries', [])),
+                underlying_price=float(option_chain.get('underlying_price', 0)),
+                risk_free_rate=float(option_chain.get('risk_free_rate', 0.05)),
+                volatilities=np.array(option_chain.get('volatilities', [])),
+                option_types=np.array(option_chain.get('option_types', [])),
+                volumes=np.array(option_chain.get('volumes', [])),
+                open_interests=np.array(option_chain.get('open_interests', []))
+            )
+            
+            if not hasattr(self, 'option_analyzer'):
+                self.option_analyzer = HighPerformanceOptionAnalyzer()
+            
+            analysis_result = await self.option_analyzer.process_symbol_distributed.remote(symbol, option_data)
+            completed_result = ray.get(analysis_result)
+            
+            from simulation_store import TimescaleSimulationStore
+            store = TimescaleSimulationStore()
+            await store.store_option_analysis_results(symbol, completed_result)
+            
+            uoa_result = completed_result.get('uoa_result', {})
+            if uoa_result.get('total_anomalies', 0) > 0:
+                high_confidence_events = [
+                    event for event in uoa_result.get('uoa_events', [])
+                    if event.get('confidence', 0) > 0.7
+                ]
+                
+                if high_confidence_events:
+                    await self.generate_option_trading_signal(symbol, high_confidence_events, completed_result)
+            
+            self.stats['option_analyses_completed'] += 1
+            
+        except Exception as e:
+            logger.error(f"Error processing option chain message: {e}")
+    
+    async def generate_option_trading_signal(self, symbol: str, uoa_events: List[Dict], 
+                                           analysis_result: Dict[str, Any]):
+        """Generate trading signals based on UOA detection and Greeks analysis"""
+        try:
+            call_events = [e for e in uoa_events if e.get('option_type') == 'call']
+            put_events = [e for e in uoa_events if e.get('option_type') == 'put']
+            
+            signal_strength = 0.0
+            signal_direction = 'neutral'
+            
+            if len(call_events) > len(put_events):
+                signal_direction = 'bullish'
+                signal_strength = min(0.9, 0.5 + 0.1 * len(call_events))
+            elif len(put_events) > len(call_events):
+                signal_direction = 'bearish'
+                signal_strength = min(0.9, 0.5 + 0.1 * len(put_events))
+            
+            max_pain_strike = analysis_result.get('max_pain_strike', 0)
+            underlying_price = analysis_result.get('underlying_price', 0)
+            
+            if underlying_price > 0 and max_pain_strike > 0:
+                price_distance = abs(underlying_price - max_pain_strike) / underlying_price
+                if price_distance > 0.05:  # 5% threshold
+                    signal_strength *= 1.2  # Amplify signal
+            
+            if signal_strength > 0.6:
+                trading_signal = {
+                    'symbol': symbol,
+                    'signal_type': 'option_uoa',
+                    'direction': signal_direction,
+                    'strength': signal_strength,
+                    'confidence': np.mean([e.get('confidence', 0) for e in uoa_events]),
+                    'uoa_events_count': len(uoa_events),
+                    'max_pain_strike': max_pain_strike,
+                    'timestamp': datetime.now().isoformat()
+                }
+                
+                await self.trading_engine.process_option_signal(trading_signal)
+                
+                self.stats['option_signals_generated'] += 1
+                logger.info(f"Generated option trading signal for {symbol}: {signal_direction} ({signal_strength:.2f})")
+        
+        except Exception as e:
+            logger.error(f"Error generating option trading signal: {e}")
+
 async def main():
     """Main entry point for Kafka AI consumer"""
     consumer = KafkaAIConsumer(
-        topics=['trades', 'news-analysis', 'risk-assessment', 'exegy-feed', 'compliance-monitoring']
+        topics=['trades', 'news-analysis', 'risk-assessment', 'exegy-feed', 'compliance-monitoring', 'option-chains']
     )
     await consumer.start()
 

@@ -250,3 +250,73 @@ class TimescaleSimulationStore:
         except Exception as e:
             self.logger.error(f"Error storing option chain data: {e}")
             return False
+    
+    async def store_option_analysis_results(self, symbol: str, analysis_results: Dict[str, Any]) -> bool:
+        """Store high-performance option analysis results"""
+        if not self.pool:
+            await self.initialize()
+            
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS option_analysis_results (
+                        time TIMESTAMPTZ NOT NULL,
+                        symbol TEXT NOT NULL,
+                        max_pain_strike NUMERIC,
+                        max_pain_value NUMERIC,
+                        total_delta_exposure NUMERIC,
+                        total_gamma_exposure NUMERIC,
+                        total_theta_exposure NUMERIC,
+                        total_vega_exposure NUMERIC,
+                        uoa_events_count INTEGER,
+                        uoa_detection_accuracy NUMERIC,
+                        processing_time_ms NUMERIC,
+                        analysis_metadata JSONB
+                    );
+                """)
+                
+                try:
+                    await conn.execute("SELECT create_hypertable('option_analysis_results', 'time', if_not_exists => TRUE);")
+                except Exception as e:
+                    self.logger.warning(f"Option analysis hypertable creation warning: {e}")
+                
+                greeks = analysis_results.get('greeks', {})
+                total_delta = sum(greeks.get('delta', []))
+                total_gamma = sum(greeks.get('gamma', []))
+                total_theta = sum(greeks.get('theta', []))
+                total_vega = sum(greeks.get('vega', []))
+                
+                uoa_result = analysis_results.get('uoa_result', {})
+                
+                await conn.execute("""
+                    INSERT INTO option_analysis_results (
+                        time, symbol, max_pain_strike, max_pain_value,
+                        total_delta_exposure, total_gamma_exposure, total_theta_exposure, total_vega_exposure,
+                        uoa_events_count, uoa_detection_accuracy, processing_time_ms, analysis_metadata
+                    ) VALUES (NOW(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                """, 
+                symbol,
+                analysis_results.get('max_pain_strike', 0.0),
+                analysis_results.get('max_pain_value', 0.0),
+                total_delta,
+                total_gamma,
+                total_theta,
+                total_vega,
+                uoa_result.get('total_anomalies', 0),
+                uoa_result.get('detection_accuracy', 0.0),
+                analysis_results.get('processing_time_ms', 0.0),
+                json.dumps({
+                    'greeks_detail': greeks,
+                    'uoa_events': uoa_result.get('uoa_events', []),
+                    'thresholds': {
+                        'volume_threshold': uoa_result.get('volume_threshold', 0),
+                        'oi_threshold': uoa_result.get('oi_threshold', 0)
+                    }
+                })
+                )
+                
+                return True
+                
+        except Exception as e:
+            self.logger.error(f"Error storing option analysis results: {e}")
+            return False
