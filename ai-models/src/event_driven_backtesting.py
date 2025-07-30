@@ -95,6 +95,26 @@ class FillEvent:
     timestamp: datetime
     event_id: str
 
+@dataclass
+class OptionsEvent:
+    event_type: str
+    symbol: str
+    strike: float
+    expiration: str
+    option_type: str  # 'call' or 'put'
+    volume: int
+    open_interest: int
+    implied_volatility: float
+    delta: float
+    gamma: float
+    theta: float
+    vega: float
+    pcr_volume: float
+    iv_change: float
+    volume_spike_ratio: float
+    timestamp: datetime
+    event_id: str
+
 class EventBus:
     def __init__(self, kafka_servers: List[str] = ['localhost:9092']):
         self.kafka_servers = kafka_servers
@@ -697,3 +717,46 @@ class EventDrivenBacktestingOrchestrator:
             }
         
         return {'symbol': symbol, 'granger_causality_score': 0.0}
+    
+    def handle_options_event(self, event: Dict[str, Any]):
+        """Handle options chain events for sniffing and analysis"""
+        try:
+            symbol = event.get('symbol', 'UNKNOWN')
+            volume = event.get('volume', 0)
+            pcr_volume = event.get('pcr_volume', 0.0)
+            iv_change = event.get('iv_change', 0.0)
+            volume_spike_ratio = event.get('volume_spike_ratio', 1.0)
+            gamma = event.get('gamma', 0.0)
+            
+            logging.info(f"Options event: {symbol} vol={volume} PCR={pcr_volume:.2f}")
+            
+            unusual_indicators = []
+            
+            if volume_spike_ratio > 2.0:
+                unusual_indicators.append(f"volume_spike={volume_spike_ratio:.1f}x")
+            
+            if pcr_volume > 1.5:
+                unusual_indicators.append(f"high_put_activity_pcr={pcr_volume:.2f}")
+            elif pcr_volume < 0.5:
+                unusual_indicators.append(f"high_call_activity_pcr={pcr_volume:.2f}")
+            
+            if abs(iv_change) > 0.1:
+                unusual_indicators.append(f"iv_skew={iv_change:.3f}")
+            
+            if abs(gamma) > 0.1:
+                unusual_indicators.append(f"high_gamma={gamma:.3f}")
+            
+            if len(unusual_indicators) >= 2:
+                alert_message = f"UOA detected in {symbol}: {', '.join(unusual_indicators)}"
+                logging.warning(alert_message)
+                
+                self.event_bus.publish_event('uoa_alerts', {
+                    'event_type': 'UOA_ALERT',
+                    'symbol': symbol,
+                    'indicators': unusual_indicators,
+                    'confidence': min(len(unusual_indicators) / 4.0, 1.0),
+                    'timestamp': datetime.now().isoformat()
+                })
+            
+        except Exception as e:
+            logging.error(f"Error handling options event: {e}")

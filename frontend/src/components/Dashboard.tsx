@@ -6,6 +6,7 @@ import TradingDashboard from './TradingDashboard';
 import ProfileSwitches from './ProfileSwitches';
 import WealthObjectives from './WealthObjectives';
 import NFTPortfolio from './NFTPortfolio';
+import StrategyHealthMonitor from './StrategyHealthMonitor';
 
 const Dashboard: React.FC = () => {
   const { connected } = useWallet();
@@ -17,6 +18,7 @@ const Dashboard: React.FC = () => {
     { id: 'profile', name: 'Profile', icon: '⚙️' },
     { id: 'objectives', name: 'Objectives', icon: '🎯' },
     { id: 'nfts', name: 'NFTs', icon: '🖼️' },
+    { id: 'health', name: 'Health Monitor', icon: '🏥' },
   ];
 
   const renderTabContent = () => {
@@ -31,6 +33,8 @@ const Dashboard: React.FC = () => {
         return <WealthObjectives />;
       case 'nfts':
         return <NFTPortfolio />;
+      case 'health':
+        return <StrategyHealthMonitor />;
       default:
         return <TradingDashboard />;
     }

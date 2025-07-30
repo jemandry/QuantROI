@@ -12,7 +12,7 @@ import logging
 import time
 from datetime import datetime
 from typing import Dict, Any, List
-from kafka import KafkaConsumer
+from confluent_kafka import Consumer, KafkaError
 import threading
 from concurrent.futures import ThreadPoolExecutor
 import signal
@@ -120,24 +120,34 @@ class KafkaTimescaleBridge:
     
     def consume_kafka_messages(self):
         """Consume messages from Kafka topics"""
-        consumer = KafkaConsumer(
-            *self.topics,
-            bootstrap_servers=self.kafka_servers,
-            value_deserializer=lambda m: json.loads(m.decode('utf-8')),
-            auto_offset_reset='earliest',
-            enable_auto_commit=True,
-            group_id='timescale_bridge'
-        )
+        consumer_config = {
+            'bootstrap.servers': ','.join(self.kafka_servers),
+            'group.id': 'timescale_bridge',
+            'auto.offset.reset': 'earliest',
+            'enable.auto.commit': True
+        }
+        
+        consumer = Consumer(consumer_config)
+        consumer.subscribe(self.topics)
         
         logger.info(f"Started Kafka consumer for topics: {self.topics}")
         
         try:
-            for message in consumer:
-                if not self.running:
-                    break
+            while self.running:
+                msg = consumer.poll(timeout=1.0)
+                
+                if msg is None:
+                    continue
+                    
+                if msg.error():
+                    if msg.error().code() == KafkaError._PARTITION_EOF:
+                        continue
+                    else:
+                        logger.error(f"Kafka error: {msg.error()}")
+                        continue
                 
                 try:
-                    message_data = message.value
+                    message_data = json.loads(msg.value().decode('utf-8'))
                     self.stats['messages_processed'] += 1
                     
                     with self.buffer_lock:
