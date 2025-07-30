@@ -1,6 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 
+interface PortfolioAllocation {
+  deepQLearningPercent: number;
+  policyGradientPercent: number;
+  temporalFusionPercent: number;
+  cashPercent: number;
+  autoTradingEnabled: boolean;
+  rebalanceFrequency: 'Daily' | 'Weekly' | 'Monthly' | 'OnPerformance' | 'Manual';
+}
+
 interface DelegationData {
   delegationId: string;
   status: string;
@@ -9,6 +18,7 @@ interface DelegationData {
   profitLoss: number;
   roiPercentage: number;
   lastTradeTimestamp: number;
+  portfolioAllocation?: PortfolioAllocation;
 }
 
 interface AIPolicy {
@@ -51,6 +61,16 @@ const TradingDashboard: React.FC = () => {
   const [riskTolerance, setRiskTolerance] = useState<number>(5);
   const [quizPassed, setQuizPassed] = useState<boolean>(false);
   const [isCreatingDelegation, setIsCreatingDelegation] = useState<boolean>(false);
+  
+  const [portfolioAllocation, setPortfolioAllocation] = useState<PortfolioAllocation>({
+    deepQLearningPercent: 40,
+    policyGradientPercent: 30,
+    temporalFusionPercent: 20,
+    cashPercent: 10,
+    autoTradingEnabled: true,
+    rebalanceFrequency: 'Weekly'
+  });
+  const [isUpdatingAllocation, setIsUpdatingAllocation] = useState<boolean>(false);
 
   useEffect(() => {
     if (connected && publicKey) {
@@ -110,6 +130,69 @@ const TradingDashboard: React.FC = () => {
     const score = Math.floor(Math.random() * 20) + 80;
     setQuizPassed(score >= 80);
     alert(`Quiz completed! Score: ${score}% - ${score >= 80 ? 'Passed' : 'Failed'}`);
+  };
+
+  const handleAllocationChange = (field: keyof PortfolioAllocation, value: number) => {
+    setPortfolioAllocation(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const getTotalAllocation = () => {
+    return portfolioAllocation.deepQLearningPercent + 
+           portfolioAllocation.policyGradientPercent + 
+           portfolioAllocation.temporalFusionPercent + 
+           portfolioAllocation.cashPercent;
+  };
+
+  const handleUpdateAllocation = async () => {
+    if (!connected || !publicKey || getTotalAllocation() !== 100) return;
+
+    setIsUpdatingAllocation(true);
+    try {
+      const response = await fetch('/api/trading/portfolio-allocation', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          wallet_address: publicKey.toString(),
+          deep_q_learning_percent: portfolioAllocation.deepQLearningPercent,
+          policy_gradient_percent: portfolioAllocation.policyGradientPercent,
+          temporal_fusion_percent: portfolioAllocation.temporalFusionPercent,
+          cash_percent: portfolioAllocation.cashPercent,
+          auto_trading_enabled: portfolioAllocation.autoTradingEnabled,
+          rebalance_frequency: portfolioAllocation.rebalanceFrequency
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        alert(`Portfolio allocation updated successfully! Hash: ${result.allocation_hash?.slice(0, 8)}...`);
+        fetchDelegations();
+      } else {
+        const error = await response.json();
+        alert(`Failed to update allocation: ${error.message}`);
+      }
+    } catch (error) {
+      console.error('Error updating portfolio allocation:', error);
+      alert('Failed to update portfolio allocation');
+    } finally {
+      setIsUpdatingAllocation(false);
+    }
+  };
+
+  const fetchPortfolioAllocation = async (delegationId: string) => {
+    try {
+      const response = await fetch(`/api/trading/portfolio-allocation?delegation_id=${delegationId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setPortfolioAllocation(data);
+      }
+    } catch (error) {
+      console.error('Error fetching portfolio allocation:', error);
+    }
   };
 
   if (!connected) {
@@ -205,6 +288,116 @@ const TradingDashboard: React.FC = () => {
             {quizPassed && (
               <span className="text-green-600 font-medium">✓ Quiz Passed</span>
             )}
+          </div>
+
+          <div className="border-t pt-4">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Portfolio Allocation</h3>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Deep Q-Learning: {portfolioAllocation.deepQLearningPercent}%
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={portfolioAllocation.deepQLearningPercent}
+                  onChange={(e) => handleAllocationChange('deepQLearningPercent', parseInt(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Policy Gradient: {portfolioAllocation.policyGradientPercent}%
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={portfolioAllocation.policyGradientPercent}
+                  onChange={(e) => handleAllocationChange('policyGradientPercent', parseInt(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Temporal Fusion: {portfolioAllocation.temporalFusionPercent}%
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={portfolioAllocation.temporalFusionPercent}
+                  onChange={(e) => handleAllocationChange('temporalFusionPercent', parseInt(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Cash: {portfolioAllocation.cashPercent}%
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={portfolioAllocation.cashPercent}
+                  onChange={(e) => handleAllocationChange('cashPercent', parseInt(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+            </div>
+            
+            <div className="mt-4 flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="autoTrading"
+                  checked={portfolioAllocation.autoTradingEnabled}
+                  onChange={(e) => setPortfolioAllocation(prev => ({
+                    ...prev,
+                    autoTradingEnabled: e.target.checked
+                  }))}
+                  className="rounded"
+                />
+                <label htmlFor="autoTrading" className="text-sm text-gray-700">
+                  Enable Auto-Trading
+                </label>
+              </div>
+              
+              <select
+                value={portfolioAllocation.rebalanceFrequency}
+                onChange={(e) => setPortfolioAllocation(prev => ({
+                  ...prev,
+                  rebalanceFrequency: e.target.value as any
+                }))}
+                className="border border-gray-300 rounded-md px-3 py-1 text-sm"
+              >
+                <option value="Daily">Daily Rebalance</option>
+                <option value="Weekly">Weekly Rebalance</option>
+                <option value="Monthly">Monthly Rebalance</option>
+                <option value="OnPerformance">Performance-Based</option>
+                <option value="Manual">Manual Only</option>
+              </select>
+            </div>
+            
+            <div className="mt-2">
+              <div className={`text-sm ${getTotalAllocation() === 100 ? 'text-green-600' : 'text-red-600'}`}>
+                Total Allocation: {getTotalAllocation()}% {getTotalAllocation() !== 100 && '(Must equal 100%)'}
+              </div>
+            </div>
+            
+            <button
+              type="button"
+              onClick={handleUpdateAllocation}
+              disabled={isUpdatingAllocation || getTotalAllocation() !== 100}
+              className="mt-4 w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 disabled:opacity-50"
+            >
+              {isUpdatingAllocation ? 'Updating Allocation...' : 'Update Portfolio Allocation'}
+            </button>
           </div>
 
           <button

@@ -167,7 +167,7 @@ pub mod ai_competition {
         require!(objective_account.status == 1, ErrorCode::ObjectiveNotActive); // 1 = Active
         
         if let Some(amount) = expense_amount {
-            require!(amount <= 1000_000_000, ErrorCode::ExcessiveSupplementAmount);
+            require!(amount <= 1_000_000_000, ErrorCode::ExcessiveSupplementAmount);
         }
         
         match vote {

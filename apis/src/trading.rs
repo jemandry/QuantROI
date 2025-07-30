@@ -1,7 +1,10 @@
-use axum::{extract::{Extension, Path}, response::Json};
+use axum::{extract::{Extension, Path, Query}, response::Json};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::sync::Arc;
+use std::collections::HashMap;
+use std::str::FromStr;
+use solana_sdk::pubkey::Pubkey;
 
 use crate::{error::ApiError, solana_client::SolanaClientService, AppState};
 
@@ -112,4 +115,107 @@ pub async fn get_delegation_status(
 ) -> Result<Json<DelegationStatus>, ApiError> {
     let status = state.trading_service.get_delegation_status(&delegation_id).await?;
     Ok(Json(status))
+}
+
+#[derive(Deserialize)]
+pub struct PortfolioAllocationRequest {
+    pub wallet_address: String,
+    pub deep_q_learning_percent: u8,
+    pub policy_gradient_percent: u8,
+    pub temporal_fusion_percent: u8,
+    pub cash_percent: u8,
+    pub auto_trading_enabled: bool,
+    pub rebalance_frequency: String,
+}
+
+#[derive(Serialize)]
+pub struct PortfolioAllocationResponse {
+    pub success: bool,
+    pub allocation_hash: Option<String>,
+    pub message: String,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct PortfolioAllocation {
+    pub deep_q_learning_percent: u8,
+    pub policy_gradient_percent: u8,
+    pub temporal_fusion_percent: u8,
+    pub cash_percent: u8,
+    pub auto_trading_enabled: bool,
+    pub rebalance_frequency: String,
+    pub last_rebalance: i64,
+}
+
+pub async fn set_portfolio_allocation(
+    Json(request): Json<PortfolioAllocationRequest>,
+) -> Result<Json<PortfolioAllocationResponse>, ApiError> {
+    let total = request.deep_q_learning_percent + 
+               request.policy_gradient_percent + 
+               request.temporal_fusion_percent + 
+               request.cash_percent;
+    
+    if total != 100 {
+        return Ok(Json(PortfolioAllocationResponse {
+            success: false,
+            allocation_hash: None,
+            message: "Portfolio allocation percentages must sum to 100%".to_string(),
+        }));
+    }
+
+    let rebalance_freq = match request.rebalance_frequency.as_str() {
+        "Daily" | "Weekly" | "Monthly" | "OnPerformance" | "Manual" => request.rebalance_frequency.clone(),
+        _ => return Ok(Json(PortfolioAllocationResponse {
+            success: false,
+            allocation_hash: None,
+            message: "Invalid rebalance frequency".to_string(),
+        })),
+    };
+
+    let _wallet_pubkey = Pubkey::from_str(&request.wallet_address)
+        .map_err(|_| ApiError::ValidationError("Invalid wallet address".to_string()))?;
+
+    let mock_hash = format!("allocation_hash_{}", chrono::Utc::now().timestamp());
+    
+    Ok(Json(PortfolioAllocationResponse {
+        success: true,
+        allocation_hash: Some(mock_hash),
+        message: "Portfolio allocation updated successfully".to_string(),
+    }))
+}
+
+pub async fn get_portfolio_allocation(
+    Query(params): Query<HashMap<String, String>>,
+) -> Result<Json<PortfolioAllocation>, ApiError> {
+    let _delegation_id = params.get("delegation_id")
+        .ok_or_else(|| ApiError::ValidationError("Missing delegation_id parameter".to_string()))?;
+
+    let _delegation_pubkey = Pubkey::from_str(_delegation_id)
+        .map_err(|_| ApiError::ValidationError("Invalid delegation_id".to_string()))?;
+
+    let mock_allocation = PortfolioAllocation {
+        deep_q_learning_percent: 40,
+        policy_gradient_percent: 30,
+        temporal_fusion_percent: 20,
+        cash_percent: 10,
+        auto_trading_enabled: true,
+        rebalance_frequency: "Weekly".to_string(),
+        last_rebalance: chrono::Utc::now().timestamp(),
+    };
+
+    Ok(Json(mock_allocation))
+}
+
+pub async fn rebalance_portfolio(
+    Json(request): Json<PortfolioAllocationRequest>,
+) -> Result<Json<PortfolioAllocationResponse>, ApiError> {
+    let _wallet_pubkey = Pubkey::from_str(&request.wallet_address)
+        .map_err(|_| ApiError::ValidationError("Invalid wallet address".to_string()))?;
+
+    let mock_hash = format!("rebalance_hash_{}", chrono::Utc::now().timestamp());
+    
+    Ok(Json(PortfolioAllocationResponse {
+        success: true,
+        allocation_hash: Some(mock_hash),
+        message: "Portfolio rebalanced successfully".to_string(),
+    }))
 }

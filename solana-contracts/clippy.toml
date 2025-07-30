@@ -15,5 +15,5 @@ disallowed-types = [
 ]
 
 # Performance lints
-single-use-lifetimes = "warn"
-trivially-copy-pastes = "warn"
+single_use_lifetimes = "warn"
+trivial_casts = "warn"

@@ -342,6 +342,115 @@ pub fn update_wealth_milestone_progress(
     Ok(())
 }
 
+pub fn set_portfolio_allocation(
+    ctx: Context<SetPortfolioAllocation>,
+    deep_q_learning_percent: u8,
+    policy_gradient_percent: u8,
+    temporal_fusion_percent: u8,
+    cash_percent: u8,
+    auto_trading_enabled: bool,
+    rebalance_frequency: RebalanceFrequency,
+) -> Result<()> {
+    let delegation = &mut ctx.accounts.delegation;
+    let strategy_manager = &mut ctx.accounts.strategy_manager;
+    let clock = Clock::get()?;
+    
+    let total_percent = deep_q_learning_percent + policy_gradient_percent + temporal_fusion_percent + cash_percent;
+    require!(total_percent == 100, DelegationError::InvalidAllocationPercentages);
+    
+    let snapshot = AllocationSnapshot {
+        timestamp: clock.unix_timestamp,
+        deep_q_learning_percent,
+        policy_gradient_percent,
+        temporal_fusion_percent,
+        cash_percent,
+        market_regime: MarketRegime::Sideways,
+        performance_trigger: false,
+    };
+    
+    strategy_manager.portfolio_allocation = PortfolioAllocation {
+        deep_q_learning_percent,
+        policy_gradient_percent,
+        temporal_fusion_percent,
+        cash_percent,
+        auto_trading_enabled,
+        rebalance_frequency,
+        last_rebalance: clock.unix_timestamp,
+        allocation_history: vec![snapshot],
+    };
+    
+    let mut hasher = Sha3_256::new();
+    hasher.update(&delegation.key().to_bytes());
+    hasher.update(&[deep_q_learning_percent, policy_gradient_percent, temporal_fusion_percent, cash_percent]);
+    hasher.update(&clock.unix_timestamp.to_le_bytes());
+    let allocation_hash = hasher.finalize();
+    
+    emit!(PortfolioAllocationUpdated {
+        delegation_id: delegation.key(),
+        user: delegation.bank_authority,
+        deep_q_learning_percent,
+        policy_gradient_percent,
+        temporal_fusion_percent,
+        cash_percent,
+        auto_trading_enabled,
+        allocation_hash: allocation_hash.to_vec(),
+        timestamp: clock.unix_timestamp,
+    });
+    
+    Ok(())
+}
+
+pub fn get_portfolio_allocation(ctx: Context<GetPortfolioAllocation>) -> Result<PortfolioAllocation> {
+    let strategy_manager = &ctx.accounts.strategy_manager;
+    Ok(strategy_manager.portfolio_allocation.clone())
+}
+
+pub fn rebalance_portfolio(
+    ctx: Context<RebalancePortfolio>,
+    market_conditions: MarketConditions,
+) -> Result<()> {
+    let delegation = &mut ctx.accounts.delegation;
+    let strategy_manager = &mut ctx.accounts.strategy_manager;
+    let clock = Clock::get()?;
+    
+    let current_regime = detect_market_regime(&market_conditions, &strategy_manager.market_regime_detector)?;
+    
+    let performance_score = strategy_manager.performance_tracker.performance_score;
+    let allocation = &mut strategy_manager.portfolio_allocation;
+    
+    let should_rebalance = match allocation.rebalance_frequency {
+        RebalanceFrequency::Daily => clock.unix_timestamp - allocation.last_rebalance >= 86400,
+        RebalanceFrequency::Weekly => clock.unix_timestamp - allocation.last_rebalance >= 604800,
+        RebalanceFrequency::Monthly => clock.unix_timestamp - allocation.last_rebalance >= 2592000,
+        RebalanceFrequency::OnPerformance => performance_score < 0.5,
+        RebalanceFrequency::Manual => false,
+    };
+    
+    if should_rebalance {
+        let snapshot = AllocationSnapshot {
+            timestamp: clock.unix_timestamp,
+            deep_q_learning_percent: allocation.deep_q_learning_percent,
+            policy_gradient_percent: allocation.policy_gradient_percent,
+            temporal_fusion_percent: allocation.temporal_fusion_percent,
+            cash_percent: allocation.cash_percent,
+            market_regime: current_regime,
+            performance_trigger: matches!(allocation.rebalance_frequency, RebalanceFrequency::OnPerformance),
+        };
+        
+        allocation.allocation_history.push(snapshot);
+        allocation.last_rebalance = clock.unix_timestamp;
+        
+        emit!(PortfolioRebalanced {
+            delegation_id: delegation.key(),
+            user: delegation.bank_authority,
+            market_regime: current_regime,
+            timestamp: clock.unix_timestamp,
+        });
+    }
+    
+    Ok(())
+}
+
 #[account]
 pub struct DelegationAccount {
     pub bank_authority: Pubkey,           // 32 bytes
@@ -374,6 +483,56 @@ pub enum DelegationType {
 pub enum TradeDirection {
     Buy,
     Sell,
+}
+
+#[derive(Accounts)]
+pub struct SetPortfolioAllocation<'info> {
+    #[account(
+        mut,
+        seeds = [b"delegation", delegation.bank_authority.as_ref()],
+        bump,
+        constraint = delegation.bank_authority == bank_authority.key() @ DelegationError::UnauthorizedAccess
+    )]
+    pub delegation: Account<'info, DelegationAccount>,
+    #[account(
+        mut,
+        seeds = [b"strategy_manager", delegation.key().as_ref()],
+        bump
+    )]
+    pub strategy_manager: Account<'info, AdaptiveStrategyManager>,
+    pub bank_authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct GetPortfolioAllocation<'info> {
+    #[account(
+        seeds = [b"strategy_manager", delegation.key().as_ref()],
+        bump
+    )]
+    pub strategy_manager: Account<'info, AdaptiveStrategyManager>,
+    #[account(
+        seeds = [b"delegation", delegation.bank_authority.as_ref()],
+        bump
+    )]
+    pub delegation: Account<'info, DelegationAccount>,
+}
+
+#[derive(Accounts)]
+pub struct RebalancePortfolio<'info> {
+    #[account(
+        mut,
+        seeds = [b"delegation", delegation.bank_authority.as_ref()],
+        bump,
+        constraint = delegation.bank_authority == bank_authority.key() @ DelegationError::UnauthorizedAccess
+    )]
+    pub delegation: Account<'info, DelegationAccount>,
+    #[account(
+        mut,
+        seeds = [b"strategy_manager", delegation.key().as_ref()],
+        bump
+    )]
+    pub strategy_manager: Account<'info, AdaptiveStrategyManager>,
+    pub bank_authority: Signer<'info>,
 }
 
 #[derive(Accounts)]
@@ -533,6 +692,27 @@ pub struct WealthMilestoneAchieved {
     pub timestamp: i64,
 }
 
+#[event]
+pub struct PortfolioAllocationUpdated {
+    pub delegation_id: Pubkey,
+    pub user: Pubkey,
+    pub deep_q_learning_percent: u8,
+    pub policy_gradient_percent: u8,
+    pub temporal_fusion_percent: u8,
+    pub cash_percent: u8,
+    pub auto_trading_enabled: bool,
+    pub allocation_hash: Vec<u8>,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct PortfolioRebalanced {
+    pub delegation_id: Pubkey,
+    pub user: Pubkey,
+    pub market_regime: MarketRegime,
+    pub timestamp: i64,
+}
+
 #[account]
 pub struct AdaptiveStrategyManager {
     pub manager_id: u64,
@@ -542,6 +722,7 @@ pub struct AdaptiveStrategyManager {
     pub performance_tracker: PerformanceTracker,
     pub switching_criteria: SwitchingCriteria,
     pub strategy_performance_history: Vec<StrategyPerformance>,
+    pub portfolio_allocation: PortfolioAllocation,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq)]
@@ -663,6 +844,38 @@ pub struct StrategyPerformance {
     pub timestamp: i64,
 }
 
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct PortfolioAllocation {
+    pub deep_q_learning_percent: u8,
+    pub policy_gradient_percent: u8,
+    pub temporal_fusion_percent: u8,
+    pub cash_percent: u8,
+    pub auto_trading_enabled: bool,
+    pub rebalance_frequency: RebalanceFrequency,
+    pub last_rebalance: i64,
+    pub allocation_history: Vec<AllocationSnapshot>,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct AllocationSnapshot {
+    pub timestamp: i64,
+    pub deep_q_learning_percent: u8,
+    pub policy_gradient_percent: u8,
+    pub temporal_fusion_percent: u8,
+    pub cash_percent: u8,
+    pub market_regime: MarketRegime,
+    pub performance_trigger: bool,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub enum RebalanceFrequency {
+    Daily,
+    Weekly,
+    Monthly,
+    OnPerformance,
+    Manual,
+}
+
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy)]
 pub enum MarketRegime {
     Bull,
@@ -742,6 +955,8 @@ pub enum DelegationError {
     StaleKnowledgeTest,
     #[msg("Exceeded recordkeeping time limit")]
     ExceededRecordkeepingLimit,
+    #[msg("Portfolio allocation percentages must sum to 100")]
+    InvalidAllocationPercentages,
 }
 
 fn calculate_performance_score(total_profit_loss: i64, total_trades: u64) -> u32 {
