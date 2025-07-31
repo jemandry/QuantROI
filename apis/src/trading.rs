@@ -53,13 +53,13 @@ impl TradingService {
         }
 
         let delegation_id = uuid::Uuid::new_v4().to_string();
-        
+
         Ok(delegation_id)
     }
 
     pub async fn execute_trade(&self, request: &ExecuteTradeRequest) -> Result<String, ApiError> {
         let trade_id = uuid::Uuid::new_v4().to_string();
-        
+
         Ok(trade_id)
     }
 
@@ -153,7 +153,7 @@ pub async fn set_portfolio_allocation(
                request.policy_gradient_percent + 
                request.temporal_fusion_percent + 
                request.cash_percent;
-    
+
     if total != 100 {
         return Ok(Json(PortfolioAllocationResponse {
             success: false,
@@ -175,7 +175,7 @@ pub async fn set_portfolio_allocation(
         .map_err(|_| ApiError::ValidationError("Invalid wallet address".to_string()))?;
 
     let mock_hash = format!("allocation_hash_{}", chrono::Utc::now().timestamp());
-    
+
     Ok(Json(PortfolioAllocationResponse {
         success: true,
         allocation_hash: Some(mock_hash),
@@ -212,7 +212,7 @@ pub async fn rebalance_portfolio(
         .map_err(|_| ApiError::ValidationError("Invalid wallet address".to_string()))?;
 
     let mock_hash = format!("rebalance_hash_{}", chrono::Utc::now().timestamp());
-    
+
     Ok(Json(PortfolioAllocationResponse {
         success: true,
         allocation_hash: Some(mock_hash),

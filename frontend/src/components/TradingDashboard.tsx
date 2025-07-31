@@ -61,7 +61,7 @@ const TradingDashboard: React.FC = () => {
   const [riskTolerance, setRiskTolerance] = useState<number>(5);
   const [quizPassed, setQuizPassed] = useState<boolean>(false);
   const [isCreatingDelegation, setIsCreatingDelegation] = useState<boolean>(false);
-  
+
   const [portfolioAllocation, setPortfolioAllocation] = useState<PortfolioAllocation>({
     deepQLearningPercent: 40,
     policyGradientPercent: 30,
@@ -208,7 +208,7 @@ const TradingDashboard: React.FC = () => {
     <div className="space-y-6">
       <div className="bg-white rounded-lg shadow p-6">
         <h2 className="text-xl font-semibold mb-4">AI Trading Delegation</h2>
-        
+
         <form onSubmit={handleCreateDelegation} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -227,7 +227,7 @@ const TradingDashboard: React.FC = () => {
                 </option>
               ))}
             </select>
-            
+
             {selectedPolicy && (
               <div className="mt-2 p-3 bg-gray-50 rounded-md">
                 <p className="text-sm text-gray-600">
@@ -292,7 +292,7 @@ const TradingDashboard: React.FC = () => {
 
           <div className="border-t pt-4">
             <h3 className="text-lg font-medium text-gray-900 mb-4">Portfolio Allocation</h3>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -307,7 +307,7 @@ const TradingDashboard: React.FC = () => {
                   className="w-full"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Policy Gradient: {portfolioAllocation.policyGradientPercent}%
@@ -321,7 +321,7 @@ const TradingDashboard: React.FC = () => {
                   className="w-full"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Temporal Fusion: {portfolioAllocation.temporalFusionPercent}%
@@ -335,7 +335,7 @@ const TradingDashboard: React.FC = () => {
                   className="w-full"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Cash: {portfolioAllocation.cashPercent}%
@@ -350,7 +350,7 @@ const TradingDashboard: React.FC = () => {
                 />
               </div>
             </div>
-            
+
             <div className="mt-4 flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <input
@@ -367,7 +367,7 @@ const TradingDashboard: React.FC = () => {
                   Enable Auto-Trading
                 </label>
               </div>
-              
+
               <select
                 value={portfolioAllocation.rebalanceFrequency}
                 onChange={(e) => setPortfolioAllocation(prev => ({
@@ -383,13 +383,13 @@ const TradingDashboard: React.FC = () => {
                 <option value="Manual">Manual Only</option>
               </select>
             </div>
-            
+
             <div className="mt-2">
               <div className={`text-sm ${getTotalAllocation() === 100 ? 'text-green-600' : 'text-red-600'}`}>
                 Total Allocation: {getTotalAllocation()}% {getTotalAllocation() !== 100 && '(Must equal 100%)'}
               </div>
             </div>
-            
+
             <button
               type="button"
               onClick={handleUpdateAllocation}
@@ -412,7 +412,7 @@ const TradingDashboard: React.FC = () => {
 
       <div className="bg-white rounded-lg shadow p-6">
         <h3 className="text-lg font-semibold mb-4">Active Delegations</h3>
-        
+
         {delegations.length === 0 ? (
           <p className="text-gray-600">No active delegations found.</p>
         ) : (
@@ -438,7 +438,7 @@ const TradingDashboard: React.FC = () => {
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="grid grid-cols-2 gap-4 text-sm text-gray-600">
                   <div>Total Trades: {delegation.totalTrades}</div>
                   <div>Last Trade: {new Date(delegation.lastTradeTimestamp * 1000).toLocaleDateString()}</div>

@@ -24,7 +24,7 @@ pub mod delegation_management {
         hasher.update(&delegation_amount.to_le_bytes());
         hasher.update(&clock.unix_timestamp.to_le_bytes());
         let hash = hasher.finalize();
-        
+
         delegation.bank_authority = ctx.accounts.bank_authority.key();
         delegation.ai_policy_pubkey = ai_policy_pubkey;
         delegation.delegation_amount = delegation_amount;
@@ -35,7 +35,7 @@ pub mod delegation_management {
         delegation.total_trades = 0;
         delegation.total_profit_loss = 0;
         delegation.cryptographic_hash = hash.to_vec();
-        
+
         emit!(DelegationInitialized {
             delegation_id: delegation.key(),
             bank_authority: ctx.accounts.bank_authority.key(),
@@ -43,7 +43,7 @@ pub mod delegation_management {
             amount: delegation_amount,
             timestamp: clock.unix_timestamp,
         });
-        
+
         Ok(())
     }
 
@@ -55,11 +55,11 @@ pub mod delegation_management {
     ) -> Result<()> {
         let delegation = &mut ctx.accounts.delegation;
         let clock = Clock::get()?;
-        
+
         require!(delegation.is_active, DelegationError::DelegationInactive);
         require!(ai_confidence_score >= 70, DelegationError::LowConfidenceScore);
         require!(trade_amount <= delegation.delegation_amount, DelegationError::InsufficientFunds);
-        
+
         let trade_result = match trade_direction {
             TradeDirection::Buy => {
                 let profit = (trade_amount as f64 * 0.001) as i64; // 0.1% microgain
@@ -72,20 +72,20 @@ pub mod delegation_management {
                 profit
             },
         };
-        
+
         delegation.total_trades += 1;
         delegation.performance_score = calculate_performance_score(
             delegation.total_profit_loss,
             delegation.total_trades,
         );
-        
+
         let mut hasher = Sha3_256::new();
         hasher.update(&delegation.key().to_bytes());
         hasher.update(&trade_amount.to_le_bytes());
         hasher.update(&(trade_direction as u8).to_le_bytes());
         hasher.update(&clock.unix_timestamp.to_le_bytes());
         let trade_hash = hasher.finalize();
-        
+
         emit!(TradeExecuted {
             delegation_id: delegation.key(),
             trade_amount,
@@ -95,7 +95,7 @@ pub mod delegation_management {
             trade_hash: trade_hash.to_vec(),
             timestamp: clock.unix_timestamp,
         });
-        
+
         Ok(())
     }
 
@@ -108,11 +108,12 @@ pub mod delegation_management {
         let delegation = &mut ctx.accounts.delegation;
         let strategy_manager = &mut ctx.accounts.strategy_manager;
         let clock = Clock::get()?;
-        
+
         require!(delegation.is_active, DelegationError::DelegationInactive);
-        
+
         let current_regime = detect_market_regime(&market_conditions, &strategy_manager.market_regime_detector)?;
-        
+
+
         let optimal_strategy = if let Some(preferred) = strategy_preference {
             preferred
         } else {
@@ -122,7 +123,7 @@ pub mod delegation_management {
                 &strategy_manager.switching_criteria
             )?
         };
-        
+
         let trade_result = match optimal_strategy {
             RLStrategyType::GatedDeepQLearning => {
                 execute_gated_dql_trade(&market_conditions, &qos_requirements)?
@@ -134,10 +135,10 @@ pub mod delegation_management {
                 execute_tft_trade(&market_conditions, &qos_requirements)?
             },
         };
-        
+
         if optimal_strategy != strategy_manager.current_strategy {
             strategy_manager.current_strategy = optimal_strategy;
-            
+
             emit!(StrategySwitch {
                 delegation_id: delegation.key(),
                 old_strategy: strategy_manager.current_strategy,
@@ -146,13 +147,13 @@ pub mod delegation_management {
                 timestamp: clock.unix_timestamp,
             });
         }
-        
+
         delegation.total_trades += 1;
         delegation.performance_score = calculate_performance_score(
             delegation.total_profit_loss,
             delegation.total_trades,
         );
-        
+
         emit!(AdaptiveTradeExecuted {
             delegation_id: delegation.key(),
             strategy_used: optimal_strategy,
@@ -172,13 +173,13 @@ pub mod delegation_management {
         let clock = Clock::get()?;
         
         delegation.is_active = new_status;
-        
+
         emit!(DelegationStatusUpdated {
             delegation_id: delegation.key(),
             new_status,
             timestamp: clock.unix_timestamp,
         });
-        
+
         Ok(())
     }
 
@@ -187,13 +188,13 @@ pub mod delegation_management {
         let clock = Clock::get()?;
         
         delegation.is_active = false;
-        
+
         emit!(DelegationRevoked {
             delegation_id: delegation.key(),
             bank_authority: delegation.bank_authority,
             timestamp: clock.unix_timestamp,
         });
-        
+
         Ok(())
     }
 
@@ -211,7 +212,7 @@ pub mod delegation_management {
                 DelegationError::InsufficientKnowledgeScore
             );
         }
-        
+
         require!(user_confirmation, DelegationError::UserConsentRequired);
         
         delegation.last_reconsent = clock.unix_timestamp;
@@ -223,11 +224,11 @@ pub mod delegation_management {
             ReconsentFrequency::Monthly => 2592000,    // 30 days
             ReconsentFrequency::Quarterly => 7776000,  // 90 days
         };
-        
-        delegation.reconsent_schedule.next_required = clock.unix_timestamp + frequency_seconds;
+
+        delegation.reconsent_schedule.next_required= clock.unix_timestamp + frequency_seconds;
         
         update_wealth_milestone_progress(delegation, clock.unix_timestamp)?;
-        
+
         emit!(WeeklyReconsentProcessed {
             delegation_id: delegation.bank_authority,
             user: delegation.bank_authority,
@@ -236,7 +237,7 @@ pub mod delegation_management {
             next_required: delegation.reconsent_schedule.next_required,
             timestamp: clock.unix_timestamp,
         });
-        
+
         Ok(())
     }
 
@@ -254,8 +255,8 @@ pub mod delegation_management {
         delegation.bank_authority = ctx.accounts.bank_authority.key();
         delegation.created_at = clock.unix_timestamp;
         delegation.is_active = true;
-        
-        delegation.memory_switches = DelegationMemoryState {
+
+        delegation.memory_switches= DelegationMemoryState {
             auto_renewal_enabled: true,
             weekly_confirmation_required,
             risk_tolerance_memory: RiskToleranceHistory {
@@ -280,7 +281,7 @@ pub mod delegation_management {
                 notification_preferences: Vec::new(),
             },
         };
-        
+
         delegation.reconsent_schedule = ReconsentSchedule {
             frequency: knowledge_test_frequency,
             next_required: clock.unix_timestamp + 604800, // First reconsent in 1 week
@@ -288,7 +289,7 @@ pub mod delegation_management {
             auto_pause_on_miss: true,
             knowledge_test_threshold: 80, // 80% minimum score
         };
-        
+
         delegation.last_reconsent = clock.unix_timestamp;
         delegation.reconsent_streak = 0;
         delegation.knowledge_test_required = true;
@@ -312,7 +313,7 @@ pub mod delegation_management {
             weekly_confirmation: weekly_confirmation_required,
             timestamp: clock.unix_timestamp,
         });
-        
+
         Ok(())
     }
 }

@@ -88,9 +88,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
     info!("QuantROI API server starting on port 8080");
-    
+
     axum::serve(listener, app).await?;
-    
+
     Ok(())
 }
 
