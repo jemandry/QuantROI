@@ -59,9 +59,9 @@ services:
   timescaledb:
     image: timescale/timescaledb:latest-pg15
     environment:
-      - POSTGRES_DB=fintech_db
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=your_secure_password
+      - POSTGRES_DB=${TIMESCALE_DB:-fintech_db}
+      - POSTGRES_USER=${TIMESCALE_USER:-postgres}
+      - POSTGRES_PASSWORD=${TIMESCALE_PASSWORD}
     ports:
       - "5432:5432"
     volumes:
