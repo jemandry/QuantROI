@@ -54,5 +54,17 @@ prometheus-client>=0.17.0
 pytest-benchmark>=4.0.0
 pytest-asyncio>=0.21.0
 
-# Additional statistical correlation analysis dependencies
-# (scipy and statsmodels already included above)
+# Batch simulation and scheduling
+schedule>=1.2.0
+redis>=4.5.0
+
+# Economic scaling and job processing
+celery>=5.3.0
+kombu>=5.3.0
+
+# Enhanced data processing
+psutil>=5.9.0
+memory-profiler>=0.61.0
+
+# Additional statistical analysis
+statsmodels>=0.14.0

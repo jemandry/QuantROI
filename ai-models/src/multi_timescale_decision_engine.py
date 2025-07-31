@@ -40,6 +40,19 @@ class MultiTimescaleDecisionEngine:
         self.sentiment_analyzer = NewsSentimentAnalyzer()
         self.strategy_manager = AdaptiveStrategyManager() if AdaptiveStrategyManager else None
         
+        try:
+            from batch_simulation_engine import BatchSimulationEngine
+            self.batch_sim_engine = BatchSimulationEngine()
+            self.cached_results_available = True
+        except ImportError:
+            from .batch_simulation_engine import BatchSimulationEngine
+            self.batch_sim_engine = BatchSimulationEngine()
+            self.cached_results_available = True
+        except Exception as e:
+            logging.warning(f"Batch simulation engine not available: {e}")
+            self.batch_sim_engine = None
+            self.cached_results_available = False
+        
         self.handlers = {
             TimescaleLevel.MILLISECOND: self.handle_millisecond_hft,
             TimescaleLevel.SECOND: self.handle_second_news,
@@ -88,9 +101,28 @@ class MultiTimescaleDecisionEngine:
         }
     
     async def handle_millisecond_hft(self, event: Dict[str, Any]) -> Dict[str, Any]:
-        """Millisecond HFT decisions using simulation lookup (<5ms target)"""
+        """Millisecond HFT decisions using cached simulation lookup (<1s target)"""
         try:
             symbol = event.get('symbol', 'UNKNOWN')
+            
+            if self.cached_results_available:
+                cached_result = await self.batch_sim_engine.query_cached_simulation(
+                    symbol=symbol,
+                    strategy_type="arbitrage",
+                    scenario_type="high_volatility"
+                )
+                
+                if cached_result and cached_result.get('confidence_score', 0) > 0.7:
+                    return {
+                        "type": "ORDER",
+                        "action": "buy" if cached_result['outcomes'].get('bullseye_profit', 0) > 0 else "sell",
+                        "quantity": min(1000, int(cached_result['confidence_score'] * 500)),
+                        "symbol": symbol,
+                        "strategy": "cached_hft_arbitrage",
+                        "confidence": cached_result['confidence_score'],
+                        "source": "cached_simulation",
+                        "stock_category": cached_result.get('stock_metrics', {}).get('market_cap_category', 'unknown')
+                    }
             
             sim_result = await self.sim_store.retrieve_simulation("arbitrage", "ms", time_range_minutes=1)
             
@@ -101,7 +133,8 @@ class MultiTimescaleDecisionEngine:
                     "quantity": sim_result.get('quantity', 100),
                     "symbol": symbol,
                     "strategy": "hft_arbitrage",
-                    "confidence": sim_result.get('confidence', 0.8)
+                    "confidence": sim_result.get('confidence', 0.8),
+                    "source": "real_time_simulation"
                 }
             
             return {"type": "HOLD", "reason": "no_arbitrage_opportunity"}
