@@ -1052,6 +1052,11 @@ class EnhancedCausalTradingModel:
             
             gru_features = self._convert_option_features_to_gru_format(option_conditions)
             
+            correlation_insights = option_conditions.get('correlation_insights', {})
+            enhanced_confidence = self._calculate_correlation_enhanced_confidence(
+                option_conditions, correlation_insights
+            )
+            
             market_data = MarketData(
                 symbol=trade_data.get('symbol', 'UNKNOWN'),
                 price=option_conditions.get('underlying_price', 100.0),
@@ -1063,7 +1068,7 @@ class EnhancedCausalTradingModel:
             trading_result = TradingResult(
                 action=trade_data.get('trade_action', 'hold'),
                 quantity=1.0,
-                confidence=option_conditions.get('uoa_confidence_avg', 0.5),
+                confidence=enhanced_confidence,
                 expected_return=profit_loss,
                 strategy_used=RLStrategyType.GATED_DEEP_Q_LEARNING,  # Default
                 risk_score=0.5,
@@ -1075,13 +1080,44 @@ class EnhancedCausalTradingModel:
                     strategy_type=RLStrategyType.GATED_DEEP_Q_LEARNING,
                     market_data=market_data,
                     trade_result=trading_result,
-                    causal_context={'option_conditions': option_conditions}
+                    causal_context={
+                        'option_conditions': option_conditions,
+                        'correlation_insights': correlation_insights
+                    }
                 )
             
             self.logger.debug(f"Integrated option learning update for {trade_data.get('symbol')}")
             
         except Exception as e:
             self.logger.error(f"Error integrating option learning update: {e}")
+    
+    def _calculate_correlation_enhanced_confidence(self, option_conditions: Dict[str, Any], 
+                                                 correlation_insights: Dict[str, Any]) -> float:
+        """Calculate enhanced confidence based on correlation insights"""
+        try:
+            base_confidence = option_conditions.get('uoa_confidence_avg', 0.5)
+            
+            significant_correlations = correlation_insights.get('significant_correlations', {})
+            predictive_signals = correlation_insights.get('predictive_signals', {})
+            
+            correlation_boost = 0.0
+            if significant_correlations:
+                avg_correlation = np.mean([
+                    abs(corr['correlation_coefficient']) 
+                    for corr in significant_correlations.values()
+                ])
+                correlation_boost += avg_correlation * 0.2
+            
+            if predictive_signals:
+                avg_predictive_power = np.mean(list(predictive_signals.values()))
+                correlation_boost += avg_predictive_power * 0.3
+            
+            enhanced_confidence = min(1.0, base_confidence + correlation_boost)
+            return enhanced_confidence
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating correlation enhanced confidence: {e}")
+            return option_conditions.get('uoa_confidence_avg', 0.5)
     
     def _convert_option_features_to_gru_format(self, option_conditions: Dict[str, Any]) -> torch.Tensor:
         """Convert option chain features to format compatible with GRU networks"""

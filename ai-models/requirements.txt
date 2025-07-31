@@ -52,3 +52,7 @@ networkx>=3.1.0
 redis>=4.5.0
 prometheus-client>=0.17.0
 pytest-benchmark>=4.0.0
+pytest-asyncio>=0.21.0
+
+# Additional statistical correlation analysis dependencies
+# (scipy and statsmodels already included above)

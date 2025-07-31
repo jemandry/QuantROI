@@ -49,6 +49,9 @@ class RetroactiveOptionLearning:
         self.option_trade_memory = deque(maxlen=max_memory_size)
         self.pending_trades = {}  # trade_id -> OptionTradeOutcome
         
+        from .option_trade_correlation import OptionTradeCorrelationEngine
+        self.correlation_engine = OptionTradeCorrelationEngine(max_memory_size, min_samples=30)
+        
         self.feature_extractor = self._create_feature_extractor()
         self.learning_queue = asyncio.Queue()
         self.learning_worker_active = False
@@ -58,7 +61,8 @@ class RetroactiveOptionLearning:
             'successful_predictions': 0,
             'failed_predictions': 0,
             'learning_updates_applied': 0,
-            'avg_prediction_accuracy': 0.0
+            'avg_prediction_accuracy': 0.0,
+            'correlation_insights_generated': 0
         }
         
         self.logger.info("RetroactiveOptionLearning initialized")
@@ -125,6 +129,19 @@ class RetroactiveOptionLearning:
             self.option_trade_memory.append(trade_outcome)
             del self.pending_trades[trade_id]
             
+            # Record trade outcome for correlation analysis
+            await self.correlation_engine.record_trade_outcome(
+                symbol=trade_outcome.symbol,
+                trade_id=trade_id,
+                profit_loss=profit_loss,
+                success=trade_outcome.success,
+                trade_duration_minutes=trade_outcome.trade_duration_minutes,
+                timestamp=trade_outcome.timestamp
+            )
+            
+            # Record option signals for correlation analysis
+            await self._record_option_signals_for_correlation(trade_outcome)
+            
             learning_update = self._create_learning_update(trade_outcome)
             if learning_update:
                 await self.learning_queue.put(learning_update)
@@ -145,6 +162,35 @@ class RetroactiveOptionLearning:
         except Exception as e:
             self.logger.error(f"Error recording option trade exit: {e}")
             return False
+    
+    async def _record_option_signals_for_correlation(self, trade_outcome: OptionTradeOutcome):
+        """Record option signals for correlation analysis"""
+        try:
+            option_conditions = trade_outcome.option_conditions
+            symbol = trade_outcome.symbol
+            timestamp = trade_outcome.timestamp
+            
+            signal_mappings = {
+                'max_pain_distance': option_conditions.get('max_pain_distance', 0),
+                'total_delta_exposure': option_conditions.get('total_delta_exposure', 0),
+                'total_gamma_exposure': option_conditions.get('total_gamma_exposure', 0),
+                'uoa_events_count': option_conditions.get('uoa_events_count', 0),
+                'uoa_confidence_avg': option_conditions.get('uoa_confidence_avg', 0),
+                'iv_skew': option_conditions.get('iv_skew', 0),
+                'put_call_ratio': option_conditions.get('put_call_ratio', 1.0),
+                'volume_weighted_iv': option_conditions.get('volume_weighted_iv', 0)
+            }
+            
+            for signal_name, signal_value in signal_mappings.items():
+                await self.correlation_engine.record_option_signal(
+                    symbol=symbol,
+                    signal_name=signal_name,
+                    signal_value=float(signal_value),
+                    timestamp=timestamp
+                )
+                
+        except Exception as e:
+            self.logger.error(f"Error recording option signals for correlation: {e}")
     
     def _create_learning_update(self, trade_outcome: OptionTradeOutcome) -> Optional[LearningUpdate]:
         """
@@ -337,6 +383,8 @@ class RetroactiveOptionLearning:
         This is where option learning connects to the main trading models
         """
         try:
+            correlation_insights = await self._generate_correlation_insights(batch_updates)
+            
             learning_data = {
                 'timestamp': time.time(),
                 'feature_vectors': extracted_features.numpy().tolist(),
@@ -344,6 +392,7 @@ class RetroactiveOptionLearning:
                 'actions': [update.target_action for update in batch_updates],
                 'confidences': [update.confidence for update in batch_updates],
                 'market_regimes': [update.market_regime for update in batch_updates],
+                'correlation_insights': correlation_insights,
                 'learning_type': 'option_chain_retroactive'
             }
             
@@ -353,6 +402,50 @@ class RetroactiveOptionLearning:
             
         except Exception as e:
             self.logger.error(f"Error integrating with existing models: {e}")
+    
+    async def _generate_correlation_insights(self, batch_updates: List[LearningUpdate]) -> Dict[str, Any]:
+        """Generate correlation insights for enhanced neural network learning"""
+        try:
+            insights = {
+                'significant_correlations': {},
+                'predictive_signals': {},
+                'correlation_summary': {},
+                'trading_recommendations': []
+            }
+            
+            symbols = set()
+            for update in batch_updates:
+                symbols.add('GENERAL')  # Fallback for now
+            
+            for symbol in symbols:
+                key_signals = ['max_pain_distance', 'uoa_confidence_avg', 'iv_skew', 'put_call_ratio']
+                
+                for signal_name in key_signals:
+                    for method in ['pearson', 'spearman']:
+                        correlation = await self.correlation_engine.compute_signal_outcome_correlation(
+                            symbol=symbol,
+                            signal_name=signal_name,
+                            correlation_method=method
+                        )
+                        
+                        if correlation and correlation.correlation_result.p_value < 0.05:
+                            key = f"{symbol}_{signal_name}_{method}"
+                            insights['significant_correlations'][key] = {
+                                'correlation_coefficient': correlation.correlation_result.correlation_coefficient,
+                                'p_value': correlation.correlation_result.p_value,
+                                'predictive_power': correlation.predictive_power,
+                                'optimal_lag': correlation.optimal_lag
+                            }
+                            
+                            if correlation.predictive_power > 0.1:
+                                insights['predictive_signals'][key] = correlation.predictive_power
+            
+            self.learning_stats['correlation_insights_generated'] += 1
+            return insights
+            
+        except Exception as e:
+            self.logger.error(f"Error generating correlation insights: {e}")
+            return {}
     
     async def _store_learning_data_for_integration(self, learning_data: Dict[str, Any]):
         """Store learning data for pickup by main trading models"""

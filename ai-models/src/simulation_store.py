@@ -417,3 +417,79 @@ class TimescaleSimulationStore:
         except Exception as e:
             self.logger.error(f"Error retrieving option learning data: {e}")
             return []
+    
+    async def store_correlation_insights(self, symbol: str, correlation_insights: Dict[str, Any]) -> bool:
+        """Store correlation insights for analysis and monitoring"""
+        if not self.pool:
+            await self.initialize()
+            
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS correlation_insights (
+                        time TIMESTAMPTZ NOT NULL,
+                        symbol TEXT NOT NULL,
+                        significant_correlations JSONB,
+                        predictive_signals JSONB,
+                        correlation_summary JSONB,
+                        trading_recommendations JSONB,
+                        insights_processed BOOLEAN DEFAULT FALSE
+                    );
+                """)
+                
+                try:
+                    await conn.execute("SELECT create_hypertable('correlation_insights', 'time', if_not_exists => TRUE);")
+                except Exception as e:
+                    self.logger.warning(f"Correlation insights hypertable creation warning: {e}")
+                
+                await conn.execute("""
+                    INSERT INTO correlation_insights (
+                        time, symbol, significant_correlations, predictive_signals, 
+                        correlation_summary, trading_recommendations
+                    ) VALUES (NOW(), $1, $2, $3, $4, $5)
+                """, 
+                symbol,
+                json.dumps(correlation_insights.get('significant_correlations', {})),
+                json.dumps(correlation_insights.get('predictive_signals', {})),
+                json.dumps(correlation_insights.get('correlation_summary', {})),
+                json.dumps(correlation_insights.get('trading_recommendations', []))
+                )
+                
+                return True
+                
+        except Exception as e:
+            self.logger.error(f"Error storing correlation insights: {e}")
+            return False
+    
+    async def get_correlation_insights(self, symbol: str, limit: int = 100) -> List[Dict[str, Any]]:
+        """Retrieve correlation insights for analysis"""
+        if not self.pool:
+            await self.initialize()
+            
+        try:
+            async with self.pool.acquire() as conn:
+                results = await conn.fetch("""
+                    SELECT time, symbol, significant_correlations, predictive_signals,
+                           correlation_summary, trading_recommendations
+                    FROM correlation_insights 
+                    WHERE symbol = $1
+                    ORDER BY time DESC
+                    LIMIT $2
+                """, symbol, limit)
+                
+                insights_data = []
+                for row in results:
+                    insights_data.append({
+                        'timestamp': row['time'].isoformat(),
+                        'symbol': row['symbol'],
+                        'significant_correlations': row['significant_correlations'] or {},
+                        'predictive_signals': row['predictive_signals'] or {},
+                        'correlation_summary': row['correlation_summary'] or {},
+                        'trading_recommendations': row['trading_recommendations'] or []
+                    })
+                
+                return insights_data
+                
+        except Exception as e:
+            self.logger.error(f"Error retrieving correlation insights: {e}")
+            return []
