@@ -517,6 +517,15 @@ class CausalEventEngine:
         event['vector_clock'] = self.vector_clock.copy()
         event['lamport_timestamp'] = max(self.vector_clock.values())
         
+        try:
+            from nanosecond_timing import get_ns_timestamp, ClockType
+            event['timestamp_ns'] = get_ns_timestamp(ClockType.MONOTONIC)
+            event['timestamp_utc_ns'] = get_ns_timestamp(ClockType.REALTIME)
+        except ImportError:
+            import time
+            event['timestamp_ns'] = int(time.time() * 1_000_000_000)
+            event['timestamp_utc_ns'] = event['timestamp_ns']
+        
         self.event_log.append(event)
         self._update_causal_chains(event)
     
