@@ -1,4 +1,4 @@
-use memory_hierarchy::{MemoryHierarchy, MemoryLevel, Cache, ReplacementPolicy};
+use memory_hierarchy::{MemoryHierarchy, MemoryLevel, Cache, ReplacementPolicy, BraidedBrownianModel, QuantizationLevel, PruningStrategy};
 use std::time::Duration;
 use tokio::time::timeout;
 
@@ -87,6 +87,56 @@ async fn test_data_promotion() {
     let access_time = start.elapsed();
     
     assert!(access_time < Duration::from_millis(10));
+}
+
+#[tokio::test]
+async fn test_braided_brownian_integration() {
+    let hierarchy = MemoryHierarchy::new();
+    
+    let braided_model = BraidedBrownianModel::new("test_braided_model".to_string(), 3, 50);
+    hierarchy.register_braided_model(braided_model).await;
+    
+    hierarchy.quantize_braided_model("test_braided_model", QuantizationLevel::INT8).await.unwrap();
+    hierarchy.prune_braided_model("test_braided_model", PruningStrategy::Structured, 0.3).await.unwrap();
+    
+    let initial_conditions = vec![100.0, 105.0, 95.0];
+    let paths = hierarchy.generate_braided_paths("test_braided_model", &initial_conditions).await.unwrap();
+    assert_eq!(paths.len(), 3);
+    assert!(!paths[0].is_empty());
+    
+    let moments = hierarchy.calculate_risk_moments("test_braided_model", &paths).await.unwrap();
+    assert!(!moments.is_empty());
+    assert_eq!(moments.len(), 9);
+    
+    hierarchy.store_braided_analysis("test_braided_analysis".to_string(), "test_braided_model", &initial_conditions).await.unwrap();
+    let stored_analysis = hierarchy.get("test_braided_analysis").await;
+    assert!(stored_analysis.is_some());
+    
+    let stats = hierarchy.get_ai_optimization_stats().await;
+    assert!(stats.get("total_braided_models").unwrap() > &0.0);
+    assert!(stats.get("average_speedup").unwrap() > &1.0);
+}
+
+#[tokio::test]
+async fn test_braided_model_optimization() {
+    let mut model = BraidedBrownianModel::new("optimization_test".to_string(), 2, 100);
+    let original_size = model.metadata.original_size_bytes;
+    
+    model.quantize(QuantizationLevel::INT8).unwrap();
+    assert_eq!(model.quantization, QuantizationLevel::INT8);
+    assert!(model.metadata.optimized_size_bytes < original_size);
+    assert!(model.metadata.speedup_factor > 1.0);
+    
+    model.prune(PruningStrategy::Structured, 0.4).unwrap();
+    assert_eq!(model.sparsity, 0.4);
+    assert!(model.metadata.speedup_factor > 2.0);
+    
+    let paths = model.generate_braided_paths(&[100.0, 110.0]).await;
+    assert_eq!(paths.len(), 2);
+    assert!(!paths[0].is_empty());
+    
+    let moments = model.calculate_risk_moments(&paths);
+    assert_eq!(moments.len(), 6);
 }
 
 #[tokio::test]

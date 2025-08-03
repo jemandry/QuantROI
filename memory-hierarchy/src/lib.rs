@@ -4,6 +4,9 @@ use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 use tokio::time::sleep;
 
+pub mod ai_optimization;
+pub use ai_optimization::{AIModel, AIModelOptimizer, BraidedBrownianModel, QuantizationLevel, PruningStrategy, OptimizationMetadata};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MemoryLevel {
     Register,      // ~0.5-1 ns
@@ -202,6 +205,7 @@ pub struct MemoryHierarchy {
     archival_storage: Arc<RwLock<HashMap<String, Vec<u8>>>>,
     
     access_stats: Arc<Mutex<AccessStats>>,
+    ai_optimizer: Arc<AIModelOptimizer>,
 }
 
 #[derive(Debug, Default)]
@@ -226,6 +230,7 @@ impl MemoryHierarchy {
             network_storage: Arc::new(RwLock::new(HashMap::new())),
             archival_storage: Arc::new(RwLock::new(HashMap::new())),
             access_stats: Arc::new(Mutex::new(AccessStats::default())),
+            ai_optimizer: Arc::new(AIModelOptimizer::new()),
         }
     }
 
@@ -383,6 +388,8 @@ impl MemoryHierarchy {
             0.0
         };
 
+        let ai_report = futures::executor::block_on(self.ai_optimizer.generate_report());
+        
         format!(
             "Memory Hierarchy Performance Report\n\
              ===================================\n\
@@ -399,7 +406,9 @@ impl MemoryHierarchy {
              - SSD Storage: {}\n\
              - HDD Storage: {}\n\
              - Network Storage: {}\n\
-             - Archival Storage: {}\n",
+             - Archival Storage: {}\n\
+             \n\
+             {}\n",
             stats.total_accesses,
             hit_rate,
             avg_latency,
@@ -412,6 +421,7 @@ impl MemoryHierarchy {
             stats.level_accesses.get(&MemoryLevel::HDD).unwrap_or(&0),
             stats.level_accesses.get(&MemoryLevel::NetworkStorage).unwrap_or(&0),
             stats.level_accesses.get(&MemoryLevel::ArchivalStorage).unwrap_or(&0),
+            ai_report,
         )
     }
 }
@@ -425,5 +435,49 @@ impl Clone for AccessStats {
             total_latency: self.total_latency,
             level_accesses: self.level_accesses.clone(),
         }
+    }
+}
+
+impl MemoryHierarchy {
+    pub fn ai_optimizer(&self) -> &Arc<AIModelOptimizer> {
+        &self.ai_optimizer
+    }
+
+    pub async fn register_braided_model(&self, model: BraidedBrownianModel) {
+        self.ai_optimizer.register_braided_model(model).await;
+    }
+
+    pub async fn generate_braided_paths(&self, model_id: &str, initial_conditions: &[f32]) -> Result<Vec<Vec<f32>>, String> {
+        self.ai_optimizer.generate_braided_paths(model_id, initial_conditions).await
+    }
+
+    pub async fn calculate_risk_moments(&self, model_id: &str, paths: &[Vec<f32>]) -> Result<Vec<f32>, String> {
+        self.ai_optimizer.calculate_risk_moments(model_id, paths).await
+    }
+
+    pub async fn quantize_braided_model(&self, model_id: &str, level: QuantizationLevel) -> Result<(), String> {
+        self.ai_optimizer.quantize_braided_model(model_id, level).await
+    }
+
+    pub async fn prune_braided_model(&self, model_id: &str, strategy: PruningStrategy, sparsity: f32) -> Result<(), String> {
+        self.ai_optimizer.prune_braided_model(model_id, strategy, sparsity).await
+    }
+
+    pub async fn store_braided_analysis(&self, key: String, model_id: &str, initial_conditions: &[f32]) -> Result<(), String> {
+        let paths = self.generate_braided_paths(model_id, initial_conditions).await?;
+        let moments = self.calculate_risk_moments(model_id, &paths).await?;
+        
+        let analysis = format!(
+            "{{\"model_id\": \"{}\", \"initial_conditions\": {:?}, \"paths\": {:?}, \"risk_moments\": {:?}, \"braid_invariants\": {:?}}}",
+            model_id, initial_conditions, paths, moments, 
+            vec![paths.len(), paths.get(0).map_or(0, |p| p.len())]
+        );
+        
+        self.put(key, analysis.into_bytes()).await;
+        Ok(())
+    }
+
+    pub async fn get_ai_optimization_stats(&self) -> HashMap<String, f64> {
+        self.ai_optimizer.get_optimization_stats().await
     }
 }
