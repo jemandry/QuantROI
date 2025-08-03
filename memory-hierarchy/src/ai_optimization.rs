@@ -328,25 +328,51 @@ impl BraidedBrownianModel {
         let mut paths: Vec<Vec<f32>> = Vec::new();
         
         for strand in 0..self.num_strands {
-            let mut path = vec![initial_conditions[strand % initial_conditions.len()]];
-            let mut rng_state = (strand as u64 + 1) * 12345;
+            let initial_value = initial_conditions[strand % initial_conditions.len()];
+            paths.push(vec![initial_value]);
+        }
+        
+        for step in 0..self.time_steps {
+            let mut new_values = Vec::new();
             
-            for step in 0..self.time_steps {
+            for strand in 0..self.num_strands {
+                let mut rng_state = ((strand as u64 + 1) * 12345) + (step as u64 * 7919);
                 rng_state = rng_state.wrapping_mul(1103515245).wrapping_add(12345);
                 let random = (rng_state as f32 / u64::MAX as f32 - 0.5) * 0.1;
                 
+                let current_value = paths[strand][step];
                 let mut braided_increment = random;
+                
                 for other_strand in 0..self.num_strands {
-                    if other_strand != strand && other_strand < paths.len() && step < paths[other_strand].len() {
+                    if other_strand != strand {
                         let weight_idx = (strand * self.num_strands + other_strand) % self.weights_conv.len();
-                        braided_increment += self.weights_conv[weight_idx] * paths[other_strand][step] * 0.01;
+                        let other_value = paths[other_strand][step];
+                        
+                        let relative_position = current_value - other_value;
+                        let braiding_force = self.weights_conv[weight_idx] * relative_position * 0.05;
+                        
+                        let phase_shift = (strand as f32 * 2.0 * std::f32::consts::PI / self.num_strands as f32) + 
+                                        (step as f32 * 0.1);
+                        let oscillation = (phase_shift + other_strand as f32).sin() * 0.02;
+                        
+                        braided_increment += braiding_force + oscillation;
                     }
                 }
                 
-                let next_value = path[step] + braided_increment;
-                path.push(next_value);
+                let braid_period = self.time_steps as f32 / 4.0;
+                let braid_phase = (step as f32 / braid_period) * 2.0 * std::f32::consts::PI;
+                let strand_offset = strand as f32 * 2.0 * std::f32::consts::PI / self.num_strands as f32;
+                let periodic_braiding = (braid_phase + strand_offset).sin() * 0.03;
+                
+                braided_increment += periodic_braiding;
+                
+                let next_value = current_value + braided_increment;
+                new_values.push(next_value);
             }
-            paths.push(path);
+            
+            for (strand, &new_value) in new_values.iter().enumerate() {
+                paths[strand].push(new_value);
+            }
         }
         
         let base_latency = Duration::from_micros(500);
