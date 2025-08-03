@@ -81,6 +81,7 @@ pub struct CausalDataAgent {
     sessions: Arc<RwLock<HashMap<String, AnalysisSession>>>,
     baseline_questions: Vec<CausalQuestion>,
     confidence_threshold: f32,
+    quantum_audit_engine: Option<Box<dyn crate::quantum_audit::QuantumAuditEngine + Send + Sync>>,
 }
 
 impl CausalDataAgent {
@@ -148,6 +149,7 @@ impl CausalDataAgent {
             sessions: Arc::new(RwLock::new(HashMap::new())),
             baseline_questions,
             confidence_threshold: 0.7,
+            quantum_audit_engine: None,
         }
     }
 
@@ -472,6 +474,97 @@ impl CausalDataAgent {
             Ok("Continue gathering data or answering causal questions.".to_string())
         } else {
             Err("Session not found".to_string())
+        }
+    }
+    
+    pub fn new_with_quantum_engine(quantum_engine: Option<Box<dyn crate::quantum_audit::QuantumAuditEngine + Send + Sync>>) -> Self {
+        let baseline_questions = vec![
+            CausalQuestion {
+                id: "earnings_news".to_string(),
+                question: "Was there any earnings announcement or significant news during this time period?".to_string(),
+                category: "fundamental".to_string(),
+                priority: 9,
+                data_requirement: "news_data".to_string(),
+                confidence_impact: 0.15,
+            },
+            CausalQuestion {
+                id: "volume_spike".to_string(),
+                question: "Did you notice any unusual volume spikes or trading activity?".to_string(),
+                category: "technical".to_string(),
+                priority: 8,
+                data_requirement: "volume_data".to_string(),
+                confidence_impact: 0.12,
+            },
+            CausalQuestion {
+                id: "options_activity".to_string(),
+                question: "Were there any large option trades or changes in implied volatility?".to_string(),
+                category: "derivatives".to_string(),
+                priority: 7,
+                data_requirement: "options_data".to_string(),
+                confidence_impact: 0.10,
+            },
+            CausalQuestion {
+                id: "market_events".to_string(),
+                question: "Were there any market-wide events (Fed decisions, economic data) affecting this stock?".to_string(),
+                category: "macro".to_string(),
+                priority: 8,
+                data_requirement: "market_events".to_string(),
+                confidence_impact: 0.13,
+            },
+            CausalQuestion {
+                id: "quantum_entanglement".to_string(),
+                question: "Are there quantum entanglement patterns in the market data that could indicate hidden correlations?".to_string(),
+                category: "quantum".to_string(),
+                priority: 6,
+                data_requirement: "quantum_data".to_string(),
+                confidence_impact: 0.08,
+            },
+            CausalQuestion {
+                id: "regulatory_prediction".to_string(),
+                question: "What regulatory changes might affect this asset based on quantum ML predictions?".to_string(),
+                category: "regulatory".to_string(),
+                priority: 7,
+                data_requirement: "regulatory_data".to_string(),
+                confidence_impact: 0.11,
+            },
+        ];
+
+        Self {
+            sessions: Arc::new(RwLock::new(HashMap::new())),
+            baseline_questions,
+            confidence_threshold: 0.7,
+            quantum_audit_engine: quantum_engine,
+        }
+    }
+    
+    pub async fn create_quantum_audit_session(&self, mode: crate::quantum_audit::QuantumMode) -> Result<String, String> {
+        if let Some(quantum_engine) = &self.quantum_audit_engine {
+            quantum_engine.create_audit_session(mode).await
+        } else {
+            Err("Quantum audit engine not available".to_string())
+        }
+    }
+    
+    pub async fn analyze_with_quantum_audit(&self, session_id: &str, data: &[u8]) -> Result<String, String> {
+        if let Some(quantum_engine) = &self.quantum_audit_engine {
+            let audit_result = quantum_engine.process_quantum_audit(session_id, data).await?;
+            let predictions = quantum_engine.predict_regulatory_changes(session_id).await?;
+            
+            Ok(format!(
+                "Quantum Audit Analysis:\n\
+                 - Audit ID: {}\n\
+                 - Entanglement Score: {:.4}\n\
+                 - Decoherence Time: {:.2}ms\n\
+                 - Regulatory Predictions: {} identified\n\
+                 - Quantum Hash: {:02x?}",
+                audit_result.audit_id,
+                audit_result.entanglement_score,
+                audit_result.decoherence_time,
+                predictions.len(),
+                &audit_result.quantum_hash[..8]
+            ))
+        } else {
+            Err("Quantum audit engine not available".to_string())
         }
     }
 }

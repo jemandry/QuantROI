@@ -6,8 +6,15 @@ use tokio::time::sleep;
 
 pub mod ai_optimization;
 pub mod causal_data_agent;
+pub mod quantum_audit;
+pub mod wealth_engine;
+pub mod quantum_ml;
+
 pub use ai_optimization::{AIModel, AIModelOptimizer, BraidedBrownianModel, QuantizationLevel, PruningStrategy, OptimizationMetadata};
 pub use causal_data_agent::{CausalDataAgent, DataInventory, CausalQuestion, UserResponse, AnalysisSession, SessionStatus};
+pub use quantum_audit::{QuantumAuditEngine, QuantumAuditSession, QuantumMode, QuantumAuditResult, RegulatoryPrediction, QuantumSimulationEngine, ClassicalAuditEngine};
+pub use wealth_engine::{TradingWealthEngine, CausalProject, ProjectDelegation, DelegatedTask, TaskType, WealthMilestone, AuditEntry};
+pub use quantum_ml::{QuantumMLPredictor, RegulatoryPattern};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MemoryLevel {
@@ -488,5 +495,18 @@ impl MemoryHierarchy {
 
     pub fn create_causal_agent(&self) -> CausalDataAgent {
         CausalDataAgent::new()
+    }
+    
+    pub fn create_quantum_causal_agent(&self, quantum_mode: crate::quantum_audit::QuantumMode) -> CausalDataAgent {
+        let quantum_engine: Box<dyn crate::quantum_audit::QuantumAuditEngine + Send + Sync> = match quantum_mode {
+            crate::quantum_audit::QuantumMode::Simulation | crate::quantum_audit::QuantumMode::ProductionHardware => {
+                Box::new(crate::quantum_audit::QuantumSimulationEngine::new())
+            },
+            crate::quantum_audit::QuantumMode::NonQuantum => {
+                Box::new(crate::quantum_audit::ClassicalAuditEngine::new())
+            },
+        };
+        
+        CausalDataAgent::new_with_quantum_engine(Some(quantum_engine))
     }
 }
