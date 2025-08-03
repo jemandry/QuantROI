@@ -5,7 +5,9 @@ use tokio::sync::{Mutex, RwLock};
 use tokio::time::sleep;
 
 pub mod ai_optimization;
+pub mod causal_data_agent;
 pub use ai_optimization::{AIModel, AIModelOptimizer, BraidedBrownianModel, QuantizationLevel, PruningStrategy, OptimizationMetadata};
+pub use causal_data_agent::{CausalDataAgent, DataInventory, CausalQuestion, UserResponse, AnalysisSession, SessionStatus};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MemoryLevel {
@@ -482,5 +484,9 @@ impl MemoryHierarchy {
 
     pub async fn get_ai_optimization_stats(&self) -> HashMap<String, f64> {
         self.ai_optimizer.get_optimization_stats().await
+    }
+
+    pub fn create_causal_agent(&self) -> CausalDataAgent {
+        CausalDataAgent::new()
     }
 }
