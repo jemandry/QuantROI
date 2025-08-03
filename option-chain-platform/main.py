@@ -541,6 +541,198 @@ async def health_check():
     }
 
 
+@app.get("/kb/best_practices")
+async def get_best_practices(category: str = None):
+    """Get best practices from expert knowledge base"""
+    try:
+        if not NEO4J_AVAILABLE:
+            all_practices = {
+                "trading_execution": [
+                    "Maintain <500μs total latency budget for scalping strategies",
+                    "Monitor IV skew changes before earnings announcements", 
+                    "Validate volume confirmation on price breakouts",
+                    "Check for hidden liquidity indicators in L2 data",
+                    "Use maker-taker dynamics modeling for execution"
+                ],
+                "risk_management": [
+                    "Implement position limits checked in <1μs",
+                    "Monitor drawdown in real-time with alerts",
+                    "Use hardware-level risk triggers for speed",
+                    "Implement kill switches accessible in <5μs",
+                    "Monitor bias <0.1 thresholds for ethical AI"
+                ],
+                "causal_analysis": [
+                    "Address correlation ≠ causation with sensitivity analysis",
+                    "Query users for confounders in low-confidence cases",
+                    "Use Granger causality tests for temporal relationships",
+                    "Implement DoWhy validation for causal claims",
+                    "Flag low-confidence claims (<70%) for user validation"
+                ],
+                "system_operation": [
+                    "Report environment issues to user and continue with CI testing",
+                    "Use tiered storage: Redis (hot), PostgreSQL (warm), ClickHouse (cold)",
+                    "Implement braided cord data separation by latency",
+                    "Use symbol-agnostic design with efficient indexing",
+                    "Implement edge computing for latency-critical operations"
+                ],
+                "compliance_audit": [
+                    "Log all user inputs, hypotheses, and validations",
+                    "Maintain comprehensive disclosure of AI algorithms",
+                    "Use cryptographic recording for all trading decisions",
+                    "Implement robust oversight controls for AI decisions",
+                    "Use real-time surveillance for market manipulation prevention"
+                ]
+            }
+            
+            if category and category in all_practices:
+                return {
+                    "category": category,
+                    "practices": all_practices[category],
+                    "source": "expert_prompts",
+                    "total_count": len(all_practices[category])
+                }
+            
+            return {
+                "categories": list(all_practices.keys()),
+                "all_practices": all_practices,
+                "source": "expert_prompts",
+                "total_count": sum(len(practices) for practices in all_practices.values())
+            }
+        
+        uri = os.getenv('NEO4J_URI', 'bolt://localhost:7687')
+        user = os.getenv('NEO4J_USER', 'neo4j') 
+        password = os.getenv('NEO4J_PASSWORD', 'password')
+        
+        driver = GraphDatabase.driver(uri, auth=(user, password))
+        
+        with driver.session() as session:
+            if category:
+                result = session.run("""
+                    MATCH (bp:BestPractice {category: $category})
+                    RETURN bp.title as title, bp.summary as summary, bp.confidence as confidence
+                    ORDER BY bp.confidence DESC
+                """, category=category)
+            else:
+                result = session.run("""
+                    MATCH (bp:BestPractice)
+                    RETURN bp.category as category, bp.title as title, bp.summary as summary, bp.confidence as confidence
+                    ORDER BY bp.category, bp.confidence DESC
+                """)
+            
+            practices = []
+            for record in result:
+                practices.append({
+                    "category": record.get("category"),
+                    "title": record["title"],
+                    "summary": record["summary"],
+                    "confidence": record["confidence"]
+                })
+        
+        driver.close()
+        
+        return {
+            "category": category,
+            "practices": practices,
+            "source": "neo4j_kb",
+            "total_count": len(practices)
+        }
+        
+    except Exception as e:
+        print(f"Best practices query error: {e}")
+        return {
+            "category": category or "general",
+            "practices": [
+                "Monitor IV skew changes before earnings announcements",
+                "Validate volume confirmation on price breakouts",
+                "Address correlation ≠ causation with sensitivity analysis",
+                "Maintain <500μs total latency budget for scalping strategies"
+            ],
+            "source": "fallback",
+            "error": str(e)
+        }
+
+
+@app.get("/kb/operational_guidance")
+async def get_operational_guidance(issue_type: str = None):
+    """Get operational guidance for system questions and troubleshooting"""
+    guidance = {
+        "environment_issues": {
+            "description": "When encountering environment setup issues",
+            "guidance": [
+                "Report environment issues to user using report_environment_issue command",
+                "Find ways to continue work using CI rather than local environment",
+                "Do not attempt to fix environment issues independently",
+                "Test using CI/CD pipeline when local environment fails",
+                "Document environment requirements for user to address"
+            ],
+            "examples": ["Missing dependencies", "VPN issues", "Pre-commit hook failures"]
+        },
+        "performance_optimization": {
+            "description": "Guidelines for maintaining <500μs latency requirements",
+            "guidance": [
+                "Optimize market data reception to 50-100μs",
+                "Keep signal processing under 20-50μs",
+                "Limit decision logic to 10-30μs",
+                "Ensure order generation takes <5-15μs",
+                "Monitor network transmission latency",
+                "Use FPGA-based processing for ultra-high frequency",
+                "Implement kernel bypass networking (DPDK)"
+            ],
+            "thresholds": {"total_latency": "500μs", "jitter": "±10μs"}
+        },
+        "compliance_requirements": {
+            "description": "SEC Rule 10b-5 and RIA compliance procedures",
+            "guidance": [
+                "Maintain comprehensive audit trails with SHA-3 cryptographic recording",
+                "Log all trading decisions with explainable AI outputs",
+                "Implement real-time surveillance for market manipulation prevention",
+                "Ensure proper recordkeeping per SEC Rule 204-2 requirements",
+                "Monitor bias <0.1 thresholds for ethical AI decisions",
+                "Use immutable logs via IPFS/Merkle/Solana anchoring"
+            ],
+            "regulations": ["SEC Rule 10b-5", "SEC Rule 204-2", "RIA internet exception"]
+        },
+        "causal_validation": {
+            "description": "Best practices for causal inference and validation",
+            "guidance": [
+                "Apply scientific rigor frameworks with pre-registration",
+                "Use quasi-experimental design for natural experiments", 
+                "Implement instrumental variables for causal identification",
+                "Validate with out-of-sample testing and placebo tests",
+                "Address correlation ≠ causation with sensitivity analysis",
+                "Query users for confounders in low-confidence cases"
+            ],
+            "tools": ["DoWhy", "Granger causality tests", "Monte Carlo simulations"]
+        },
+        "system_troubleshooting": {
+            "description": "Common system issues and resolution procedures",
+            "guidance": [
+                "Check service health endpoints before debugging",
+                "Verify Docker container status and logs",
+                "Test API endpoints with curl for connectivity",
+                "Check Neo4j connection and credentials",
+                "Validate WASM module loading in browser console",
+                "Monitor CI/CD pipeline status for deployment issues"
+            ],
+            "diagnostic_commands": ["docker-compose ps", "curl health endpoints", "browser console logs"]
+        }
+    }
+    
+    if issue_type and issue_type in guidance:
+        return {
+            "issue_type": issue_type,
+            "guidance": guidance[issue_type],
+            "source": "operational_procedures"
+        }
+    
+    return {
+        "available_guidance": list(guidance.keys()),
+        "all_guidance": guidance,
+        "source": "operational_procedures",
+        "usage": "Specify issue_type parameter for specific guidance"
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
