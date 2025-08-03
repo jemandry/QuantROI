@@ -1,4 +1,4 @@
-use memory_hierarchy::{MemoryHierarchy, CausalDataAgent};
+use memory_hierarchy::MemoryHierarchy;
 use std::time::Duration;
 use tokio::time::sleep;
 

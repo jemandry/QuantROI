@@ -130,7 +130,7 @@ async fn get_data(
 
 async fn delete_data(
     Path(key): Path<String>,
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
 ) -> Json<serde_json::Value> {
     Json(serde_json::json!({
         "status": "acknowledged",

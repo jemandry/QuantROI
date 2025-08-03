@@ -200,7 +200,7 @@ impl CausalDataAgent {
         }
     }
 
-    pub async fn add_custom_factor(&self, session_id: &str, factor_name: &str, description: &str) -> Result<(), String> {
+    pub async fn add_custom_factor(&self, session_id: &str, factor_name: &str, _description: &str) -> Result<(), String> {
         let mut sessions = self.sessions.write().await;
         if let Some(session) = sessions.get_mut(session_id) {
             session.inventory.custom_factors.insert(factor_name.to_string(), false);
