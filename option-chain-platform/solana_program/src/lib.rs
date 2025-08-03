@@ -280,6 +280,153 @@ fn store_trade_audit(
     Ok(())
 }
 
+#[derive(BorshSerialize, BorshDeserialize, Debug)]
+pub struct GovernanceState {
+    pub validators: [Pubkey; 3],
+    pub required_signatures: u8,
+    pub pending_audits: Vec<PendingAudit>,
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
+pub struct PendingAudit {
+    pub audit_id: String,
+    pub root: String,
+    pub ipfs_hash: String,
+    pub signatures: Vec<Pubkey>,
+    pub timestamp: i64,
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Debug)]
+pub enum GovernanceInstruction {
+    InitializeGovernance {
+        validators: [Pubkey; 3],
+    },
+    ProposeAudit {
+        audit_id: String,
+        root: String,
+        ipfs_hash: String,
+    },
+    SignAudit {
+        audit_id: String,
+    },
+    ExecuteAudit {
+        audit_id: String,
+    },
+}
+
+fn initialize_governance(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    validators: [Pubkey; 3],
+) -> ProgramResult {
+    let account_info_iter = &mut accounts.iter();
+    let authority = next_account_info(account_info_iter)?;
+    let governance_account = next_account_info(account_info_iter)?;
+    let system_program = next_account_info(account_info_iter)?;
+
+    if !authority.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    let governance_state = GovernanceState {
+        validators,
+        required_signatures: 2,
+        pending_audits: Vec::new(),
+    };
+
+    let governance_size = governance_state.try_to_vec()?.len();
+    let rent = Rent::get()?;
+    let required_lamports = rent.minimum_balance(governance_size);
+
+    if governance_account.lamports() == 0 {
+        invoke(
+            &system_instruction::create_account(
+                authority.key,
+                governance_account.key,
+                required_lamports,
+                governance_size as u64,
+                program_id,
+            ),
+            &[authority.clone(), governance_account.clone(), system_program.clone()],
+        )?;
+    }
+
+    governance_state.serialize(&mut &mut governance_account.data.borrow_mut()[..])?;
+
+    msg!("Governance initialized with validators: {:?}", validators);
+    Ok(())
+}
+
+fn propose_audit(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    audit_id: String,
+    root: String,
+    ipfs_hash: String,
+) -> ProgramResult {
+    let account_info_iter = &mut accounts.iter();
+    let proposer = next_account_info(account_info_iter)?;
+    let governance_account = next_account_info(account_info_iter)?;
+
+    if !proposer.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    let mut governance_state = GovernanceState::try_from_slice(&governance_account.data.borrow())?;
+
+    if !governance_state.validators.contains(proposer.key) {
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    let clock = Clock::get()?;
+    let pending_audit = PendingAudit {
+        audit_id: audit_id.clone(),
+        root,
+        ipfs_hash,
+        signatures: vec![*proposer.key],
+        timestamp: clock.unix_timestamp,
+    };
+
+    governance_state.pending_audits.push(pending_audit);
+    governance_state.serialize(&mut &mut governance_account.data.borrow_mut()[..])?;
+
+    msg!("Audit proposed: {}", audit_id);
+    Ok(())
+}
+
+fn sign_audit(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    audit_id: String,
+) -> ProgramResult {
+    let account_info_iter = &mut accounts.iter();
+    let signer = next_account_info(account_info_iter)?;
+    let governance_account = next_account_info(account_info_iter)?;
+
+    if !signer.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    let mut governance_state = GovernanceState::try_from_slice(&governance_account.data.borrow())?;
+
+    if !governance_state.validators.contains(signer.key) {
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    for audit in &mut governance_state.pending_audits {
+        if audit.audit_id == audit_id {
+            if !audit.signatures.contains(signer.key) {
+                audit.signatures.push(*signer.key);
+                msg!("Audit signed by validator: {}", signer.key);
+                break;
+            }
+        }
+    }
+
+    governance_state.serialize(&mut &mut governance_account.data.borrow_mut()[..])?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -12,6 +12,9 @@ function App() {
   const [verificationResult, setVerificationResult] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [jumpDiffusionResults, setJumpDiffusionResults] = useState(null);
+  const [confidenceAnalysis, setConfidenceAnalysis] = useState(null);
+  const [auditWorkflowResults, setAuditWorkflowResults] = useState(null);
 
   useEffect(() => {
     const initializeApp = async () => {
@@ -85,6 +88,80 @@ function App() {
       setCausalPatterns(data);
     } catch (err) {
       console.error('Error querying KB:', err);
+    }
+  };
+
+  const runJumpDiffusionSimulation = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`${API_URL}/simulation/jump_diffusion`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mu: 0.05,
+          sigma: 0.2,
+          jump_lambda: 0.1,
+          jump_mu: -0.05,
+          jump_sigma: 0.1,
+          n_paths: 1000
+        })
+      });
+      const data = await response.json();
+      setJumpDiffusionResults(data);
+    } catch (error) {
+      console.error('Jump diffusion simulation failed:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const evaluateConfidence = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`${API_URL}/confidence/evaluate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          data_completeness: 0.85,
+          causal_coverage: 0.75,
+          temporal_coverage: 0.90,
+          user_tags: ['earnings', 'volatility']
+        })
+      });
+      const data = await response.json();
+      setConfidenceAnalysis(data);
+    } catch (error) {
+      console.error('Confidence evaluation failed:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const runFullAuditWorkflow = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`${API_URL}/audit/full_workflow`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ticker: 'AAPL',
+          jump_diffusion_params: {
+            mu: 0.05,
+            sigma: 0.2,
+            jump_lambda: 0.1,
+            n_paths: 500
+          },
+          confidence_params: {
+            user_tags: ['earnings', 'volatility']
+          }
+        })
+      });
+      const data = await response.json();
+      setAuditWorkflowResults(data);
+    } catch (error) {
+      console.error('Full audit workflow failed:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -304,9 +381,79 @@ function App() {
           )}
         </div>
 
+        <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white rounded-lg shadow p-6">
+            <h3 className="text-lg font-semibold mb-4">Jump Diffusion Simulation</h3>
+            <button 
+              onClick={runJumpDiffusionSimulation}
+              className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 mb-4"
+            >
+              Run Merton Model
+            </button>
+            {jumpDiffusionResults && (
+              <div className="space-y-2">
+                <p><strong>VaR (95%):</strong> {jumpDiffusionResults.performance_metrics?.var_95?.toFixed(4)}</p>
+                <p><strong>VaR (99%):</strong> {jumpDiffusionResults.performance_metrics?.var_99?.toFixed(4)}</p>
+                <p><strong>Max Drawdown:</strong> {jumpDiffusionResults.performance_metrics?.max_drawdown?.toFixed(4)}</p>
+                <p><strong>Jump Frequency:</strong> {jumpDiffusionResults.jump_frequency?.toFixed(4)} jumps/year</p>
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-6">
+            <h3 className="text-lg font-semibold mb-4">Confidence Analysis</h3>
+            <button 
+              onClick={evaluateConfidence}
+              className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 mb-4"
+            >
+              Evaluate Confidence
+            </button>
+            {confidenceAnalysis && (
+              <div className="space-y-2">
+                <p><strong>Overall Confidence:</strong> {confidenceAnalysis.overall_confidence?.toFixed(1)}%</p>
+                <p><strong>Data Completeness:</strong> {confidenceAnalysis.data_completeness_score?.toFixed(1)}%</p>
+                <p><strong>Causal Coverage:</strong> {confidenceAnalysis.causal_coverage_score?.toFixed(1)}%</p>
+                <p><strong>Cost Estimate:</strong> ${confidenceAnalysis.total_cost_estimate?.toLocaleString()}</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-8 bg-white rounded-lg shadow p-6">
+          <h3 className="text-lg font-semibold mb-4">Full Audit Workflow</h3>
+          <button 
+            onClick={runFullAuditWorkflow}
+            className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 mb-4"
+          >
+            Run Complete Audit Suite
+          </button>
+          {auditWorkflowResults && (
+            <div className="space-y-4">
+              <p><strong>Workflow ID:</strong> {auditWorkflowResults.workflow_results?.workflow_id}</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {auditWorkflowResults.workflow_results?.steps?.map((step, index) => (
+                  <div key={index} className="border rounded p-3">
+                    <p className="font-semibold">{step.step.replace('_', ' ').toUpperCase()}</p>
+                    <p className={`text-sm ${step.status === 'completed' ? 'text-green-600' : step.status === 'failed' ? 'text-red-600' : 'text-yellow-600'}`}>
+                      {step.status.toUpperCase()}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              {auditWorkflowResults.audit_record && (
+                <div className="mt-4 p-4 bg-gray-50 rounded">
+                  <p><strong>Audit Root:</strong> <span className="font-mono text-sm">{auditWorkflowResults.audit_record.root}</span></p>
+                  <p><strong>IPFS Hash:</strong> <span className="font-mono text-sm">{auditWorkflowResults.audit_record.ipfs_hash}</span></p>
+                  <p><strong>Confidence Score:</strong> {auditWorkflowResults.audit_record.confidence_score?.toFixed(1)}%</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         <div className="mt-8 text-center text-gray-500 text-sm">
-          <p>Auditable Option Chain Causal Analysis Platform v1.0.0</p>
-          <p>Powered by IPFS, Solana, Neo4j, and WASM</p>
+          <p>Auditable Option Chain Causal Analysis Platform v2.0.0</p>
+          <p>Powered by IPFS, Solana, Neo4j, WASM, Jump Diffusion, and Confidence Analysis</p>
         </div>
       </div>
     </div>

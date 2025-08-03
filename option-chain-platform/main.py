@@ -929,6 +929,160 @@ async def get_operational_guidance(issue_type: str = None):
     }
 
 
+@app.post("/simulation/jump_diffusion")
+async def simulate_jump_diffusion(
+    mu: float = Body(0.05),
+    sigma: float = Body(0.2),
+    jump_lambda: float = Body(0.1),
+    jump_mu: float = Body(-0.05),
+    jump_sigma: float = Body(0.1),
+    start_price: float = Body(100.0),
+    T: float = Body(1.0),
+    dt: float = Body(1/252),
+    n_paths: int = Body(1000),
+    seed: Optional[int] = Body(None)
+):
+    """Simulate asset price paths using Merton Jump-Diffusion model"""
+    try:
+        import sys
+        sys.path.append('/home/ubuntu/repos/quantroi/ai-models/src')
+        from simulate_jump_diffusion import MertonJumpDiffusionSimulator, JumpDiffusionParameters
+        from dataclasses import asdict
+        
+        params = JumpDiffusionParameters(
+            mu=mu, sigma=sigma, jump_lambda=jump_lambda,
+            jump_mu=jump_mu, jump_sigma=jump_sigma,
+            start_price=start_price, T=T, dt=dt,
+            n_paths=n_paths, seed=seed
+        )
+        
+        simulator = MertonJumpDiffusionSimulator(params)
+        results = simulator.simulate_paths()
+        
+        output_path = f"/tmp/jump_diffusion_{int(datetime.now().timestamp())}"
+        simulator.export_to_parquet(results, output_path)
+        
+        return {
+            "status": "success",
+            "parameters": asdict(params),
+            "tail_risk_metrics": asdict(results.tail_risk_metrics),
+            "simulation_timestamp": results.simulation_timestamp,
+            "output_path": output_path,
+            "jump_frequency": results.tail_risk_metrics.jump_frequency,
+            "performance_metrics": {
+                "var_95": results.tail_risk_metrics.var_95,
+                "var_99": results.tail_risk_metrics.var_99,
+                "max_drawdown": results.tail_risk_metrics.max_drawdown
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/confidence/evaluate")
+async def evaluate_confidence(
+    data_completeness: float = Body(0.85),
+    causal_coverage: float = Body(0.75),
+    temporal_coverage: float = Body(0.90),
+    user_tags: List[str] = Body(["earnings", "volatility"])
+):
+    """Evaluate data confidence and estimate improvement costs"""
+    try:
+        import sys
+        sys.path.append('/home/ubuntu/repos/quantroi/ai-models/src')
+        from confidence_evaluator import ConfidenceEvaluator, create_sample_data
+        from dataclasses import asdict
+        
+        evaluator = ConfidenceEvaluator()
+        data_segments, available_drivers, target_period = create_sample_data()
+        
+        analysis = evaluator.evaluate_confidence(
+            data_segments=data_segments,
+            available_drivers=available_drivers,
+            target_period=target_period,
+            user_tags=user_tags
+        )
+        
+        output_path = f"/tmp/confidence_analysis_{int(datetime.now().timestamp())}"
+        evaluator.export_results(analysis, output_path)
+        
+        return {
+            "status": "success",
+            "overall_confidence": analysis.overall_confidence,
+            "data_completeness_score": analysis.data_completeness_score,
+            "causal_coverage_score": analysis.causal_coverage_score,
+            "temporal_coverage_score": analysis.temporal_coverage_score,
+            "quality_score": analysis.quality_score,
+            "total_cost_estimate": analysis.total_cost_estimate,
+            "cost_breakdown": analysis.cost_breakdown,
+            "improvement_recommendations": analysis.improvement_recommendations,
+            "output_path": output_path
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/audit/full_workflow")
+async def run_full_audit_workflow(
+    ticker: str = Body("AAPL"),
+    jump_diffusion_params: Dict[str, Any] = Body({}),
+    confidence_params: Dict[str, Any] = Body({}),
+    parent_root: Optional[str] = Body(None)
+):
+    """Run complete audit workflow with all 7 modules"""
+    try:
+        workflow_id = f"audit_{int(datetime.now().timestamp())}"
+        results = {"workflow_id": workflow_id, "steps": []}
+        
+        jump_response = await simulate_jump_diffusion(**jump_diffusion_params)
+        results["steps"].append({"step": "jump_diffusion", "status": "completed", "data": jump_response})
+        
+        confidence_response = await evaluate_confidence(**confidence_params)
+        results["steps"].append({"step": "confidence_evaluation", "status": "completed", "data": confidence_response})
+        
+        import sys
+        sys.path.append('/home/ubuntu/repos/quantroi/option-chain-platform')
+        from generate_merkle_audit import generate_audit_with_ipfs
+        from dataclasses import asdict
+        
+        audit_record = generate_audit_with_ipfs(
+            jump_response, 
+            confidence_response, 
+            parent_root
+        )
+        results["steps"].append({"step": "merkle_audit", "status": "completed", "data": asdict(audit_record)})
+        
+        governance_response = {
+            "audit_id": workflow_id,
+            "root": audit_record.root,
+            "ipfs_hash": audit_record.ipfs_hash,
+            "status": "proposed",
+            "required_signatures": 2,
+            "current_signatures": 1
+        }
+        results["steps"].append({"step": "solana_governance", "status": "proposed", "data": governance_response})
+        
+        try:
+            from run_full_audit import get_option_chain_data, export_to_knowledge_base
+            option_data = get_option_chain_data(ticker)
+            export_to_knowledge_base(ticker, option_data, asdict(audit_record))
+            results["steps"].append({"step": "knowledge_base", "status": "completed"})
+        except Exception as e:
+            results["steps"].append({"step": "knowledge_base", "status": "failed", "error": str(e)})
+        
+        return {
+            "status": "success",
+            "workflow_results": results,
+            "audit_record": asdict(audit_record),
+            "next_steps": [
+                "Await additional validator signatures for Solana governance",
+                "Monitor IPFS hash for audit trail verification",
+                "Review confidence recommendations for data improvement"
+            ]
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

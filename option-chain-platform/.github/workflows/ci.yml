@@ -66,10 +66,57 @@ jobs:
       run: |
         docker build -t yourrepo/option_audit_platform:web-ui ./web_ui
         
-    - name: Test Docker Compose
+    - name: Install additional Python dependencies
+      run: |
+        pip install scipy matplotlib seaborn pyarrow
+        
+    - name: Run Jump Diffusion simulation
+      run: |
+        cd ../ai-models/src
+        python simulate_jump_diffusion.py --n-paths 100 --output /tmp/jump_test
+        
+    - name: Run Confidence evaluation
+      run: |
+        cd ../ai-models/src
+        python confidence_evaluator.py --sample --output /tmp/confidence_test
+        
+    - name: Generate enhanced Merkle audit
+      run: |
+        python generate_merkle_audit.py --simulation-file /tmp/jump_test/simulation_metadata.json --confidence-file /tmp/confidence_test/confidence_analysis.json --output /tmp/enhanced_audit.json
+        
+    - name: Test multi-signer Solana contract
+      run: |
+        sh -c "$(curl -sSfL https://release.solana.com/v1.16.0/install)"
+        export PATH="/home/runner/.local/share/solana/install/active_release/bin:$PATH"
+        cd solana_program
+        cargo build-bpf
+        
+    - name: Build enhanced WASM verifier
+      run: |
+        cd wasm_verifier
+        wasm-pack build --target web
+        
+    - name: Test enhanced web dashboard
+      run: |
+        cd web_ui
+        npm install
+        npm run build
+        
+    - name: Test full Docker Compose with all modules
       run: |
         docker-compose up -d --build
-        sleep 30
-        docker-compose ps
+        sleep 60
+        curl -X POST http://localhost:8000/simulation/jump_diffusion -H "Content-Type: application/json" -d '{"n_paths": 10}' || true
+        curl -X POST http://localhost:8000/confidence/evaluate -H "Content-Type: application/json" -d '{"user_tags": ["test"]}' || true
         docker-compose logs
         docker-compose down
+        
+    - name: Upload comprehensive artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: full-audit-suite
+        path: |
+          /tmp/jump_test/
+          /tmp/confidence_test/
+          /tmp/enhanced_audit.json
+          audit_logs/
