@@ -5,6 +5,18 @@ edition = "2021"
 description = "Memory hierarchy implementation demonstrating order of information in computing systems"
 authors = ["Devin AI <devin-ai-integration[bot]@users.noreply.github.com>"]
 
+[[bin]]
+name = "memory-hierarchy-service"
+path = "src/service.rs"
+
+[[bin]]
+name = "braided-brownian-processor"
+path = "src/braided_processor.rs"
+
+[[bin]]
+name = "memory-hierarchy-cli"
+path = "src/main.rs"
+
 [dependencies]
 tokio = { version = "1.0", features = ["full"] }
 rand = "0.8"
@@ -14,6 +26,17 @@ clap = { version = "4.0", features = ["derive"] }
 futures = "0.3"
 nalgebra = "0.32"
 statrs = "0.16"
+uuid = { version = "1.0", features = ["v4"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+axum = "0.7"
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+redis = { version = "0.24", features = ["tokio-comp"], optional = true }
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid"], optional = true }
+rdkafka = { version = "0.36", features = ["cmake-build"], optional = true }
+prometheus = "0.13"
+hyper = { version = "1.0", features = ["full"] }
 
 [dev-dependencies]
 criterion = "0.5"

@@ -1,0 +1,95 @@
+# Integration with existing quantroi infrastructure
+# This extends the main quantroi docker-compose.yml with memory hierarchy services
+
+version: '3.8'
+
+services:
+  memory-hierarchy-service:
+    build:
+      context: ./memory-hierarchy
+      dockerfile: Dockerfile
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - TIMESCALE_HOST=timescaledb
+      - TIMESCALE_PORT=5432
+      - TIMESCALE_DB=fintech_platform
+      - KAFKA_BROKERS=kafka:9092
+      - LOG_LEVEL=INFO
+      - RUST_LOG=info
+    ports:
+      - "8080:8080"
+    depends_on:
+      - redis
+      - timescaledb
+      - kafka
+    volumes:
+      - ./memory-hierarchy/logs:/app/logs
+      - memory_hierarchy_data:/app/data
+    networks:
+      - quantroi-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 8Gi
+          cpus: '4'
+        reservations:
+          memory: 4Gi
+          cpus: '2'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  braided-brownian-processor:
+    build:
+      context: ./memory-hierarchy
+      dockerfile: Dockerfile.braided
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - TIMESCALE_HOST=timescaledb
+      - TIMESCALE_PORT=5432
+      - KAFKA_BROKERS=kafka:9092
+      - GPU_ENABLED=false  # Set to true if GPU available
+      - QUANTIZATION_LEVEL=INT8
+      - PRUNING_SPARSITY=0.4
+      - LOG_LEVEL=INFO
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+      - timescaledb
+      - kafka
+      - memory-hierarchy-service
+    volumes:
+      - ./memory-hierarchy/models:/app/models
+      - ./memory-hierarchy/logs:/app/logs
+      - braided_models_data:/app/braided_data
+    networks:
+      - quantroi-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 16Gi
+          cpus: '8'
+        reservations:
+          memory: 8Gi
+          cpus: '4'
+
+  # Extend existing Redis with memory hierarchy optimizations
+  redis:
+    command: redis-server --appendonly yes --maxmemory 4gb --maxmemory-policy allkeys-lru --save 900 1 --save 300 10
+    sysctls:
+      - net.core.somaxconn=65535
+
+volumes:
+  memory_hierarchy_data:
+  braided_models_data:
+
+networks:
+  quantroi-network:
+    external: true

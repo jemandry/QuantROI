@@ -1,0 +1,108 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Memory Hierarchy Performance",
+    "tags": ["memory-hierarchy", "braided-brownian", "quantroi"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Memory Access Latency by Level",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(memory_access_latency_seconds_bucket[5m]))",
+            "legendFormat": "{{memory_level}} - P95"
+          },
+          {
+            "expr": "histogram_quantile(0.50, rate(memory_access_latency_seconds_bucket[5m]))",
+            "legendFormat": "{{memory_level}} - P50"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Latency (seconds)",
+            "logBase": 10
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Cache Hit Rates",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "rate(memory_cache_hits_total[5m]) / rate(memory_cache_requests_total[5m])",
+            "legendFormat": "{{memory_level}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "min": 0,
+            "max": 1
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "Braided Brownian Model Performance",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(braided_model_inference_duration_seconds_sum[5m]) / rate(braided_model_inference_duration_seconds_count[5m])",
+            "legendFormat": "{{model_id}} - Avg Inference Time"
+          },
+          {
+            "expr": "braided_model_accuracy_retention",
+            "legendFormat": "{{model_id}} - Accuracy Retention"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8}
+      },
+      {
+        "id": 4,
+        "title": "AI Optimization Metrics",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "ai_model_size_bytes",
+            "legendFormat": "{{model_id}} - Size (bytes)"
+          },
+          {
+            "expr": "ai_model_speedup_factor",
+            "legendFormat": "{{model_id}} - Speedup Factor"
+          },
+          {
+            "expr": "ai_model_sparsity_ratio",
+            "legendFormat": "{{model_id}} - Sparsity"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16}
+      },
+      {
+        "id": 5,
+        "title": "System Resource Usage",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(container_cpu_usage_seconds_total[5m])",
+            "legendFormat": "{{container_name}} - CPU"
+          },
+          {
+            "expr": "container_memory_usage_bytes / 1024 / 1024 / 1024",
+            "legendFormat": "{{container_name}} - Memory (GB)"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24}
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "refresh": "5s"
+  }
+}
