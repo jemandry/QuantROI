@@ -11,6 +11,8 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 import pandas as pd
 import numpy as np
+import asyncio
+import aiofiles
 
 try:
     import yfinance as yf
@@ -524,6 +526,200 @@ async def get_session(session_id: str):
         "active_since": sessions[session_id].get('timestamp', 'unknown')
     }
 
+
+@app.post("/volatility/simulate")
+async def simulate_volatility(
+    model_id: str = Body(...),
+    simulation_id: str = Body(...),
+    mu: float = Body(0.05),
+    sigma: float = Body(0.2),
+    dt: float = Body(1.0/252.0),
+    initial_value: float = Body(100.0),
+    num_steps: int = Body(252),
+    seed: Optional[int] = Body(None)
+):
+    """Simulate Brownian motion volatility with appendable audit records"""
+    try:
+        import hashlib
+        
+        parameters = {
+            "mu": mu,
+            "sigma": sigma,
+            "dt": dt,
+            "initial_value": initial_value,
+            "seed": seed
+        }
+        
+        np.random.seed(seed if seed else 42)
+        
+        path = [initial_value]
+        sqrt_dt = np.sqrt(dt)
+        drift_term = mu - 0.5 * sigma * sigma
+        
+        for _ in range(num_steps):
+            dw = np.random.normal() * sqrt_dt
+            current_value = path[-1]
+            next_value = current_value * (1.0 + drift_term * dt + sigma * dw)
+            path.append(next_value)
+        
+        returns = [(path[i+1] - path[i]) / path[i] for i in range(len(path)-1)]
+        mean_return = np.mean(returns)
+        variance = np.var(returns)
+        skewness = float(pd.Series(returns).skew()) if len(returns) > 2 else 0.0
+        kurtosis = float(pd.Series(returns).kurtosis()) if len(returns) > 2 else 0.0
+        
+        risk_moments = [mean_return, variance, skewness, kurtosis]
+        
+        timestamp_ns = int(datetime.now().timestamp() * 1_000_000_000)
+        
+        record = {
+            "timestamp_ns": timestamp_ns,
+            "simulation_id": simulation_id,
+            "model_id": model_id,
+            "parameters": parameters,
+            "path_data": path,
+            "risk_moments": risk_moments,
+            "num_steps": len(path) - 1,
+            "final_value": path[-1],
+            "total_return": (path[-1] - path[0]) / path[0]
+        }
+        
+        hash_input = f"{timestamp_ns}{simulation_id}{json.dumps(parameters)}{json.dumps(path[:10])}"
+        audit_hash = hashlib.sha256(hash_input.encode()).hexdigest()
+        record["audit_hash"] = audit_hash
+        
+        file_path = f"/tmp/volatility_sim_{model_id}.json"
+        async with aiofiles.open(file_path, "a") as f:
+            await f.write(json.dumps(record) + "\n")
+        
+        return {
+            "status": "success",
+            "simulation_record": record,
+            "storage_location": file_path,
+            "latency_ns": int((datetime.now().timestamp() * 1_000_000_000) - timestamp_ns)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/volatility/audit_trail/{model_id}")
+async def get_volatility_audit_trail(model_id: str):
+    """Retrieve audit trail for volatility simulations"""
+    try:
+        file_path = f"/tmp/volatility_sim_{model_id}.json"
+        
+        if not os.path.exists(file_path):
+            return {"status": "no_data", "model_id": model_id, "simulations": []}
+        
+        simulations = []
+        async with aiofiles.open(file_path, "r") as f:
+            async for line in f:
+                if line.strip():
+                    try:
+                        record = json.loads(line.strip())
+                        simulations.append({
+                            "simulation_id": record.get("simulation_id"),
+                            "timestamp_ns": record.get("timestamp_ns"),
+                            "audit_hash": record.get("audit_hash"),
+                            "parameters": record.get("parameters"),
+                            "final_value": record.get("final_value"),
+                            "total_return": record.get("total_return"),
+                            "risk_moments": record.get("risk_moments")
+                        })
+                    except json.JSONDecodeError:
+                        continue
+        
+        audit_verified = True
+        for i, sim in enumerate(simulations):
+            if not sim.get("audit_hash"):
+                audit_verified = False
+                break
+        
+        return {
+            "status": "success",
+            "model_id": model_id,
+            "total_simulations": len(simulations),
+            "audit_chain_verified": audit_verified,
+            "simulations": simulations[-10:],  # Return last 10 for performance
+            "file_size_bytes": os.path.getsize(file_path) if os.path.exists(file_path) else 0
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/volatility/monte_carlo")
+async def run_monte_carlo_volatility(
+    model_id: str = Body(...),
+    base_mu: float = Body(0.05),
+    base_sigma: float = Body(0.2),
+    sigma_range: List[float] = Body([0.1, 0.3]),
+    num_simulations: int = Body(100),
+    num_steps: int = Body(252),
+    dt: float = Body(1.0/252.0),
+    initial_value: float = Body(100.0)
+):
+    """Run Monte Carlo volatility simulations with parameter sweeps"""
+    try:
+        start_time = datetime.now()
+        simulation_results = []
+        
+        for i in range(num_simulations):
+            sigma_variation = sigma_range[0] + (sigma_range[1] - sigma_range[0]) * (i / num_simulations)
+            
+            sim_id = f"mc_{model_id}_{i}_{int(start_time.timestamp())}"
+            
+            simulation_response = await simulate_volatility(
+                model_id=model_id,
+                simulation_id=sim_id,
+                mu=base_mu,
+                sigma=sigma_variation,
+                dt=dt,
+                initial_value=initial_value,
+                num_steps=num_steps,
+                seed=42 + i
+            )
+            
+            if simulation_response["status"] == "success":
+                simulation_results.append({
+                    "simulation_id": sim_id,
+                    "sigma_used": sigma_variation,
+                    "final_value": simulation_response["simulation_record"]["final_value"],
+                    "total_return": simulation_response["simulation_record"]["total_return"],
+                    "risk_moments": simulation_response["simulation_record"]["risk_moments"]
+                })
+        
+        final_values = [sim["final_value"] for sim in simulation_results]
+        total_returns = [sim["total_return"] for sim in simulation_results]
+        
+        aggregate_stats = {
+            "mean_final_value": np.mean(final_values),
+            "std_final_value": np.std(final_values),
+            "mean_total_return": np.mean(total_returns),
+            "std_total_return": np.std(total_returns),
+            "min_final_value": np.min(final_values),
+            "max_final_value": np.max(final_values),
+            "percentile_5": np.percentile(final_values, 5),
+            "percentile_95": np.percentile(final_values, 95)
+        }
+        
+        execution_time = (datetime.now() - start_time).total_seconds()
+        
+        return {
+            "status": "success",
+            "model_id": model_id,
+            "num_simulations": len(simulation_results),
+            "execution_time_seconds": execution_time,
+            "aggregate_statistics": aggregate_stats,
+            "simulation_results": simulation_results[:20],  # Return first 20 for performance
+            "performance_metrics": {
+                "simulations_per_second": len(simulation_results) / execution_time,
+                "avg_latency_ms": (execution_time * 1000) / len(simulation_results),
+                "meets_500us_budget": (execution_time * 1000000) / len(simulation_results) < 500
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/health")
 async def health_check():

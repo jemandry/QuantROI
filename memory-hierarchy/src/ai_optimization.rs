@@ -278,6 +278,7 @@ pub struct BraidedBrownianModel {
     pub time_steps: usize,
     pub weights_linear: Vec<f32>,
     pub weights_conv: Vec<f32>,
+    pub brownian_params: Option<crate::brownian_volatility_strand::BrownianMotionParameters>,
     pub quantization: QuantizationLevel,
     pub sparsity: f32,
     pub pruning_strategy: Option<PruningStrategy>,
@@ -317,6 +318,7 @@ impl BraidedBrownianModel {
             time_steps,
             weights_linear: linear_weights,
             weights_conv: conv_weights,
+            brownian_params: None,
             quantization: QuantizationLevel::FP32,
             sparsity: 0.0,
             pruning_strategy: None,
@@ -336,11 +338,25 @@ impl BraidedBrownianModel {
             let mut new_values = Vec::new();
             
             for strand in 0..self.num_strands {
-                let mut rng_state = ((strand as u64 + 1) * 12345) + (step as u64 * 7919);
-                rng_state = rng_state.wrapping_mul(1103515245).wrapping_add(12345);
-                let random = (rng_state as f32 / u64::MAX as f32 - 0.5) * 0.1;
-                
                 let current_value = paths[strand][step];
+                
+                let (next_value, random) = if let Some(ref brownian_params) = self.brownian_params {
+                    let sqrt_dt = (brownian_params.dt as f32).sqrt();
+                    let drift_term = brownian_params.mu as f32 - 0.5 * (brownian_params.sigma as f32).powi(2);
+                    
+                    let mut rng_state = ((strand as u64 + 1) * 12345) + (step as u64 * 7919);
+                    rng_state = rng_state.wrapping_mul(1103515245).wrapping_add(12345);
+                    let dw = (rng_state as f32 / u64::MAX as f32 - 0.5) * 2.0 * sqrt_dt;
+                    
+                    let brownian_value = current_value * (1.0 + drift_term * brownian_params.dt as f32 + brownian_params.sigma as f32 * dw);
+                    (brownian_value, dw * brownian_params.sigma as f32)
+                } else {
+                    let mut rng_state = ((strand as u64 + 1) * 12345) + (step as u64 * 7919);
+                    rng_state = rng_state.wrapping_mul(1103515245).wrapping_add(12345);
+                    let random = (rng_state as f32 / u64::MAX as f32 - 0.5) * 0.1;
+                    (current_value, random)
+                };
+                
                 let mut braided_increment = random;
                 
                 for other_strand in 0..self.num_strands {
@@ -366,8 +382,12 @@ impl BraidedBrownianModel {
                 
                 braided_increment += periodic_braiding;
                 
-                let next_value = current_value + braided_increment;
-                new_values.push(next_value);
+                let final_value = if self.brownian_params.is_some() {
+                    next_value + braided_increment * 0.1  // Apply braiding as small perturbation to Brownian motion
+                } else {
+                    current_value + braided_increment
+                };
+                new_values.push(final_value);
             }
             
             for (strand, &new_value) in new_values.iter().enumerate() {

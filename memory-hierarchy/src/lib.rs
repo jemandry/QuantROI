@@ -6,8 +6,15 @@ use tokio::time::sleep;
 
 pub mod ai_optimization;
 pub mod causal_data_agent;
+pub mod brownian_volatility_strand;
+pub mod async_volatility_engine;
+pub mod volatility_integration;
+
 pub use ai_optimization::{AIModel, AIModelOptimizer, BraidedBrownianModel, QuantizationLevel, PruningStrategy, OptimizationMetadata};
 pub use causal_data_agent::{CausalDataAgent, DataInventory, CausalQuestion, UserResponse, AnalysisSession, SessionStatus};
+pub use brownian_volatility_strand::{BrownianVolatilityStrand, BrownianMotionParameters, VolatilitySimulationRecord};
+pub use async_volatility_engine::{AsyncVolatilityEngine, VolatilityStrandStatistics};
+pub use volatility_integration::VolatilityIntegratedMemoryHierarchy;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MemoryLevel {
@@ -488,5 +495,28 @@ impl MemoryHierarchy {
 
     pub fn create_causal_agent(&self) -> CausalDataAgent {
         CausalDataAgent::new()
+    }
+
+    pub async fn create_volatility_integrated_hierarchy(base_file_path: String, max_concurrent_simulations: usize) -> VolatilityIntegratedMemoryHierarchy {
+        VolatilityIntegratedMemoryHierarchy::new(base_file_path, max_concurrent_simulations).await
+    }
+
+    pub async fn register_volatility_model_with_params(
+        &self,
+        model_id: String,
+        parameters: BrownianMotionParameters,
+    ) -> Result<(), String> {
+        let num_strands = 3;
+        let time_steps = (1.0 / parameters.dt) as usize;
+        
+        let mut braided_model = BraidedBrownianModel::new(
+            model_id.clone(),
+            num_strands,
+            time_steps,
+        );
+        braided_model.brownian_params = Some(parameters);
+        
+        self.register_braided_model(braided_model).await;
+        Ok(())
     }
 }
