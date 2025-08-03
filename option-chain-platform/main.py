@@ -260,7 +260,13 @@ async def query_missing_data(request: Dict[str, Any] = Body(...)):
                 "missing_data": missing,
                 "current_confidence": base_confidence,
                 "recommendation": "Higher data completeness improves causal inference reliability",
-                "critical_missing": [item for item in missing if item in ['volume', 'news_sentiment', 'earnings_date']]
+                "critical_missing": [item for item in missing if item in ['volume', 'news_sentiment', 'earnings_date']],
+                "best_practices": [
+                    "Monitor IV skew changes before earnings announcements",
+                    "Validate volume confirmation on price breakouts", 
+                    "Check for hidden liquidity indicators in L2 data",
+                    "Use maker-taker dynamics modeling for execution"
+                ]
             }
         
         return {
