@@ -496,6 +496,33 @@ class DataPipeline:
             self.processing_errors += 1
             raise
 
+    async def integrate_with_braided_cord_engine(self):
+        """Integrate data pipeline with braided cord data engine"""
+        try:
+            from .braided_cord_data_engine import BraidedCordDataEngine
+            self.braided_cord_engine = BraidedCordDataEngine(self.config)
+            await self.braided_cord_engine.initialize()
+            self.logger.info("Integrated with BraidedCordDataEngine")
+        except ImportError:
+            self.logger.warning("BraidedCordDataEngine not available")
+            self.braided_cord_engine = None
+
+    async def route_data_through_cords(self, data: Dict[str, Any], data_type: str, symbol: str = None):
+        """Route data through braided cord system"""
+        if hasattr(self, 'braided_cord_engine') and self.braided_cord_engine:
+            return await self.braided_cord_engine.route_data_to_cord(data, data_type, symbol)
+        else:
+            return await self._store_data_direct(data, data_type, symbol)
+
+    async def _store_data_direct(self, data: Dict[str, Any], data_type: str, symbol: str = None):
+        """Direct storage fallback when braided cord engine is not available"""
+        if data_type in ['market_data', 'tick_data', 'order_book']:
+            return await self._store_flow_data(data)
+        elif data_type in ['sentiment', 'volatility', 'correlation']:
+            return await self._store_option_data(data)
+        else:
+            return {'status': 'stored_direct', 'data_type': data_type}
+
 async def main():
     """Example pipeline execution"""
     pipeline = DataPipeline({
