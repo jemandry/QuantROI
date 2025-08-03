@@ -1,0 +1,75 @@
+name: Option Chain Audit CI
+
+on:
+  push:
+    paths:
+      - 'audit_logs/**'
+      - 'run_full_audit.py'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    paths:
+      - 'audit_logs/**'
+      - 'run_full_audit.py'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        
+    - name: Install IPFS
+      run: |
+        wget https://dist.ipfs.tech/kubo/v0.23.0/kubo_v0.23.0_linux-amd64.tar.gz
+        tar -xzf kubo_v0.23.0_linux-amd64.tar.gz
+        cd kubo
+        sudo bash install.sh
+        ipfs init
+        
+    - name: Install Python dependencies
+      run: |
+        pip install -r requirements.txt
+        
+    - name: Start IPFS daemon
+      run: |
+        ipfs daemon &
+        sleep 10
+        
+    - name: Run audit process
+      run: |
+        python run_full_audit.py
+        
+    - name: Upload audit artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: audit-log
+        path: audit_log.json
+        
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+      
+    - name: Build audit backend image
+      run: |
+        docker build -t yourrepo/option_audit_platform:audit-backend .
+        
+    - name: Build WASM verifier image
+      run: |
+        docker build -t yourrepo/option_audit_platform:wasm-verifier ./wasm_verifier
+        
+    - name: Build web UI image
+      run: |
+        docker build -t yourrepo/option_audit_platform:web-ui ./web_ui
+        
+    - name: Test Docker Compose
+      run: |
+        docker-compose up -d --build
+        sleep 30
+        docker-compose ps
+        docker-compose logs
+        docker-compose down
