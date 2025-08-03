@@ -1,10 +1,9 @@
-
 use std::collections::HashMap;
-use std::time::{Duration, Instant};
-use serde::{Deserialize, Serialize};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
+use std::hash::{Hash, Hasher};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum QuantizationLevel {
     FP32,
     FP16,
@@ -34,42 +33,39 @@ impl QuantizationLevel {
     pub fn accuracy_retention(&self) -> f32 {
         match self {
             QuantizationLevel::FP32 => 1.0,
-            QuantizationLevel::FP16 => 0.999,
-            QuantizationLevel::INT8 => 0.995,
-            QuantizationLevel::INT4 => 0.985,
+            QuantizationLevel::FP16 => 0.99,
+            QuantizationLevel::INT8 => 0.95,
+            QuantizationLevel::INT4 => 0.85,
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PruningStrategy {
-    Unstructured,
-    Structured,
     MagnitudeBased,
-    SensitivityBased,
+    Structured,
+    Gradual,
 }
 
 impl PruningStrategy {
     pub fn memory_reduction(&self, sparsity: f32) -> f32 {
         match self {
-            PruningStrategy::Unstructured => 1.0 + sparsity * 2.0, // Sparse storage overhead
-            PruningStrategy::Structured => 1.0 / (1.0 - sparsity), // Direct reduction
-            PruningStrategy::MagnitudeBased => 1.0 + sparsity * 1.5,
-            PruningStrategy::SensitivityBased => 1.0 + sparsity * 2.5,
+            PruningStrategy::MagnitudeBased => 1.0 + sparsity * 2.0,
+            PruningStrategy::Structured => 1.0 + sparsity * 3.0,
+            PruningStrategy::Gradual => 1.0 + sparsity * 1.5,
         }
     }
 
     pub fn speedup_factor(&self, sparsity: f32) -> f32 {
         match self {
-            PruningStrategy::Unstructured => 1.0 + sparsity * 0.5, // Limited by sparse ops
-            PruningStrategy::Structured => 1.0 / (1.0 - sparsity), // Direct speedup
-            PruningStrategy::MagnitudeBased => 1.0 + sparsity * 0.8,
-            PruningStrategy::SensitivityBased => 1.0 + sparsity * 1.2,
+            PruningStrategy::MagnitudeBased => 1.0 + sparsity * 1.2,
+            PruningStrategy::Structured => 1.0 + sparsity * 2.0,
+            PruningStrategy::Gradual => 1.0 + sparsity * 0.8,
         }
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct OptimizationMetadata {
     pub model_id: String,
     pub original_size_bytes: usize,
@@ -86,9 +82,8 @@ pub struct OptimizationMetadata {
 impl OptimizationMetadata {
     pub fn calculate_hash(&self) -> String {
         use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-        
         let mut hasher = DefaultHasher::new();
+        
         self.model_id.hash(&mut hasher);
         self.original_size_bytes.hash(&mut hasher);
         self.optimized_size_bytes.hash(&mut hasher);
@@ -110,12 +105,12 @@ pub struct AIModel {
 }
 
 impl AIModel {
-    pub fn new(id: String, weight_count: usize) -> Self {
-        let weights: Vec<f32> = (0..weight_count)
+    pub fn new(id: String, num_weights: usize) -> Self {
+        let weights: Vec<f32> = (0..num_weights)
             .map(|i| (i as f32 * 0.001) % 1.0)
             .collect();
         
-        let size_bytes = weight_count * 4; // FP32 = 4 bytes per weight
+        let size_bytes = weights.len() * 4;
         
         let metadata = OptimizationMetadata {
             model_id: id.clone(),
@@ -126,8 +121,8 @@ impl AIModel {
             sparsity_level: None,
             accuracy_retention: 1.0,
             speedup_factor: 1.0,
-            optimization_timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
+            optimization_timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_nanos() as u64,
             calibration_data_hash: "original".to_string(),
@@ -150,33 +145,31 @@ impl AIModel {
         }
 
         let reduction_factor = level.memory_reduction_factor();
-        let new_size = (self.size_bytes as f32 / reduction_factor) as usize;
         
         match level {
-            QuantizationLevel::FP32 => {
-            }
+            QuantizationLevel::FP32 => {},
             QuantizationLevel::FP16 => {
                 for weight in &mut self.weights {
                     *weight = (*weight * 65536.0).round() / 65536.0;
                 }
-            }
+            },
             QuantizationLevel::INT8 => {
                 for weight in &mut self.weights {
-                    let quantized = ((*weight * 127.0).round().max(-128.0).min(127.0)) / 127.0;
+                    let quantized = (*weight * 127.0).round().clamp(-128.0, 127.0) / 127.0;
                     *weight = quantized;
                 }
-            }
+            },
             QuantizationLevel::INT4 => {
                 for weight in &mut self.weights {
-                    let quantized = ((*weight * 7.0).round().max(-8.0).min(7.0)) / 7.0;
+                    let quantized = (*weight * 7.0).round().clamp(-8.0, 7.0) / 7.0;
                     *weight = quantized;
                 }
-            }
+            },
         }
 
         self.quantization = level;
-        self.size_bytes = new_size;
-        self.metadata.optimized_size_bytes = new_size;
+        self.size_bytes = (self.size_bytes as f32 / reduction_factor) as usize;
+        self.metadata.optimized_size_bytes = self.size_bytes;
         self.metadata.quantization_level = Some(level);
         self.metadata.accuracy_retention *= level.accuracy_retention();
         self.metadata.speedup_factor *= level.speedup_factor();
@@ -185,11 +178,11 @@ impl AIModel {
     }
 
     pub fn prune(&mut self, strategy: PruningStrategy, sparsity: f32) -> Result<(), String> {
-        if sparsity < 0.0 || sparsity >= 1.0 {
+        if !(0.0..1.0).contains(&sparsity) {
             return Err("Sparsity must be between 0.0 and 1.0".to_string());
         }
 
-        let weights_to_prune = (self.weights.len() as f32 * sparsity) as usize;
+        let num_to_prune = (self.weights.len() as f32 * sparsity) as usize;
         
         match strategy {
             PruningStrategy::MagnitudeBased => {
@@ -198,85 +191,64 @@ impl AIModel {
                     .enumerate()
                     .map(|(i, &w)| (i, w.abs()))
                     .collect();
-                
                 weight_indices.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
                 
-                for i in 0..weights_to_prune {
-                    let idx = weight_indices[i].0;
+                for &(idx, _) in weight_indices.iter().take(num_to_prune) {
                     self.weights[idx] = 0.0;
                 }
-            }
+            },
             PruningStrategy::Structured => {
-                let group_size = 8; // Simulate 8-weight neurons
-                let groups_to_prune = weights_to_prune / group_size;
+                let group_size = 8;
+                let groups_to_prune = num_to_prune / group_size;
                 
                 for group in 0..groups_to_prune {
                     let start_idx = group * group_size;
                     let end_idx = std::cmp::min(start_idx + group_size, self.weights.len());
-                    
                     for idx in start_idx..end_idx {
                         self.weights[idx] = 0.0;
                     }
                 }
-            }
-            PruningStrategy::Unstructured | PruningStrategy::SensitivityBased => {
-                use std::collections::HashSet;
-                let mut rng_state = 42u64; // Simple PRNG for deterministic results
-                let mut pruned_indices = HashSet::new();
-                
-                while pruned_indices.len() < weights_to_prune {
-                    rng_state = rng_state.wrapping_mul(1103515245).wrapping_add(12345);
-                    let idx = (rng_state as usize) % self.weights.len();
-                    pruned_indices.insert(idx);
+            },
+            PruningStrategy::Gradual => {
+                let step = self.weights.len() / num_to_prune;
+                for i in (0..self.weights.len()).step_by(step).take(num_to_prune) {
+                    self.weights[i] = 0.0;
                 }
-                
-                for &idx in &pruned_indices {
-                    self.weights[idx] = 0.0;
-                }
-            }
+            },
         }
 
-        let reduction_factor = strategy.memory_reduction(sparsity);
-        let new_size = (self.size_bytes as f32 / reduction_factor) as usize;
-        
         self.sparsity = sparsity;
         self.pruning_strategy = Some(strategy);
-        self.size_bytes = new_size;
-        self.metadata.optimized_size_bytes = new_size;
+        let reduction_factor = strategy.memory_reduction(sparsity);
+        self.size_bytes = (self.size_bytes as f32 / reduction_factor) as usize;
+        self.metadata.optimized_size_bytes = self.size_bytes;
         self.metadata.pruning_strategy = Some(strategy);
         self.metadata.sparsity_level = Some(sparsity);
         self.metadata.speedup_factor *= strategy.speedup_factor(sparsity);
         
-        let accuracy_loss = sparsity * 0.1; // 10% accuracy loss per 100% sparsity
+        let accuracy_loss = sparsity * 0.1;
         self.metadata.accuracy_retention *= 1.0 - accuracy_loss;
 
         Ok(())
     }
 
     pub async fn inference(&self, input: &[f32]) -> Vec<f32> {
-        let start = Instant::now();
-        
-        let mut output = Vec::new();
-        let chunk_size = std::cmp::min(input.len(), self.weights.len() / 10);
-        
-        for i in 0..chunk_size {
-            let mut sum = 0.0;
-            for j in 0..std::cmp::min(10, self.weights.len()) {
-                let weight_idx = (i * 10 + j) % self.weights.len();
-                let input_idx = i % input.len();
-                sum += self.weights[weight_idx] * input[input_idx];
-            }
-            output.push(sum.tanh()); // Activation function
-        }
-        
         let base_latency = Duration::from_micros(100);
         let optimized_latency = Duration::from_nanos(
             (base_latency.as_nanos() as f32 / self.metadata.speedup_factor) as u64
         );
+        tokio::time::sleep(optimized_latency).await;
         
-        let elapsed = start.elapsed();
-        if elapsed < optimized_latency {
-            tokio::time::sleep(optimized_latency - elapsed).await;
+        let output_size = std::cmp::min(input.len(), 10);
+        let mut output = vec![0.0; output_size];
+        
+        for (i, output_val) in output.iter_mut().enumerate() {
+            for (j, &input_val) in input.iter().enumerate().take(std::cmp::min(input.len(), self.weights.len() / output_size)) {
+                let weight_idx = i * (self.weights.len() / output_size) + j;
+                if weight_idx < self.weights.len() {
+                    *output_val += input_val * self.weights[weight_idx];
+                }
+            }
         }
         
         output
@@ -286,229 +258,16 @@ impl AIModel {
         let mut metrics = HashMap::new();
         
         metrics.insert("size_bytes".to_string(), self.size_bytes as f64);
-        metrics.insert("memory_reduction".to_string(), 
-                      self.metadata.original_size_bytes as f64 / self.size_bytes as f64);
-        metrics.insert("speedup_factor".to_string(), self.metadata.speedup_factor as f64);
-        metrics.insert("accuracy_retention".to_string(), self.metadata.accuracy_retention as f64);
         metrics.insert("sparsity".to_string(), self.sparsity as f64);
+        metrics.insert("accuracy_retention".to_string(), self.metadata.accuracy_retention as f64);
+        metrics.insert("speedup_factor".to_string(), self.metadata.speedup_factor as f64);
+        metrics.insert("memory_reduction".to_string(), 
+                      self.metadata.original_size_bytes as f64 / self.metadata.optimized_size_bytes as f64);
         
-        if let Some(quant) = self.metadata.quantization_level {
-            metrics.insert("quantization_bits".to_string(), match quant {
-                QuantizationLevel::FP32 => 32.0,
-                QuantizationLevel::FP16 => 16.0,
-                QuantizationLevel::INT8 => 8.0,
-                QuantizationLevel::INT4 => 4.0,
-            });
-        }
+        let zero_weights = self.weights.iter().filter(|&&w| w == 0.0).count();
+        metrics.insert("actual_sparsity".to_string(), zero_weights as f64 / self.weights.len() as f64);
         
         metrics
-    }
-}
-
-pub struct AIModelOptimizer {
-    models: RwLock<HashMap<String, AIModel>>,
-    braided_models: RwLock<HashMap<String, BraidedBrownianModel>>,
-    optimization_history: RwLock<Vec<OptimizationMetadata>>,
-}
-
-impl AIModelOptimizer {
-    pub fn new() -> Self {
-        Self {
-            models: RwLock::new(HashMap::new()),
-            braided_models: RwLock::new(HashMap::new()),
-            optimization_history: RwLock::new(Vec::new()),
-        }
-    }
-
-    pub async fn register_model(&self, model: AIModel) {
-        let mut models = self.models.write().await;
-        models.insert(model.id.clone(), model);
-    }
-
-    pub async fn quantize_model(&self, model_id: &str, level: QuantizationLevel) -> Result<(), String> {
-        let mut models = self.models.write().await;
-        
-        if let Some(model) = models.get_mut(model_id) {
-            model.quantize(level)?;
-            
-            let mut history = self.optimization_history.write().await;
-            history.push(model.metadata.clone());
-            
-            Ok(())
-        } else {
-            Err(format!("Model {} not found", model_id))
-        }
-    }
-
-    pub async fn prune_model(&self, model_id: &str, strategy: PruningStrategy, sparsity: f32) -> Result<(), String> {
-        let mut models = self.models.write().await;
-        
-        if let Some(model) = models.get_mut(model_id) {
-            model.prune(strategy, sparsity)?;
-            
-            let mut history = self.optimization_history.write().await;
-            history.push(model.metadata.clone());
-            
-            Ok(())
-        } else {
-            Err(format!("Model {} not found", model_id))
-        }
-    }
-
-    pub async fn inference(&self, model_id: &str, input: &[f32]) -> Result<Vec<f32>, String> {
-        let models = self.models.read().await;
-        
-        if let Some(model) = models.get(model_id) {
-            Ok(model.inference(input).await)
-        } else {
-            Err(format!("Model {} not found", model_id))
-        }
-    }
-
-    pub async fn get_optimization_stats(&self) -> HashMap<String, f64> {
-        let models = self.models.read().await;
-        let braided_models = self.braided_models.read().await;
-        let history = self.optimization_history.read().await;
-        
-        let mut stats = HashMap::new();
-        
-        stats.insert("total_models".to_string(), models.len() as f64);
-        stats.insert("total_braided_models".to_string(), braided_models.len() as f64);
-        stats.insert("total_optimizations".to_string(), history.len() as f64);
-        
-        if !models.is_empty() || !braided_models.is_empty() {
-            let total_original_size: usize = models.values()
-                .map(|m| m.metadata.original_size_bytes)
-                .chain(braided_models.values().map(|m| m.metadata.original_size_bytes))
-                .sum();
-            let total_optimized_size: usize = models.values()
-                .map(|m| m.size_bytes)
-                .chain(braided_models.values().map(|m| m.metadata.optimized_size_bytes))
-                .sum();
-            
-            stats.insert("total_memory_saved_bytes".to_string(), 
-                        (total_original_size - total_optimized_size) as f64);
-            stats.insert("average_memory_reduction".to_string(), 
-                        total_original_size as f64 / total_optimized_size as f64);
-            
-            let total_models = models.len() + braided_models.len();
-            let avg_speedup: f32 = models.values()
-                .map(|m| m.metadata.speedup_factor)
-                .chain(braided_models.values().map(|m| m.metadata.speedup_factor))
-                .sum::<f32>() / total_models as f32;
-            stats.insert("average_speedup".to_string(), avg_speedup as f64);
-            
-            let avg_accuracy: f32 = models.values()
-                .map(|m| m.metadata.accuracy_retention)
-                .chain(braided_models.values().map(|m| m.metadata.accuracy_retention))
-                .sum::<f32>() / total_models as f32;
-            stats.insert("average_accuracy_retention".to_string(), avg_accuracy as f64);
-        }
-        
-        stats
-    }
-
-    pub async fn generate_report(&self) -> String {
-        let models = self.models.read().await;
-        let stats = self.get_optimization_stats().await;
-        
-        let mut report = String::new();
-        report.push_str("AI Model Optimization Report\n");
-        report.push_str("============================\n\n");
-        
-        report.push_str(&format!("Total Models: {}\n", stats.get("total_models").unwrap_or(&0.0)));
-        report.push_str(&format!("Total Optimizations: {}\n", stats.get("total_optimizations").unwrap_or(&0.0)));
-        
-        if let Some(memory_saved) = stats.get("total_memory_saved_bytes") {
-            report.push_str(&format!("Memory Saved: {:.2} MB\n", memory_saved / 1_048_576.0));
-        }
-        
-        if let Some(avg_reduction) = stats.get("average_memory_reduction") {
-            report.push_str(&format!("Average Memory Reduction: {:.2}x\n", avg_reduction));
-        }
-        
-        if let Some(avg_speedup) = stats.get("average_speedup") {
-            report.push_str(&format!("Average Speedup: {:.2}x\n", avg_speedup));
-        }
-        
-        if let Some(avg_accuracy) = stats.get("average_accuracy_retention") {
-            report.push_str(&format!("Average Accuracy Retention: {:.1}%\n", avg_accuracy * 100.0));
-        }
-        
-        report.push_str("\nModel Details:\n");
-        report.push_str("--------------\n");
-        
-        for model in models.values() {
-            report.push_str(&format!("Model: {}\n", model.id));
-            report.push_str(&format!("  Size: {:.2} KB -> {:.2} KB\n", 
-                           model.metadata.original_size_bytes as f64 / 1024.0,
-                           model.size_bytes as f64 / 1024.0));
-            report.push_str(&format!("  Quantization: {:?}\n", model.quantization));
-            if let Some(strategy) = model.pruning_strategy {
-                report.push_str(&format!("  Pruning: {:?} ({:.1}% sparse)\n", 
-                               strategy, model.sparsity * 100.0));
-            }
-            report.push_str(&format!("  Speedup: {:.2}x\n", model.metadata.speedup_factor));
-            report.push_str(&format!("  Accuracy: {:.1}%\n", model.metadata.accuracy_retention * 100.0));
-            report.push_str("\n");
-        }
-        
-        report
-    }
-
-    pub async fn register_braided_model(&self, model: BraidedBrownianModel) {
-        let mut models = self.braided_models.write().await;
-        models.insert(model.id.clone(), model);
-    }
-
-    pub async fn generate_braided_paths(&self, model_id: &str, initial_conditions: &[f32]) -> Result<Vec<Vec<f32>>, String> {
-        let models = self.braided_models.read().await;
-        
-        if let Some(model) = models.get(model_id) {
-            Ok(model.generate_braided_paths(initial_conditions).await)
-        } else {
-            Err(format!("Braided model {} not found", model_id))
-        }
-    }
-
-    pub async fn calculate_risk_moments(&self, model_id: &str, paths: &[Vec<f32>]) -> Result<Vec<f32>, String> {
-        let models = self.braided_models.read().await;
-        
-        if let Some(model) = models.get(model_id) {
-            Ok(model.calculate_risk_moments(paths))
-        } else {
-            Err(format!("Braided model {} not found", model_id))
-        }
-    }
-
-    pub async fn quantize_braided_model(&self, model_id: &str, level: QuantizationLevel) -> Result<(), String> {
-        let mut models = self.braided_models.write().await;
-        
-        if let Some(model) = models.get_mut(model_id) {
-            model.quantize(level)?;
-            
-            let mut history = self.optimization_history.write().await;
-            history.push(model.metadata.clone());
-            
-            Ok(())
-        } else {
-            Err(format!("Braided model {} not found", model_id))
-        }
-    }
-
-    pub async fn prune_braided_model(&self, model_id: &str, strategy: PruningStrategy, sparsity: f32) -> Result<(), String> {
-        let mut models = self.braided_models.write().await;
-        
-        if let Some(model) = models.get_mut(model_id) {
-            model.prune(strategy, sparsity)?;
-            
-            let mut history = self.optimization_history.write().await;
-            history.push(model.metadata.clone());
-            
-            Ok(())
-        } else {
-            Err(format!("Braided model {} not found", model_id))
-        }
     }
 }
 
@@ -545,8 +304,8 @@ impl BraidedBrownianModel {
             sparsity_level: None,
             accuracy_retention: 1.0,
             speedup_factor: 1.0,
-            optimization_timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
+            optimization_timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_nanos() as u64,
             calibration_data_hash: "braided_original".to_string(),
@@ -644,21 +403,21 @@ impl BraidedBrownianModel {
             },
             QuantizationLevel::INT8 => {
                 for weight in &mut self.weights_linear {
-                    let quantized = ((*weight * 127.0).round().max(-128.0).min(127.0)) / 127.0;
+                    let quantized = (*weight * 127.0).round().clamp(-128.0, 127.0) / 127.0;
                     *weight = quantized;
                 }
                 for weight in &mut self.weights_conv {
-                    let quantized = ((*weight * 127.0).round().max(-128.0).min(127.0)) / 127.0;
+                    let quantized = (*weight * 127.0).round().clamp(-128.0, 127.0) / 127.0;
                     *weight = quantized;
                 }
             },
             QuantizationLevel::INT4 => {
                 for weight in &mut self.weights_linear {
-                    let quantized = ((*weight * 7.0).round().max(-8.0).min(7.0)) / 7.0;
+                    let quantized = (*weight * 7.0).round().clamp(-8.0, 7.0) / 7.0;
                     *weight = quantized;
                 }
                 for weight in &mut self.weights_conv {
-                    let quantized = ((*weight * 7.0).round().max(-8.0).min(7.0)) / 7.0;
+                    let quantized = (*weight * 7.0).round().clamp(-8.0, 7.0) / 7.0;
                     *weight = quantized;
                 }
             },
@@ -675,7 +434,7 @@ impl BraidedBrownianModel {
     }
 
     pub fn prune(&mut self, strategy: PruningStrategy, sparsity: f32) -> Result<(), String> {
-        if sparsity < 0.0 || sparsity >= 1.0 {
+        if !(0.0..1.0).contains(&sparsity) {
             return Err("Sparsity must be between 0.0 and 1.0".to_string());
         }
 
@@ -712,8 +471,7 @@ impl BraidedBrownianModel {
                     .collect();
                 linear_indices.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
                 
-                for i in 0..linear_to_prune {
-                    let idx = linear_indices[i].0;
+                for &(idx, _) in linear_indices.iter().take(linear_to_prune) {
                     self.weights_linear[idx] = 0.0;
                 }
                 
@@ -724,8 +482,7 @@ impl BraidedBrownianModel {
                     .collect();
                 conv_indices.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
                 
-                for i in 0..conv_to_prune {
-                    let idx = conv_indices[i].0;
+                for &(idx, _) in conv_indices.iter().take(conv_to_prune) {
                     self.weights_conv[idx] = 0.0;
                 }
             }
@@ -747,9 +504,214 @@ impl BraidedBrownianModel {
     }
 }
 
+pub struct AIModelOptimizer {
+    models: RwLock<HashMap<String, AIModel>>,
+    braided_models: RwLock<HashMap<String, BraidedBrownianModel>>,
+    optimization_history: RwLock<Vec<OptimizationMetadata>>,
+}
+
 impl Default for AIModelOptimizer {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl AIModelOptimizer {
+    pub fn new() -> Self {
+        Self {
+            models: RwLock::new(HashMap::new()),
+            braided_models: RwLock::new(HashMap::new()),
+            optimization_history: RwLock::new(Vec::new()),
+        }
+    }
+
+    pub async fn register_model(&self, model: AIModel) {
+        let mut models = self.models.write().await;
+        models.insert(model.id.clone(), model);
+    }
+
+    pub async fn register_braided_model(&self, model: BraidedBrownianModel) {
+        let mut models = self.braided_models.write().await;
+        models.insert(model.id.clone(), model);
+    }
+
+    pub async fn generate_braided_paths(&self, model_id: &str, initial_conditions: &[f32]) -> Result<Vec<Vec<f32>>, String> {
+        let models = self.braided_models.read().await;
+        
+        if let Some(model) = models.get(model_id) {
+            Ok(model.generate_braided_paths(initial_conditions).await)
+        } else {
+            Err(format!("Braided model {} not found", model_id))
+        }
+    }
+
+    pub async fn calculate_risk_moments(&self, model_id: &str, paths: &[Vec<f32>]) -> Result<Vec<f32>, String> {
+        let models = self.braided_models.read().await;
+        
+        if let Some(model) = models.get(model_id) {
+            Ok(model.calculate_risk_moments(paths))
+        } else {
+            Err(format!("Braided model {} not found", model_id))
+        }
+    }
+
+    pub async fn quantize_braided_model(&self, model_id: &str, level: QuantizationLevel) -> Result<(), String> {
+        let mut models = self.braided_models.write().await;
+        
+        if let Some(model) = models.get_mut(model_id) {
+            model.quantize(level)?;
+            
+            let mut history = self.optimization_history.write().await;
+            history.push(model.metadata.clone());
+            
+            Ok(())
+        } else {
+            Err(format!("Braided model {} not found", model_id))
+        }
+    }
+
+    pub async fn prune_braided_model(&self, model_id: &str, strategy: PruningStrategy, sparsity: f32) -> Result<(), String> {
+        let mut models = self.braided_models.write().await;
+        
+        if let Some(model) = models.get_mut(model_id) {
+            model.prune(strategy, sparsity)?;
+            
+            let mut history = self.optimization_history.write().await;
+            history.push(model.metadata.clone());
+            
+            Ok(())
+        } else {
+            Err(format!("Braided model {} not found", model_id))
+        }
+    }
+
+    pub async fn quantize_model(&self, model_id: &str, level: QuantizationLevel) -> Result<(), String> {
+        let mut models = self.models.write().await;
+        
+        if let Some(model) = models.get_mut(model_id) {
+            model.quantize(level)?;
+            
+            let mut history = self.optimization_history.write().await;
+            history.push(model.metadata.clone());
+            
+            Ok(())
+        } else {
+            Err(format!("Model {} not found", model_id))
+        }
+    }
+
+    pub async fn prune_model(&self, model_id: &str, strategy: PruningStrategy, sparsity: f32) -> Result<(), String> {
+        let mut models = self.models.write().await;
+        
+        if let Some(model) = models.get_mut(model_id) {
+            model.prune(strategy, sparsity)?;
+            
+            let mut history = self.optimization_history.write().await;
+            history.push(model.metadata.clone());
+            
+            Ok(())
+        } else {
+            Err(format!("Model {} not found", model_id))
+        }
+    }
+
+    pub async fn inference(&self, model_id: &str, input: &[f32]) -> Result<Vec<f32>, String> {
+        let models = self.models.read().await;
+        
+        if let Some(model) = models.get(model_id) {
+            Ok(model.inference(input).await)
+        } else {
+            Err(format!("Model {} not found", model_id))
+        }
+    }
+
+    pub async fn get_optimization_stats(&self) -> HashMap<String, f64> {
+        let models = self.models.read().await;
+        let braided_models = self.braided_models.read().await;
+        let history = self.optimization_history.read().await;
+        
+        let mut stats = HashMap::new();
+        
+        stats.insert("total_models".to_string(), models.len() as f64);
+        stats.insert("total_braided_models".to_string(), braided_models.len() as f64);
+        stats.insert("total_optimizations".to_string(), history.len() as f64);
+        
+        if !models.is_empty() || !braided_models.is_empty() {
+            let total_original_size: usize = models.values()
+                .map(|m| m.metadata.original_size_bytes)
+                .chain(braided_models.values().map(|m| m.metadata.original_size_bytes))
+                .sum();
+            let total_optimized_size: usize = models.values()
+                .map(|m| m.size_bytes)
+                .chain(braided_models.values().map(|m| m.metadata.optimized_size_bytes))
+                .sum();
+            
+            stats.insert("total_memory_saved_bytes".to_string(), 
+                        (total_original_size - total_optimized_size) as f64);
+            stats.insert("average_memory_reduction".to_string(), 
+                        total_original_size as f64 / total_optimized_size as f64);
+            
+            let total_models = models.len() + braided_models.len();
+            if total_models > 0 {
+                let avg_speedup: f32 = models.values()
+                    .map(|m| m.metadata.speedup_factor)
+                    .chain(braided_models.values().map(|m| m.metadata.speedup_factor))
+                    .sum::<f32>() / total_models as f32;
+                stats.insert("average_speedup".to_string(), avg_speedup as f64);
+                
+                let avg_accuracy: f32 = models.values()
+                    .map(|m| m.metadata.accuracy_retention)
+                    .chain(braided_models.values().map(|m| m.metadata.accuracy_retention))
+                    .sum::<f32>() / total_models as f32;
+                stats.insert("average_accuracy_retention".to_string(), avg_accuracy as f64);
+            }
+        }
+        
+        stats
+    }
+
+    pub async fn generate_report(&self) -> String {
+        let stats = self.get_optimization_stats().await;
+        let models = self.models.read().await;
+        let braided_models = self.braided_models.read().await;
+        
+        let mut report = String::new();
+        report.push_str("AI Model Optimization Report\n");
+        report.push_str("============================\n\n");
+        
+        report.push_str(&format!("Total Models: {}\n", stats.get("total_models").unwrap_or(&0.0)));
+        report.push_str(&format!("Total Braided Models: {}\n", stats.get("total_braided_models").unwrap_or(&0.0)));
+        report.push_str(&format!("Total Optimizations: {}\n", stats.get("total_optimizations").unwrap_or(&0.0)));
+        
+        if let Some(memory_saved) = stats.get("total_memory_saved_bytes") {
+            report.push_str(&format!("Memory Saved: {:.2} KB\n", memory_saved / 1024.0));
+        }
+        
+        if let Some(avg_speedup) = stats.get("average_speedup") {
+            report.push_str(&format!("Average Speedup: {:.2}x\n", avg_speedup));
+        }
+        
+        if let Some(avg_accuracy) = stats.get("average_accuracy_retention") {
+            report.push_str(&format!("Average Accuracy Retention: {:.1}%\n", avg_accuracy * 100.0));
+        }
+        
+        if !models.is_empty() {
+            report.push_str("\nStandard Models:\n");
+            for (id, model) in models.iter() {
+                report.push_str(&format!("  - {}: {:.1}% sparse, {:.2}x speedup\n", 
+                                       id, model.sparsity * 100.0, model.metadata.speedup_factor));
+            }
+        }
+        
+        if !braided_models.is_empty() {
+            report.push_str("\nBraided Brownian Models:\n");
+            for (id, model) in braided_models.iter() {
+                report.push_str(&format!("  - {}: {} strands, {} steps, {:.1}% sparse\n", 
+                                       id, model.num_strands, model.time_steps, model.sparsity * 100.0));
+            }
+        }
+        
+        report
     }
 }
 
@@ -771,7 +733,6 @@ mod tests {
     #[tokio::test]
     async fn test_pruning_strategies() {
         let mut model = AIModel::new("test_model".to_string(), 1000);
-        let _original_weights: Vec<f32> = model.weights.clone();
         
         model.prune(PruningStrategy::MagnitudeBased, 0.3).unwrap();
         
@@ -797,21 +758,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_inference_performance() {
-        let mut model = AIModel::new("perf_test".to_string(), 1000);
-        let input = vec![0.5; 100];
-        
-        let start = Instant::now();
-        let _output1 = model.inference(&input).await;
-        let _original_time = start.elapsed();
+    async fn test_braided_brownian_model() {
+        let mut model = BraidedBrownianModel::new("test_braided".to_string(), 3, 50);
+        let original_size = model.metadata.original_size_bytes;
         
         model.quantize(QuantizationLevel::INT8).unwrap();
-        model.prune(PruningStrategy::Structured, 0.4).unwrap();
+        assert!(model.metadata.optimized_size_bytes < original_size);
         
-        let start = Instant::now();
-        let _output2 = model.inference(&input).await;
-        let _optimized_time = start.elapsed();
+        model.prune(PruningStrategy::Structured, 0.3).unwrap();
+        assert_eq!(model.sparsity, 0.3);
         
-        assert!(model.metadata.speedup_factor > 1.0);
+        let paths = model.generate_braided_paths(&[100.0, 105.0, 95.0]).await;
+        assert_eq!(paths.len(), 3);
+        assert!(!paths[0].is_empty());
+        
+        let moments = model.calculate_risk_moments(&paths);
+        assert_eq!(moments.len(), 9);
     }
 }

@@ -53,7 +53,7 @@ async fn demonstrate_data_structure_optimization() {
 
     let hierarchy = MemoryHierarchy::new();
 
-    let array_data = (0..1000u32).map(|i| i.to_le_bytes()).flatten().collect::<Vec<u8>>();
+    let array_data = (0..1000u32).flat_map(|i| i.to_le_bytes()).collect::<Vec<u8>>();
     hierarchy.put("contiguous_array".to_string(), array_data).await;
 
     for i in 0..1000 {

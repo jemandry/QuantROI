@@ -169,12 +169,9 @@ impl Cache {
     }
 
     fn update_access_order(&mut self, key: &str) {
-        match self.policy {
-            ReplacementPolicy::LRU => {
-                self.access_order.retain(|k| k != key);
-                self.access_order.push_back(key.to_string());
-            },
-            _ => {} // Other policies don't need access order updates
+        if let ReplacementPolicy::LRU = self.policy {
+            self.access_order.retain(|k| k != key);
+            self.access_order.push_back(key.to_string());
         }
     }
 
@@ -215,6 +212,12 @@ pub struct AccessStats {
     pub cache_misses: u64,
     pub total_latency: Duration,
     pub level_accesses: HashMap<MemoryLevel, u64>,
+}
+
+impl Default for MemoryHierarchy {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MemoryHierarchy {
@@ -470,7 +473,7 @@ impl MemoryHierarchy {
         let analysis = format!(
             "{{\"model_id\": \"{}\", \"initial_conditions\": {:?}, \"paths\": {:?}, \"risk_moments\": {:?}, \"braid_invariants\": {:?}}}",
             model_id, initial_conditions, paths, moments, 
-            vec![paths.len(), paths.get(0).map_or(0, |p| p.len())]
+            vec![paths.len(), paths.first().map_or(0, |p| p.len())]
         );
         
         self.put(key, analysis.into_bytes()).await;

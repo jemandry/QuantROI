@@ -110,7 +110,7 @@ async fn main() {
         if scenario % 3 == 0 {
             println!("   Scenario {}: Risk processed in {:?}, moments: [{:.3}, {:.3}, {:.3}]", 
                      scenario, processing_time, 
-                     shock_moments.get(0).unwrap_or(&0.0),
+                     shock_moments.first().unwrap_or(&0.0),
                      shock_moments.get(1).unwrap_or(&0.0),
                      shock_moments.get(2).unwrap_or(&0.0));
         }

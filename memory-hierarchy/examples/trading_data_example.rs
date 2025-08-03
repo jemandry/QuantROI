@@ -109,7 +109,7 @@ fn generate_market_data() -> Vec<u8> {
 
 fn generate_trade_history() -> Vec<u8> {
     let mut history = String::new();
-    history.push_str("[");
+    history.push('[');
     for i in 0..100 {
         if i > 0 { history.push(','); }
         history.push_str(&format!(
