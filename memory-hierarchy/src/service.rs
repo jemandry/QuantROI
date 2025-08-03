@@ -1,5 +1,6 @@
-use memory_hierarchy::{MemoryHierarchy, CausalDataAgent};
+use memory_hierarchy::{MemoryHierarchy, CausalDataAgent, TradingWealthEngine, QuantumMode, QuantumAuditEngine, QuantumSimulationEngine, ClassicalAuditEngine};
 use std::sync::Arc;
+use tokio::sync::RwLock;
 use tracing::info;
 use serde::{Deserialize, Serialize};
 use axum::{
@@ -42,6 +43,8 @@ struct HealthResponse {
 struct AppState {
     hierarchy: Arc<MemoryHierarchy>,
     causal_agent: CausalDataAgent,
+    quantum_audit_engine: Option<Arc<dyn QuantumAuditEngine + Send + Sync>>,
+    wealth_engine: Arc<RwLock<TradingWealthEngine>>,
     start_time: std::time::Instant,
 }
 
@@ -54,11 +57,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Starting Memory Hierarchy Service");
 
     let hierarchy = Arc::new(MemoryHierarchy::new());
-    let causal_agent = hierarchy.create_causal_agent();
+    let causal_agent = hierarchy.create_quantum_causal_agent(QuantumMode::Simulation);
+    let quantum_engine: Arc<dyn QuantumAuditEngine + Send + Sync> = Arc::new(QuantumSimulationEngine::new());
+    let wealth_engine = Arc::new(RwLock::new(TradingWealthEngine::new()));
 
     let state = Arc::new(AppState {
         hierarchy,
         causal_agent,
+        quantum_audit_engine: Some(quantum_engine),
+        wealth_engine,
         start_time: std::time::Instant::now(),
     });
 
@@ -77,6 +84,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/causal/session/:session_id/response", post(record_causal_response))
         .route("/causal/session/:session_id/confidence", get(get_causal_confidence))
         .route("/causal/session/:session_id/summary", get(get_causal_summary))
+        .route("/quantum/audit/session", post(create_quantum_audit_session))
+        .route("/quantum/audit/session/:session_id/analyze", post(analyze_quantum_audit))
+        .route("/quantum/audit/session/:session_id/predictions", get(get_regulatory_predictions))
+        .route("/wealth/project", post(create_wealth_project))
+        .route("/wealth/project/:project_id", get(get_wealth_project))
+        .route("/wealth/project/:project_id/delegate", post(delegate_project_task))
+        .route("/wealth/milestones", get(get_wealth_milestones))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
         .with_state(state);
@@ -280,4 +294,150 @@ async fn get_causal_summary(
             "error": e
         }))
     }
+}
+
+#[derive(serde::Deserialize)]
+struct QuantumModeRequest {
+    mode: String,
+}
+
+async fn create_quantum_audit_session(
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<QuantumModeRequest>,
+) -> Json<serde_json::Value> {
+    let mode = match request.mode.as_str() {
+        "simulation" => QuantumMode::Simulation,
+        "production" => QuantumMode::ProductionHardware,
+        "classical" => QuantumMode::NonQuantum,
+        _ => QuantumMode::Simulation,
+    };
+    
+    match state.causal_agent.create_quantum_audit_session(mode).await {
+        Ok(session_id) => Json(serde_json::json!({
+            "session_id": session_id,
+            "status": "created"
+        })),
+        Err(e) => Json(serde_json::json!({
+            "error": e
+        }))
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct QuantumAnalysisRequest {
+    data: String,
+}
+
+async fn analyze_quantum_audit(
+    State(state): State<Arc<AppState>>,
+    Path(session_id): Path<String>,
+    Json(request): Json<QuantumAnalysisRequest>,
+) -> Json<serde_json::Value> {
+    let data = request.data.as_bytes();
+    match state.causal_agent.analyze_with_quantum_audit(&session_id, data).await {
+        Ok(analysis) => Json(serde_json::json!({
+            "analysis": analysis
+        })),
+        Err(e) => Json(serde_json::json!({
+            "error": e
+        }))
+    }
+}
+
+async fn get_regulatory_predictions(
+    State(state): State<Arc<AppState>>,
+    Path(session_id): Path<String>,
+) -> Json<serde_json::Value> {
+    if let Some(quantum_engine) = &state.quantum_audit_engine {
+        match quantum_engine.predict_regulatory_changes(&session_id).await {
+            Ok(predictions) => Json(serde_json::json!({
+                "predictions": predictions
+            })),
+            Err(e) => Json(serde_json::json!({
+                "error": e
+            }))
+        }
+    } else {
+        Json(serde_json::json!({
+            "error": "Quantum audit engine not available"
+        }))
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct CreateProjectRequest {
+    name: String,
+    causal_factors: Vec<String>,
+    wealth_target: u64,
+}
+
+async fn create_wealth_project(
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<CreateProjectRequest>,
+) -> Json<serde_json::Value> {
+    let mut wealth_engine = state.wealth_engine.write().await;
+    let project_id = wealth_engine.create_causal_project(
+        request.name,
+        request.causal_factors,
+        request.wealth_target
+    ).await;
+    
+    Json(serde_json::json!({
+        "project_id": project_id,
+        "status": "created"
+    }))
+}
+
+async fn get_wealth_project(
+    State(state): State<Arc<AppState>>,
+    Path(project_id): Path<String>,
+) -> Json<serde_json::Value> {
+    let wealth_engine = state.wealth_engine.read().await;
+    match wealth_engine.get_project(&project_id) {
+        Some(project) => Json(serde_json::json!(project)),
+        None => Json(serde_json::json!({
+            "error": "Project not found"
+        }))
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct DelegateTaskRequest {
+    task_type: String,
+    delegated_to: String,
+    reward_amount: u64,
+}
+
+async fn delegate_project_task(
+    State(state): State<Arc<AppState>>,
+    Path(project_id): Path<String>,
+    Json(request): Json<DelegateTaskRequest>,
+) -> Json<serde_json::Value> {
+    let task_type = match request.task_type.as_str() {
+        "data_collection" => memory_hierarchy::TaskType::DataCollection,
+        "causal_analysis" => memory_hierarchy::TaskType::CausalAnalysis,
+        "risk_assessment" => memory_hierarchy::TaskType::RiskAssessment,
+        "compliance_check" => memory_hierarchy::TaskType::ComplianceCheck,
+        "trading_execution" => memory_hierarchy::TaskType::TradingExecution,
+        _ => memory_hierarchy::TaskType::DataCollection,
+    };
+    
+    let mut wealth_engine = state.wealth_engine.write().await;
+    match wealth_engine.delegate_task(&project_id, task_type, request.delegated_to, request.reward_amount).await {
+        Ok(task_id) => Json(serde_json::json!({
+            "task_id": task_id,
+            "status": "delegated"
+        })),
+        Err(e) => Json(serde_json::json!({
+            "error": e
+        }))
+    }
+}
+
+async fn get_wealth_milestones(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
+    let wealth_engine = state.wealth_engine.read().await;
+    let milestones = wealth_engine.get_wealth_milestones();
+    Json(serde_json::json!({
+        "milestones": milestones
+    }))
 }

@@ -9,12 +9,17 @@ pub mod causal_data_agent;
 pub mod brownian_volatility_strand;
 pub mod async_volatility_engine;
 pub mod volatility_integration;
-
+pub mod quantum_audit;
+pub mod wealth_engine;
+pub mod quantum_ml;
 pub use ai_optimization::{AIModel, AIModelOptimizer, BraidedBrownianModel, QuantizationLevel, PruningStrategy, OptimizationMetadata};
 pub use causal_data_agent::{CausalDataAgent, DataInventory, CausalQuestion, UserResponse, AnalysisSession, SessionStatus};
 pub use brownian_volatility_strand::{BrownianVolatilityStrand, BrownianMotionParameters, VolatilitySimulationRecord};
 pub use async_volatility_engine::{AsyncVolatilityEngine, VolatilityStrandStatistics};
 pub use volatility_integration::VolatilityIntegratedMemoryHierarchy;
+pub use quantum_audit::{QuantumAuditEngine, QuantumAuditSession, QuantumMode, QuantumAuditResult, RegulatoryPrediction, QuantumSimulationEngine, ClassicalAuditEngine};
+pub use wealth_engine::{TradingWealthEngine, CausalProject, ProjectDelegation, DelegatedTask, TaskType, WealthMilestone, AuditEntry};
+pub use quantum_ml::{QuantumMLPredictor, RegulatoryPattern};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MemoryLevel {
@@ -496,7 +501,6 @@ impl MemoryHierarchy {
     pub fn create_causal_agent(&self) -> CausalDataAgent {
         CausalDataAgent::new()
     }
-
     pub async fn create_volatility_integrated_hierarchy(base_file_path: String, max_concurrent_simulations: usize) -> VolatilityIntegratedMemoryHierarchy {
         VolatilityIntegratedMemoryHierarchy::new(base_file_path, max_concurrent_simulations).await
     }
@@ -518,5 +522,18 @@ impl MemoryHierarchy {
         
         self.register_braided_model(braided_model).await;
         Ok(())
+    }
+    
+    pub fn create_quantum_causal_agent(&self, quantum_mode: crate::quantum_audit::QuantumMode) -> CausalDataAgent {
+        let quantum_engine: Box<dyn crate::quantum_audit::QuantumAuditEngine + Send + Sync> = match quantum_mode {
+            crate::quantum_audit::QuantumMode::Simulation | crate::quantum_audit::QuantumMode::ProductionHardware => {
+                Box::new(crate::quantum_audit::QuantumSimulationEngine::new())
+            },
+            crate::quantum_audit::QuantumMode::NonQuantum => {
+                Box::new(crate::quantum_audit::ClassicalAuditEngine::new())
+            },
+        };
+        
+        CausalDataAgent::new_with_quantum_engine(Some(quantum_engine))
     }
 }

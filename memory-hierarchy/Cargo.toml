@@ -42,6 +42,13 @@ memmap2 = "0.9"
 rand_chacha = "0.3"
 rand_distr = "0.4"
 sha2 = "0.10"
+sha3 = "0.10"
+async-trait = "0.1"
+
+[features]
+default = ["quantum-simulation"]
+quantum-simulation = []
+quantum-hardware = ["quantum-simulation"]
 
 [dev-dependencies]
 criterion = "0.5"
