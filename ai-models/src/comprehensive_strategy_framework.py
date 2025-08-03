@@ -442,15 +442,25 @@ class ComprehensiveStrategyFramework:
                 'leaders_laggards', 'heatmap_following', 'deep_rl_trading',
                 'agent_based_modeling', 'monte_carlo_simulation', 'few_shot_learning',
                 'lightgbm_trading', 'sharpe_optimization', 'simulated_test_markets',
-                'behavioral_edge_exploitation'
+                'behavioral_edge_exploitation', 'option_chain_sniffing'
             ]
         
         strategy_selection_result = await self.strategy_selector.run_simulation_strategy_selection()
         
         comprehensive_results = await self.strategy_selector.run_comprehensive_strategy_analysis(symbols, strategies)
         
+        option_insights = {}
+        if 'option_chain_sniffing' in comprehensive_results.get('strategy_results', {}):
+            option_result = comprehensive_results['strategy_results']['option_chain_sniffing']
+            option_insights = {
+                'total_uoa_events': option_result.get('total_uoa_events', 0),
+                'avg_uoa_confidence': option_result.get('avg_uoa_confidence', 0),
+                'option_causal_signals': len(option_result.get('option_results', {}))
+            }
+        
         return {
             'strategy_selection': strategy_selection_result,
+            'option_insights': option_insights,
             **comprehensive_results
         }
     

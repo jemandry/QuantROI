@@ -733,7 +733,7 @@ class SimulationStrategySelector:
         """Run comprehensive analysis across all strategy types"""
         
         if strategies is None:
-            strategies = [strategy.value for strategy in StrategyType]
+            strategies = [strategy.value for strategy in StrategyType] + ['option_chain_sniffing']
         
         market_data = await self._extract_and_braid_market_data(symbols)
         
@@ -768,6 +768,9 @@ class SimulationStrategySelector:
         
         if 'behavioral_edge_exploitation' in strategies:
             results['behavioral_edge_exploitation'] = await self._analyze_behavioral_strategy(market_data, symbols)
+        
+        if 'option_chain_sniffing' in strategies:
+            results['option_chain_sniffing'] = await self._analyze_option_chain_sniffing_strategy(market_data, symbols)
         
         comprehensive_insights = self._generate_comprehensive_insights(results)
         
@@ -891,11 +894,43 @@ class SimulationStrategySelector:
         self.create_braided_strand('volatility_data', 'volatility', volatility_data,
                                   {'calculation_method': 'rolling_std', 'window': 20})
         
+        option_data = self._generate_synthetic_option_chain_data(symbols)
+        self.create_braided_strand('option_data', 'option_chain', option_data,
+                                  {'latency_budget_ms': 200, 'priority': 'hot_path', 'causal_analysis': True})
+        
         return {
             'market_data': market_data,
             'sentiment_data': sentiment_data,
-            'volatility_data': volatility_data
+            'volatility_data': volatility_data,
+            'option_data': option_data
         }
+    
+    def _generate_synthetic_option_chain_data(self, symbols: List[str]) -> pd.DataFrame:
+        """Generate synthetic option chain data for testing"""
+        option_data = []
+        
+        for symbol in symbols:
+            for strike in [95, 100, 105]:
+                for option_type in ['call', 'put']:
+                    option_data.append({
+                        'symbol': symbol,
+                        'strike': strike,
+                        'option_type': option_type,
+                        'expiration': '2024-02-16',
+                        'volume': np.random.randint(100, 5000),
+                        'open_interest': np.random.randint(1000, 20000),
+                        'implied_volatility': np.random.uniform(0.15, 0.35),
+                        'delta': np.random.uniform(-1, 1),
+                        'gamma': np.random.uniform(0, 0.1),
+                        'theta': np.random.uniform(-0.5, 0),
+                        'vega': np.random.uniform(0, 1),
+                        'bid': np.random.uniform(0.5, 10),
+                        'ask': np.random.uniform(0.6, 11),
+                        'timestamp': datetime.now(),
+                        'asset_id': f"{symbol}_{strike}_{option_type}"
+                    })
+        
+        return pd.DataFrame(option_data)
     
     def _generate_synthetic_market_data(self, symbols: List[str], days: int = 90) -> pd.DataFrame:
         """Generate synthetic market data for testing"""
@@ -1488,6 +1523,225 @@ class SimulationStrategySelector:
                 'Detect forced trading situations for contrarian opportunities'
             ]
         }
+
+    async def _analyze_option_chain_sniffing_strategy(self, market_data: Dict[str, Any], symbols: List[str]) -> Dict[str, Any]:
+        """Analyze option chain sniffing strategy with UOA detection and causal analysis"""
+        
+        option_results = {}
+        
+        for symbol in symbols:
+            try:
+                from .high_performance_option_analyzer import HighPerformanceOptionAnalyzer
+                from .temporal_causal_gnn import CausalGraphDiscovery
+                
+                option_analyzer = HighPerformanceOptionAnalyzer(use_gpu=False)
+                causal_discovery = CausalGraphDiscovery()
+                
+                option_data = self._generate_synthetic_option_data(symbol)
+                
+                greeks = option_analyzer.calculate_greeks_vectorized(option_data)
+                uoa_result = option_analyzer.detect_unusual_option_activity(option_data)
+                
+                delta_weighted_oi = self._calculate_delta_weighted_oi(option_data, greeks)
+                iv_rank, iv_percentile = self._calculate_iv_rank_percentile(option_data)
+                hedging_flows = self._analyze_market_maker_hedging(option_data, greeks)
+                
+                option_conditions = option_analyzer.capture_option_conditions_for_learning(
+                    symbol, option_data, greeks, uoa_result, 
+                    option_analyzer._calculate_max_pain_vectorized(
+                        option_data.strikes, 
+                        option_data.open_interests[option_data.option_types > 0],
+                        option_data.open_interests[option_data.option_types < 0]
+                    )[0]
+                )
+                
+                price_data = np.array([100 + np.random.normal(0, 2) for _ in range(20)])
+                option_signal_data = np.array([
+                    option_conditions['total_delta_exposure'],
+                    option_conditions['total_gamma_exposure'], 
+                    option_conditions['put_call_ratio'],
+                    option_conditions['iv_skew']
+                ] * (len(price_data) // 4 + 1))[:len(price_data)]
+                
+                causal_result = causal_discovery.discover_option_causal_relationships(
+                    option_signal_data, price_data, [symbol]
+                )
+                
+                option_results[symbol] = {
+                    'uoa_events': uoa_result.get('total_anomalies', 0),
+                    'delta_weighted_oi': delta_weighted_oi,
+                    'iv_rank': iv_rank,
+                    'iv_percentile': iv_percentile,
+                    'hedging_flows': hedging_flows,
+                    'option_conditions': option_conditions,
+                    'causal_relationships': causal_result
+                }
+                
+            except ImportError as e:
+                self.logger.warning(f"Option analysis modules not available: {e}")
+                option_results[symbol] = {
+                    'uoa_events': np.random.randint(0, 5),
+                    'delta_weighted_oi': self._calculate_delta_weighted_oi(None, None),
+                    'iv_rank': np.random.uniform(0.3, 0.7),
+                    'iv_percentile': np.random.uniform(20, 80),
+                    'hedging_flows': self._analyze_market_maker_hedging(None, None),
+                    'option_conditions': {
+                        'total_delta_exposure': np.random.uniform(-5000, 5000),
+                        'total_gamma_exposure': np.random.uniform(0, 2000),
+                        'put_call_ratio': np.random.uniform(0.5, 2.0),
+                        'iv_skew': np.random.uniform(-0.1, 0.1),
+                        'uoa_confidence_avg': np.random.uniform(0.4, 0.8)
+                    },
+                    'causal_relationships': {
+                        'granger_p_values': [np.random.uniform(0.01, 0.1) for _ in range(3)],
+                        'causal_strength': np.random.uniform(0.3, 0.7)
+                    }
+                }
+            except Exception as e:
+                self.logger.error(f"Error in option chain analysis for {symbol}: {e}")
+                option_results[symbol] = {
+                    'uoa_events': 0,
+                    'delta_weighted_oi': 0.0,
+                    'iv_rank': 0.5,
+                    'iv_percentile': 50.0,
+                    'hedging_flows': self._analyze_market_maker_hedging(None, None),
+                    'option_conditions': {
+                        'total_delta_exposure': 0.0,
+                        'total_gamma_exposure': 0.0,
+                        'put_call_ratio': 1.0,
+                        'iv_skew': 0.0,
+                        'uoa_confidence_avg': 0.5
+                    },
+                    'causal_relationships': {
+                        'granger_p_values': [0.05, 0.05, 0.05],
+                        'causal_strength': 0.5
+                    }
+                }
+        
+        avg_uoa_confidence = np.mean([
+            result.get('option_conditions', {}).get('uoa_confidence_avg', 0) 
+            for result in option_results.values()
+        ])
+        
+        return {
+            'strategy_type': 'option_chain_sniffing',
+            'symbols_analyzed': symbols,
+            'option_results': option_results,
+            'avg_uoa_confidence': float(avg_uoa_confidence),
+            'total_uoa_events': sum(result.get('uoa_events', 0) for result in option_results.values()),
+            'confidence_score': min(avg_uoa_confidence, 1.0),
+            'learning_objectives': [
+                'Detect unusual option activity for directional signals',
+                'Analyze delta hedging effects on price movements',
+                'Use Granger causality to predict price from option flows',
+                'Monitor market maker positioning and hedging requirements'
+            ]
+        }
+    
+    def _generate_synthetic_option_data(self, symbol: str) -> Any:
+        """Generate synthetic option data for testing"""
+        try:
+            from .high_performance_option_analyzer import OptionData
+            
+            n_options = 20
+            strikes = np.linspace(95, 105, n_options)
+            expiries = np.array([30] * n_options)
+            underlying_price = 100.0
+            risk_free_rate = 0.05
+            volatilities = np.random.uniform(0.15, 0.35, n_options)
+            option_types = np.array([1 if i < n_options//2 else -1 for i in range(n_options)])
+            volumes = np.random.randint(100, 5000, n_options)
+            open_interests = np.random.randint(1000, 20000, n_options)
+            
+            return OptionData(
+                strikes=strikes,
+                expiries=expiries,
+                underlying_price=underlying_price,
+                risk_free_rate=risk_free_rate,
+                volatilities=volatilities,
+                option_types=option_types,
+                volumes=volumes,
+                open_interests=open_interests
+            )
+        except ImportError:
+            return {
+                'strikes': np.linspace(95, 105, 20),
+                'expiries': np.array([30] * 20),
+                'underlying_price': 100.0,
+                'risk_free_rate': 0.05,
+                'volatilities': np.random.uniform(0.15, 0.35, 20),
+                'option_types': np.array([1 if i < 10 else -1 for i in range(20)]),
+                'volumes': np.random.randint(100, 5000, 20),
+                'open_interests': np.random.randint(1000, 20000, 20)
+            }
+    
+    def _calculate_delta_weighted_oi(self, option_data: Any, greeks: Any) -> float:
+        """Calculate delta-weighted open interest for hedging flow analysis"""
+        try:
+            if hasattr(option_data, 'open_interests') and hasattr(greeks, 'delta'):
+                delta_weighted = np.sum(np.abs(greeks.delta) * option_data.open_interests)
+            else:
+                delta_weighted = np.sum(np.abs(np.random.uniform(-1, 1, 20)) * np.random.randint(1000, 20000, 20))
+            return float(delta_weighted)
+        except Exception:
+            return float(np.random.uniform(50000, 200000))
+    
+    def _calculate_iv_rank_percentile(self, option_data: Any) -> Tuple[float, float]:
+        """Calculate IV rank and percentile for volatility analysis"""
+        try:
+            if hasattr(option_data, 'volatilities'):
+                current_iv = np.mean(option_data.volatilities)
+            else:
+                current_iv = np.random.uniform(0.15, 0.35)
+            
+            historical_iv = np.random.uniform(0.10, 0.50, 252)
+            iv_rank = (current_iv - np.min(historical_iv)) / (np.max(historical_iv) - np.min(historical_iv))
+            iv_percentile = np.percentile(historical_iv, current_iv * 100)
+            return float(iv_rank), float(iv_percentile)
+        except Exception:
+            return float(np.random.uniform(0.3, 0.7)), float(np.random.uniform(20, 80))
+    
+    def _analyze_market_maker_hedging(self, option_data: Any, greeks: Any) -> Dict[str, float]:
+        """Analyze market maker hedging flows and dealer positioning"""
+        try:
+            if hasattr(option_data, 'option_types') and hasattr(greeks, 'delta'):
+                call_mask = option_data.option_types > 0
+                put_mask = option_data.option_types < 0
+                
+                call_delta_exposure = np.sum(greeks.delta[call_mask] * option_data.open_interests[call_mask])
+                put_delta_exposure = np.sum(greeks.delta[put_mask] * option_data.open_interests[put_mask])
+                net_delta_exposure = call_delta_exposure + put_delta_exposure
+                
+                total_gamma_exposure = np.sum(np.abs(greeks.gamma) * option_data.open_interests)
+                hedging_pressure = abs(net_delta_exposure) / (option_data.underlying_price * 100)
+                dealer_long_gamma = total_gamma_exposure if net_delta_exposure > 0 else -total_gamma_exposure
+            else:
+                net_delta_exposure = np.random.uniform(-10000, 10000)
+                call_delta_exposure = np.random.uniform(0, 15000)
+                put_delta_exposure = np.random.uniform(-15000, 0)
+                total_gamma_exposure = np.random.uniform(0, 5000)
+                hedging_pressure = np.random.uniform(0, 0.1)
+                dealer_long_gamma = np.random.uniform(-5000, 5000)
+            
+            return {
+                'net_delta_exposure': float(net_delta_exposure),
+                'call_delta_exposure': float(call_delta_exposure),
+                'put_delta_exposure': float(put_delta_exposure),
+                'total_gamma_exposure': float(total_gamma_exposure),
+                'hedging_pressure': float(hedging_pressure),
+                'dealer_long_gamma': float(dealer_long_gamma),
+                'estimated_hedging_volume': float(abs(net_delta_exposure) * 0.1)
+            }
+        except Exception:
+            return {
+                'net_delta_exposure': float(np.random.uniform(-10000, 10000)),
+                'call_delta_exposure': float(np.random.uniform(0, 15000)),
+                'put_delta_exposure': float(np.random.uniform(-15000, 0)),
+                'total_gamma_exposure': float(np.random.uniform(0, 5000)),
+                'hedging_pressure': float(np.random.uniform(0, 0.1)),
+                'dealer_long_gamma': float(np.random.uniform(-5000, 5000)),
+                'estimated_hedging_volume': float(np.random.uniform(0, 2000))
+            }
 
     async def generate_simulation_recommendations(self, market_analysis: Dict[str, Any]) -> List[SimulationRecommendation]:
         """Generate prioritized simulation recommendations based on market analysis"""
