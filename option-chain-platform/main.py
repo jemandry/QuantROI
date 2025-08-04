@@ -1091,6 +1091,131 @@ async def run_full_audit_workflow(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/audit/phase1/confidence_score")
+async def calculate_event_confidence(request: Dict[str, Any] = Body(...)):
+    """Calculate confidence score for an event using Phase 1 engine"""
+    try:
+        import sys
+        sys.path.append('ai-models/src')
+        from enhanced_confidence_engine import EnhancedConfidenceEngine
+        
+        confidence_engine = EnhancedConfidenceEngine()
+        event = request.get('event', {})
+        
+        confidence_result = confidence_engine.calculate_confidence_score(event)
+        
+        return {
+            "status": "success",
+            "confidence_result": confidence_result,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/audit/phase1/resolve_conflicts")
+async def resolve_event_conflicts(request: Dict[str, Any] = Body(...)):
+    """Resolve conflicts between similar events"""
+    try:
+        import sys
+        sys.path.append('ai-models/src')
+        from cross_source_conflict_resolution import CrossSourceConflictResolution
+        
+        conflict_resolver = CrossSourceConflictResolution()
+        events = request.get('events', [])
+        
+        resolved, flagged = await conflict_resolver.resolve_conflicts(events)
+        
+        return {
+            "status": "success",
+            "resolved_events": resolved,
+            "flagged_events": flagged,
+            "resolution_summary": {
+                "total_input": len(events),
+                "resolved_count": len(resolved),
+                "flagged_count": len(flagged)
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/audit/phase1/log_consent")
+async def log_user_consent(request: Dict[str, Any] = Body(...)):
+    """Log user consent to Solana blockchain"""
+    try:
+        import sys
+        sys.path.append('ai-models/src')
+        from solana_audit_integration import SolanaAuditIntegration
+        
+        solana_integration = SolanaAuditIntegration()
+        user_id = request.get('user_id')
+        consent_data = request.get('consent_data', {})
+        
+        tx_id = await solana_integration.log_consent(user_id, consent_data)
+        
+        return {
+            "status": "success",
+            "transaction_id": tx_id,
+            "user_id": user_id,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/audit/phase1/compliance_report")
+async def generate_compliance_report():
+    """Generate compliance report with Phase 1 audit data"""
+    try:
+        import sys
+        sys.path.append('ai-models/src')
+        from solana_audit_integration import SolanaAuditIntegration
+        
+        solana_integration = SolanaAuditIntegration()
+        report_file = f"audit_logs/compliance_report_{int(datetime.now().timestamp())}.pdf"
+        
+        await solana_integration.generate_compliance_report(report_file)
+        
+        return {
+            "status": "success",
+            "report_file": report_file,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/audit/phase1/statistics")
+async def get_phase1_statistics():
+    """Get comprehensive Phase 1 audit statistics"""
+    try:
+        import sys
+        sys.path.append('ai-models/src')
+        from comprehensive_audit_integration import ComprehensiveAuditIntegration
+        from enhanced_confidence_engine import EnhancedConfidenceEngine
+        from cross_source_conflict_resolution import CrossSourceConflictResolution
+        from solana_audit_integration import SolanaAuditIntegration
+        
+        audit_integration = ComprehensiveAuditIntegration()
+        confidence_engine = EnhancedConfidenceEngine()
+        conflict_resolver = CrossSourceConflictResolution()
+        solana_integration = SolanaAuditIntegration()
+        
+        audit_stats = await audit_integration.get_audit_statistics()
+        source_stats = confidence_engine.get_source_statistics()
+        conflict_stats = await conflict_resolver.get_conflict_statistics()
+        consent_stats = await solana_integration.get_consent_statistics()
+        
+        return {
+            "status": "success",
+            "phase1_statistics": {
+                "audit_events": audit_stats,
+                "source_reliability": source_stats,
+                "conflict_resolution": conflict_stats,
+                "consent_ledger": consent_stats
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 if __name__ == "__main__":
     import uvicorn
