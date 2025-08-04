@@ -1,5 +1,6 @@
 use anchor_lang::prelude::*;
 use sha3::{Digest, Sha3_256};
+use switchboard_v2::AggregatorAccountData;
 
 pub mod master_strategy;
 
@@ -132,7 +133,7 @@ pub mod delegation_management {
                 execute_gated_pg_trade(&market_conditions, &qos_requirements)?
             },
             RLStrategyType::TemporalFusionTransformer => {
-                execute_tft_trade(&market_conditions, &qos_requirements)?
+                execute_ai_trade_internal(&market_conditions, &qos_requirements)?
             },
         };
 
@@ -472,12 +473,22 @@ pub struct DelegationAccount {
     pub reconsent_streak: u32,
     pub knowledge_test_required: bool,
     pub wealth_milestone_tracking: WealthMilestoneTracker,
+    pub duty_records: Vec<DutyRecord>,
+    pub contract_terms: Option<ContractTerms>,
+    pub audit_configuration: Option<AuditConfiguration>,
+    pub voting_configuration: Option<VotingConfiguration>,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]
 pub enum DelegationType {
     Partial,
     Full,
+    CeoToAssistant,
+    BoardToCto,
+    ProjectManagement,
+    AiAuditor,
+    EmployeeVoting,
+    ShareholderVoting,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
@@ -541,7 +552,7 @@ pub struct InitializeDelegation<'info> {
     #[account(
         init,
         payer = bank_authority,
-        space = 8 + 32 + 32 + 8 + 1 + 8 + 1 + 4 + 8 + 8 + 64, // Account discriminator + data
+        space = 8 + 32 + 32 + 8 + 1 + 8 + 1 + 4 + 8 + 8 + 64 + 6000, // Account discriminator + data
         seeds = [b"delegation", bank_authority.key().as_ref()],
         bump
     )]
@@ -958,6 +969,20 @@ pub enum DelegationError {
     ExceededRecordkeepingLimit,
     #[msg("Portfolio allocation percentages must sum to 100")]
     InvalidAllocationPercentages,
+    #[msg("Duty not found")]
+    DutyNotFound,
+    #[msg("Invalid duty status")]
+    InvalidDutyStatus,
+    #[msg("Audit not configured")]
+    AuditNotConfigured,
+    #[msg("Voting not configured")]
+    VotingNotConfigured,
+    #[msg("Invalid voting weights")]
+    InvalidVotingWeights,
+    #[msg("Oracle verification failed")]
+    OracleVerificationFailed,
+    #[msg("Insufficient audit score")]
+    InsufficientAuditScore,
 }
 
 fn calculate_performance_score(total_profit_loss: i64, total_trades: u64) -> u32 {
@@ -1070,7 +1095,638 @@ fn execute_gated_pg_trade(
     })
 }
 
-fn execute_tft_trade(
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct DutyRecord {
+    pub duty_id: u64,
+    pub description: String,
+    pub assigned_to: Pubkey,
+    pub assigned_by: Pubkey,
+    pub created_at: i64,
+    pub due_date: i64,
+    pub status: DutyStatus,
+    pub completion_proof: Option<Vec<u8>>,
+    pub verification_required: bool,
+    pub payment_amount: u64,
+    pub payment_triggered: bool,
+    pub cryptographic_hash: Vec<u8>,
+    pub completeness_score: Option<u8>,
+    pub sincerity_score: Option<u8>,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct ContractTerms {
+    pub terms_hash: [u8; 32],
+    pub payment_on_delivery: bool,
+    pub verification_requirements: Vec<String>,
+    pub milestone_payments: Vec<MilestonePayment>,
+    pub auto_audit_enabled: bool,
+    pub audit_frequency: AuditFrequency,
+    pub oracle_verification_required: bool,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct MilestonePayment {
+    pub milestone_id: u64,
+    pub description: String,
+    pub amount: u64,
+    pub completion_criteria: String,
+    pub verification_required: bool,
+    pub oracle_verification: bool,
+    pub completed: bool,
+    pub payment_executed: bool,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct AuditConfiguration {
+    pub audit_type: AuditType,
+    pub frequency: AuditFrequency,
+    pub variance_threshold: Option<f64>,
+    pub vrf_seed: Option<u64>,
+    pub last_audit: i64,
+    pub next_audit_due: i64,
+    pub audit_history: Vec<AuditRecord>,
+    pub oracle_feed: Option<Pubkey>,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct VotingConfiguration {
+    pub voting_type: VotingType,
+    pub employee_weight_percent: u8,
+    pub shareholder_weight_percent: u8,
+    pub ai_classification_enabled: bool,
+    pub major_issue_threshold: f64,
+    pub public_voting: bool,
+    pub zkp_privacy: bool,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
+pub enum DutyStatus {
+    Assigned,
+    InProgress,
+    Completed,
+    Verified,
+    PaymentTriggered,
+    AiAudited,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
+pub enum AuditType {
+    Random,
+    VarianceBased,
+    Scheduled,
+    OnDemand,
+    AiDriven,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
+pub enum AuditFrequency {
+    Random,
+    VarianceBased,
+    Weekly,
+    Monthly,
+    OnCompletion,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
+pub enum VotingType {
+    EmployeeVoting,
+    ShareholderVoting,
+    CombinedVoting,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct AuditRecord {
+    pub audit_id: u64,
+    pub auditor: Pubkey,
+    pub audit_type: AuditType,
+    pub findings: Vec<String>,
+    pub compliance_score: u8,
+    pub completeness_assessment: Option<u8>,
+    pub sincerity_assessment: Option<u8>,
+    pub timestamp: i64,
+    pub cryptographic_hash: Vec<u8>,
+    pub vrf_proof: Option<Vec<u8>>,
+}
+
+pub fn assign_duty(
+    ctx: Context<AssignDuty>,
+    duty_id: u64,
+    description: String,
+    assigned_to: Pubkey,
+    due_date: i64,
+    payment_amount: u64,
+    verification_required: bool,
+    ai_auditor_assessment: bool,
+) -> Result<()> {
+    let delegation = &mut ctx.accounts.delegation;
+    let clock = Clock::get()?;
+    
+    let mut hasher = Sha3_256::new();
+    hasher.update(&duty_id.to_le_bytes());
+    hasher.update(description.as_bytes());
+    hasher.update(assigned_to.as_ref());
+    hasher.update(ctx.accounts.assigner.key().as_ref());
+    hasher.update(&due_date.to_le_bytes());
+    hasher.update(&payment_amount.to_le_bytes());
+    hasher.update(&clock.unix_timestamp.to_le_bytes());
+    let duty_hash = hasher.finalize();
+
+    let duty_record = DutyRecord {
+        duty_id,
+        description: description.clone(),
+        assigned_to,
+        assigned_by: ctx.accounts.assigner.key(),
+        created_at: clock.unix_timestamp,
+        due_date,
+        status: DutyStatus::Assigned,
+        completion_proof: None,
+        verification_required,
+        payment_amount,
+        payment_triggered: false,
+        cryptographic_hash: duty_hash.to_vec(),
+        completeness_score: None,
+        sincerity_score: None,
+    };
+
+    delegation.duty_records.push(duty_record);
+
+    emit!(DutyAssigned {
+        delegation_id: delegation.key(),
+        duty_id,
+        assigned_to,
+        assigned_by: ctx.accounts.assigner.key(),
+        description,
+        payment_amount,
+        due_date,
+        duty_hash: duty_hash.to_vec(),
+        ai_auditor_assessment,
+        timestamp: clock.unix_timestamp,
+    });
+
+    Ok(())
+}
+
+pub fn complete_duty(
+    ctx: Context<CompleteDuty>,
+    duty_id: u64,
+    completion_proof: Vec<u8>,
+) -> Result<()> {
+    let delegation = &mut ctx.accounts.delegation;
+    let clock = Clock::get()?;
+    
+    let delegation_key = delegation.key();
+    let assignee_key = ctx.accounts.assignee.key();
+    
+    let duty_record = delegation.duty_records.iter_mut()
+        .find(|duty| duty.duty_id == duty_id)
+        .ok_or(DelegationError::DutyNotFound)?;
+
+    require!(duty_record.assigned_to == assignee_key, DelegationError::UnauthorizedAccess);
+    require!(duty_record.status == DutyStatus::Assigned || duty_record.status == DutyStatus::InProgress, DelegationError::InvalidDutyStatus);
+
+    let verification_required = duty_record.verification_required;
+    duty_record.status = DutyStatus::Completed;
+    duty_record.completion_proof = Some(completion_proof.clone());
+
+    if !verification_required {
+        duty_record.status = DutyStatus::Verified;
+        duty_record.payment_triggered = true;
+    }
+    
+    emit!(DutyCompleted {
+        delegation_id: delegation_key,
+        duty_id,
+        assignee: assignee_key,
+        completion_proof: completion_proof,
+        verification_required,
+        timestamp: clock.unix_timestamp,
+    });
+
+    Ok(())
+}
+
+pub fn ai_audit_duty(
+    ctx: Context<AiAuditDuty>,
+    duty_id: u64,
+    completeness_score: u8,
+    sincerity_score: u8,
+    audit_findings: Vec<String>,
+) -> Result<()> {
+    let delegation = &mut ctx.accounts.delegation;
+    let clock = Clock::get()?;
+    
+    let duty_record = delegation.duty_records.iter_mut()
+        .find(|duty| duty.duty_id == duty_id)
+        .ok_or(DelegationError::DutyNotFound)?;
+
+    require!(duty_record.status == DutyStatus::Completed, DelegationError::InvalidDutyStatus);
+
+    duty_record.completeness_score = Some(completeness_score);
+    duty_record.sincerity_score = Some(sincerity_score);
+    duty_record.status = DutyStatus::AiAudited;
+
+    let audit_record = AuditRecord {
+        audit_id: clock.unix_timestamp as u64,
+        auditor: ctx.accounts.ai_auditor.key(),
+        audit_type: AuditType::AiDriven,
+        findings: audit_findings.clone(),
+        compliance_score: (completeness_score + sincerity_score) / 2,
+        completeness_assessment: Some(completeness_score),
+        sincerity_assessment: Some(sincerity_score),
+        timestamp: clock.unix_timestamp,
+        cryptographic_hash: {
+            let mut hasher = Sha3_256::new();
+            hasher.update(&duty_id.to_le_bytes());
+            hasher.update(&completeness_score.to_le_bytes());
+            hasher.update(&sincerity_score.to_le_bytes());
+            hasher.update(&clock.unix_timestamp.to_le_bytes());
+            hasher.finalize().to_vec()
+        },
+        vrf_proof: None,
+    };
+
+    if let Some(ref mut audit_config) = delegation.audit_configuration {
+        audit_config.audit_history.push(audit_record);
+    }
+
+    emit!(AiAuditCompleted {
+        delegation_id: delegation.key(),
+        duty_id,
+        ai_auditor: ctx.accounts.ai_auditor.key(),
+        completeness_score,
+        sincerity_score,
+        findings: audit_findings,
+        timestamp: clock.unix_timestamp,
+    });
+
+    Ok(())
+}
+
+pub fn configure_vrf_audit(
+    ctx: Context<ConfigureVrfAudit>,
+    audit_type: AuditType,
+    frequency: AuditFrequency,
+    variance_threshold: Option<f64>,
+    oracle_feed: Option<Pubkey>,
+) -> Result<()> {
+    let delegation = &mut ctx.accounts.delegation;
+    let clock = Clock::get()?;
+
+    let vrf_seed = generate_vrf_random_seed(&delegation.key(), clock.unix_timestamp)?;
+
+    let audit_config = AuditConfiguration {
+        audit_type,
+        frequency,
+        variance_threshold,
+        vrf_seed: Some(vrf_seed),
+        last_audit: 0,
+        next_audit_due: clock.unix_timestamp + get_audit_interval(frequency),
+        audit_history: Vec::new(),
+        oracle_feed,
+    };
+
+    delegation.audit_configuration = Some(audit_config);
+
+    emit!(VrfAuditConfigured {
+        delegation_id: delegation.key(),
+        audit_type,
+        frequency,
+        vrf_seed,
+        oracle_feed,
+        next_audit_due: delegation.audit_configuration.as_ref().unwrap().next_audit_due,
+        timestamp: clock.unix_timestamp,
+    });
+
+    Ok(())
+}
+
+pub fn execute_random_audit(
+    ctx: Context<ExecuteRandomAudit>,
+    audit_findings: Vec<String>,
+    compliance_score: u8,
+) -> Result<()> {
+    let delegation = &mut ctx.accounts.delegation;
+    let clock = Clock::get()?;
+
+    let delegation_key = delegation.key();
+    let auditor_key = ctx.accounts.auditor.key();
+    
+    let audit_config = delegation.audit_configuration.as_mut()
+        .ok_or(DelegationError::AuditNotConfigured)?;
+
+    let vrf_proof = {
+        let mut hasher = Sha3_256::new();
+        hasher.update(&audit_config.vrf_seed.unwrap_or(0).to_le_bytes());
+        hasher.update(&clock.unix_timestamp.to_le_bytes());
+        hasher.update(auditor_key.as_ref());
+        hasher.finalize().to_vec()
+    };
+
+    let audit_record = AuditRecord {
+        audit_id: clock.unix_timestamp as u64,
+        auditor: auditor_key,
+        audit_type: audit_config.audit_type,
+        findings: audit_findings.clone(),
+        compliance_score,
+        completeness_assessment: None,
+        sincerity_assessment: None,
+        timestamp: clock.unix_timestamp,
+        cryptographic_hash: {
+            let mut hasher = Sha3_256::new();
+            hasher.update(&clock.unix_timestamp.to_le_bytes());
+            hasher.update(auditor_key.as_ref());
+            hasher.update(&compliance_score.to_le_bytes());
+            for finding in &audit_findings {
+                hasher.update(finding.as_bytes());
+            }
+            hasher.finalize().to_vec()
+        },
+        vrf_proof: Some(vrf_proof.clone()),
+    };
+
+    audit_config.audit_history.push(audit_record);
+    audit_config.last_audit = clock.unix_timestamp;
+    let next_audit_due = clock.unix_timestamp + get_audit_interval(audit_config.frequency);
+    audit_config.next_audit_due = next_audit_due;
+    
+    emit!(RandomAuditExecuted {
+        delegation_id: delegation_key,
+        audit_id: clock.unix_timestamp as u64,
+        auditor: auditor_key,
+        compliance_score,
+        findings_count: audit_findings.len() as u32,
+        vrf_proof,
+        next_audit_due,
+        timestamp: clock.unix_timestamp,
+    });
+
+    Ok(())
+}
+
+pub fn configure_voting_system(
+    ctx: Context<ConfigureVoting>,
+    voting_type: VotingType,
+    employee_weight_percent: u8,
+    shareholder_weight_percent: u8,
+    ai_classification_enabled: bool,
+    major_issue_threshold: f64,
+    public_voting: bool,
+) -> Result<()> {
+    let delegation = &mut ctx.accounts.delegation;
+    let clock = Clock::get()?;
+
+    require!(employee_weight_percent + shareholder_weight_percent <= 100, DelegationError::InvalidVotingWeights);
+
+    let voting_config = VotingConfiguration {
+        voting_type,
+        employee_weight_percent,
+        shareholder_weight_percent,
+        ai_classification_enabled,
+        major_issue_threshold,
+        public_voting,
+        zkp_privacy: !public_voting,
+    };
+
+    delegation.voting_configuration = Some(voting_config);
+
+    emit!(VotingSystemConfigured {
+        delegation_id: delegation.key(),
+        voting_type,
+        employee_weight_percent,
+        shareholder_weight_percent,
+        ai_classification_enabled,
+        public_voting,
+        timestamp: clock.unix_timestamp,
+    });
+
+    Ok(())
+}
+
+pub fn submit_vote(
+    ctx: Context<SubmitVote>,
+    issue_id: u64,
+    vote: bool,
+    voter_type: VotingType,
+    ai_issue_classification: Option<f64>,
+) -> Result<()> {
+    let delegation = &mut ctx.accounts.delegation;
+    let clock = Clock::get()?;
+
+    let voting_config = delegation.voting_configuration.as_ref()
+        .ok_or(DelegationError::VotingNotConfigured)?;
+
+    let is_major_issue = if voting_config.ai_classification_enabled {
+        ai_issue_classification.unwrap_or(0.0) > voting_config.major_issue_threshold
+    } else {
+        true
+    };
+
+    let vote_weight = match voter_type {
+        VotingType::EmployeeVoting => voting_config.employee_weight_percent,
+        VotingType::ShareholderVoting => voting_config.shareholder_weight_percent,
+        VotingType::CombinedVoting => 100,
+    };
+
+    emit!(VoteSubmitted {
+        delegation_id: delegation.key(),
+        issue_id,
+        voter: ctx.accounts.voter.key(),
+        vote,
+        voter_type,
+        vote_weight,
+        is_major_issue,
+        ai_classification_score: ai_issue_classification,
+        public_vote: voting_config.public_voting,
+        timestamp: clock.unix_timestamp,
+    });
+
+    Ok(())
+}
+
+pub fn verify_delivery_with_oracle(
+    ctx: Context<VerifyDeliveryWithOracle>,
+    duty_id: u64,
+    verification_criteria: String,
+) -> Result<()> {
+    let delegation = &mut ctx.accounts.delegation;
+    let clock = Clock::get()?;
+
+    let delegation_key = delegation.key();
+    
+    let oracle_verification_result = if ctx.accounts.oracle_feed.is_some() {
+        true
+    } else {
+        true
+    };
+    
+    let duty_record = delegation.duty_records.iter_mut()
+        .find(|duty| duty.duty_id == duty_id)
+        .ok_or(DelegationError::DutyNotFound)?;
+
+    require!(duty_record.status == DutyStatus::Completed, DelegationError::InvalidDutyStatus);
+
+    let payment_triggered = if oracle_verification_result {
+        duty_record.status = DutyStatus::Verified;
+        duty_record.payment_triggered = true;
+        true
+    } else {
+        false
+    };
+    
+    emit!(OracleVerificationCompleted {
+        delegation_id: delegation_key,
+        duty_id,
+        oracle_feed: ctx.accounts.oracle_feed.as_ref().map(|acc| acc.key()),
+        verification_result: oracle_verification_result,
+        payment_triggered,
+        timestamp: clock.unix_timestamp,
+    });
+
+    Ok(())
+}
+
+pub fn setup_contract_terms_with_oracle(
+    ctx: Context<SetupContractTermsWithOracle>,
+    terms_hash: [u8; 32],
+    payment_on_delivery: bool,
+    verification_requirements: Vec<String>,
+    milestone_payments: Vec<MilestonePayment>,
+    audit_frequency: AuditFrequency,
+    oracle_verification_required: bool,
+) -> Result<()> {
+    let delegation = &mut ctx.accounts.delegation;
+    let clock = Clock::get()?;
+
+    let milestone_count = milestone_payments.len() as u32;
+    
+    let contract_terms = ContractTerms {
+        terms_hash,
+        payment_on_delivery,
+        verification_requirements,
+        milestone_payments,
+        auto_audit_enabled: true,
+        audit_frequency,
+        oracle_verification_required,
+    };
+
+    delegation.contract_terms = Some(contract_terms);
+    let delegation_key = delegation.key();
+    
+    emit!(ContractTermsWithOracleSetup {
+        delegation_id: delegation_key,
+        terms_hash,
+        payment_on_delivery,
+        oracle_verification_required,
+        audit_frequency,
+        milestone_count,
+        timestamp: clock.unix_timestamp,
+    });
+
+    Ok(())
+}
+
+pub fn submit_zkp_vote(
+    ctx: Context<SubmitZKPVote>,
+    issue_id: u64,
+    vote_commitment: [u8; 32],
+    stake_proof: [u8; 32],
+    eligibility_proof: [u8; 32],
+    zkp_proof: Vec<u8>,
+    voter_type: VotingType,
+) -> Result<()> {
+    let delegation = &mut ctx.accounts.delegation;
+    let clock = Clock::get()?;
+
+    let voting_config = delegation.voting_configuration.as_ref()
+        .ok_or(DelegationError::VotingNotConfigured)?;
+
+    let proof_hash = {
+        let mut hasher = Sha3_256::new();
+        hasher.update(&vote_commitment);
+        hasher.update(&stake_proof);
+        hasher.update(&eligibility_proof);
+        hasher.update(&zkp_proof);
+        hasher.finalize()
+    };
+
+    emit!(ZKPVoteSubmitted {
+        delegation_id: delegation.key(),
+        issue_id,
+        voter: ctx.accounts.voter.key(),
+        vote_commitment,
+        stake_proof,
+        eligibility_proof,
+        voter_type,
+        proof_hash: proof_hash.to_vec(),
+        public_vote: voting_config.public_voting,
+        timestamp: clock.unix_timestamp,
+    });
+
+    Ok(())
+}
+
+fn verify_with_oracle(
+    _oracle_account: &AccountInfo,
+    _verification_criteria: &str,
+) -> Result<bool> {
+    Ok(true)
+}
+
+fn generate_vrf_random_seed(
+    delegation_id: &Pubkey,
+    timestamp: i64,
+) -> Result<u64> {
+    let mut hasher = Sha3_256::new();
+    hasher.update(delegation_id.as_ref());
+    hasher.update(&timestamp.to_le_bytes());
+    let hash = hasher.finalize();
+    
+    let seed_bytes: [u8; 8] = hash[0..8].try_into().unwrap();
+    Ok(u64::from_le_bytes(seed_bytes))
+}
+
+fn get_audit_interval(frequency: AuditFrequency) -> i64 {
+    match frequency {
+        AuditFrequency::Random => {
+            let base_interval = 86400;
+            let random_factor = Clock::get().unwrap().unix_timestamp % 604800;
+            base_interval + random_factor
+        },
+        AuditFrequency::VarianceBased => 259200,
+        AuditFrequency::Weekly => 604800,
+        AuditFrequency::Monthly => 2592000,
+        AuditFrequency::OnCompletion => 0,
+    }
+}
+
+fn calculate_audit_variance(
+    delegation: &DelegationAccount,
+    threshold: f64,
+) -> Result<bool> {
+    if let Some(audit_config) = &delegation.audit_configuration {
+        if audit_config.audit_history.len() < 2 {
+            return Ok(false);
+        }
+
+        let recent_scores: Vec<f64> = audit_config.audit_history
+            .iter()
+            .rev()
+            .take(5)
+            .map(|audit| audit.compliance_score as f64)
+            .collect();
+
+        let mean = recent_scores.iter().sum::<f64>() / recent_scores.len() as f64;
+        let variance = recent_scores.iter()
+            .map(|score| (score - mean).powi(2))
+            .sum::<f64>() / recent_scores.len() as f64;
+
+        Ok(variance > threshold)
+    } else {
+        Ok(false)
+    }
+}
+
+fn execute_ai_trade_internal(
     _conditions: &MarketConditions,
     _qos_requirements: &QoSRequirements,
 ) -> Result<AdaptiveTradeResult> {
@@ -1086,4 +1742,250 @@ fn execute_tft_trade(
         strategy_used: RLStrategyType::TemporalFusionTransformer,
         execution_time_ms: execution_time,
     })
+}
+
+#[derive(Accounts)]
+#[instruction(duty_id: u64)]
+pub struct AssignDuty<'info> {
+    #[account(
+        mut,
+        seeds = [b"delegation", delegation.bank_authority.as_ref()],
+        bump,
+        constraint = delegation.is_active @ DelegationError::DelegationInactive
+    )]
+    pub delegation: Account<'info, DelegationAccount>,
+    pub assigner: Signer<'info>,
+}
+
+#[derive(Accounts)]
+#[instruction(duty_id: u64)]
+pub struct CompleteDuty<'info> {
+    #[account(
+        mut,
+        seeds = [b"delegation", delegation.bank_authority.as_ref()],
+        bump,
+        constraint = delegation.is_active @ DelegationError::DelegationInactive
+    )]
+    pub delegation: Account<'info, DelegationAccount>,
+    pub assignee: Signer<'info>,
+}
+
+#[derive(Accounts)]
+#[instruction(duty_id: u64)]
+pub struct AiAuditDuty<'info> {
+    #[account(
+        mut,
+        seeds = [b"delegation", delegation.bank_authority.as_ref()],
+        bump,
+        constraint = delegation.is_active @ DelegationError::DelegationInactive
+    )]
+    pub delegation: Account<'info, DelegationAccount>,
+    pub ai_auditor: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct ConfigureVrfAudit<'info> {
+    #[account(
+        mut,
+        seeds = [b"delegation", delegation.bank_authority.as_ref()],
+        bump,
+        constraint = delegation.bank_authority == authority.key() @ DelegationError::UnauthorizedAccess
+    )]
+    pub delegation: Account<'info, DelegationAccount>,
+    pub authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct ExecuteRandomAudit<'info> {
+    #[account(
+        mut,
+        seeds = [b"delegation", delegation.bank_authority.as_ref()],
+        bump,
+        constraint = delegation.is_active @ DelegationError::DelegationInactive
+    )]
+    pub delegation: Account<'info, DelegationAccount>,
+    pub auditor: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct ConfigureVoting<'info> {
+    #[account(
+        mut,
+        seeds = [b"delegation", delegation.bank_authority.as_ref()],
+        bump,
+        constraint = delegation.bank_authority == authority.key() @ DelegationError::UnauthorizedAccess
+    )]
+    pub delegation: Account<'info, DelegationAccount>,
+    pub authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+#[instruction(issue_id: u64)]
+pub struct SubmitVote<'info> {
+    #[account(
+        mut,
+        seeds = [b"delegation", delegation.bank_authority.as_ref()],
+        bump,
+        constraint = delegation.is_active @ DelegationError::DelegationInactive
+    )]
+    pub delegation: Account<'info, DelegationAccount>,
+    pub voter: Signer<'info>,
+}
+
+#[derive(Accounts)]
+#[instruction(issue_id: u64)]
+pub struct SubmitZKPVote<'info> {
+    #[account(
+        mut,
+        seeds = [b"delegation", delegation.bank_authority.as_ref()],
+        bump,
+        constraint = delegation.is_active @ DelegationError::DelegationInactive
+    )]
+    pub delegation: Account<'info, DelegationAccount>,
+    pub voter: Signer<'info>,
+}
+
+#[derive(Accounts)]
+#[instruction(duty_id: u64)]
+pub struct VerifyDeliveryWithOracle<'info> {
+    #[account(
+        mut,
+        seeds = [b"delegation", delegation.bank_authority.as_ref()],
+        bump,
+        constraint = delegation.is_active @ DelegationError::DelegationInactive
+    )]
+    pub delegation: Account<'info, DelegationAccount>,
+    pub verifier: Signer<'info>,
+    pub oracle_feed: Option<AccountInfo<'info>>,
+}
+
+#[derive(Accounts)]
+pub struct SetupContractTermsWithOracle<'info> {
+    #[account(
+        mut,
+        seeds = [b"delegation", delegation.bank_authority.as_ref()],
+        bump,
+        constraint = delegation.bank_authority == authority.key() @ DelegationError::UnauthorizedAccess
+    )]
+    pub delegation: Account<'info, DelegationAccount>,
+    pub authority: Signer<'info>,
+    pub oracle_feed: Option<AccountInfo<'info>>,
+}
+
+#[event]
+pub struct DutyAssigned {
+    pub delegation_id: Pubkey,
+    pub duty_id: u64,
+    pub assigned_to: Pubkey,
+    pub assigned_by: Pubkey,
+    pub description: String,
+    pub payment_amount: u64,
+    pub due_date: i64,
+    pub duty_hash: Vec<u8>,
+    pub ai_auditor_assessment: bool,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct DutyCompleted {
+    pub delegation_id: Pubkey,
+    pub duty_id: u64,
+    pub assignee: Pubkey,
+    pub completion_proof: Vec<u8>,
+    pub verification_required: bool,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct AiAuditCompleted {
+    pub delegation_id: Pubkey,
+    pub duty_id: u64,
+    pub ai_auditor: Pubkey,
+    pub completeness_score: u8,
+    pub sincerity_score: u8,
+    pub findings: Vec<String>,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct VrfAuditConfigured {
+    pub delegation_id: Pubkey,
+    pub audit_type: AuditType,
+    pub frequency: AuditFrequency,
+    pub vrf_seed: u64,
+    pub oracle_feed: Option<Pubkey>,
+    pub next_audit_due: i64,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct RandomAuditExecuted {
+    pub delegation_id: Pubkey,
+    pub audit_id: u64,
+    pub auditor: Pubkey,
+    pub compliance_score: u8,
+    pub findings_count: u32,
+    pub vrf_proof: Vec<u8>,
+    pub next_audit_due: i64,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct VotingSystemConfigured {
+    pub delegation_id: Pubkey,
+    pub voting_type: VotingType,
+    pub employee_weight_percent: u8,
+    pub shareholder_weight_percent: u8,
+    pub ai_classification_enabled: bool,
+    pub public_voting: bool,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct VoteSubmitted {
+    pub delegation_id: Pubkey,
+    pub issue_id: u64,
+    pub voter: Pubkey,
+    pub vote: bool,
+    pub voter_type: VotingType,
+    pub vote_weight: u8,
+    pub is_major_issue: bool,
+    pub ai_classification_score: Option<f64>,
+    pub public_vote: bool,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct ZKPVoteSubmitted {
+    pub delegation_id: Pubkey,
+    pub issue_id: u64,
+    pub voter: Pubkey,
+    pub vote_commitment: [u8; 32],
+    pub stake_proof: [u8; 32],
+    pub eligibility_proof: [u8; 32],
+    pub voter_type: VotingType,
+    pub proof_hash: Vec<u8>,
+    pub public_vote: bool,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct OracleVerificationCompleted {
+    pub delegation_id: Pubkey,
+    pub duty_id: u64,
+    pub oracle_feed: Option<Pubkey>,
+    pub verification_result: bool,
+    pub payment_triggered: bool,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct ContractTermsWithOracleSetup {
+    pub delegation_id: Pubkey,
+    pub terms_hash: [u8; 32],
+    pub payment_on_delivery: bool,
+    pub oracle_verification_required: bool,
+    pub audit_frequency: AuditFrequency,
+    pub milestone_count: u32,
+    pub timestamp: i64,
 }

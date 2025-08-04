@@ -25,3 +25,4 @@ sha3 = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 rand = { workspace = true }
+switchboard-v2 = "0.4.0"
