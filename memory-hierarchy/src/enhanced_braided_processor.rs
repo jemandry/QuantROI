@@ -308,7 +308,7 @@ mod tests {
     
     #[tokio::test]
     async fn test_enhanced_braided_processor() {
-        let state = Arc::new(EnhancedAppState::new().await);
+        let _state = Arc::new(EnhancedAppState::new().await);
         
         let request = EnhancedBraidedRequest {
             model_id: "test_model".to_string(),

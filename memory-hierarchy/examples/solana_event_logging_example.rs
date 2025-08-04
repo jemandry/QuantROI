@@ -7,7 +7,7 @@ async fn main() {
     println!("Solana Event Logging with Braided Cord Integration Demo");
     println!("======================================================\n");
 
-    let hierarchy = MemoryHierarchy::new();
+    let _hierarchy = MemoryHierarchy::new();
     let braided_engine = Arc::new(BraidedCordDataEngine::new().await);
     let solana_logger = Arc::new(SolanaEventLogger::new(braided_engine.clone()).await);
 

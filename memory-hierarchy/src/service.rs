@@ -1,4 +1,5 @@
-use memory_hierarchy::{MemoryHierarchy, CausalDataAgent, TradingWealthEngine, QuantumMode, QuantumAuditEngine, QuantumSimulationEngine, BraidedCordDataEngine, SolanaEventLogger, SolanaEventData, MertonJumpParams};
+use memory_hierarchy::{MemoryHierarchy, CausalDataAgent, TradingWealthEngine, QuantumMode, QuantumAuditEngine, QuantumSimulationEngine, BraidedCordDataEngine, SolanaEventLogger, SolanaEventData, MertonJumpParams, EnhancedConfidenceEngine, CrossSourceResolver, AICausalGraphBuilder, WasmEdgeClient, ComplianceReportGenerator, EventSourceData, ConflictAnalysis, EdgeDeduplicationRequest, EdgeDeduplicationResult, WasmModuleConfig, ComplianceReport, ReportType};
+use memory_hierarchy::causal_data_agent::CausalInsights;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::info;
@@ -40,12 +41,18 @@ struct HealthResponse {
     uptime_seconds: u64,
 }
 
+#[allow(dead_code)]
 struct AppState {
     hierarchy: Arc<MemoryHierarchy>,
     causal_agent: CausalDataAgent,
     quantum_audit_engine: Option<Arc<dyn QuantumAuditEngine + Send + Sync>>,
     wealth_engine: Arc<RwLock<TradingWealthEngine>>,
     solana_event_logger: Arc<SolanaEventLogger>,
+    confidence_engine: Arc<EnhancedConfidenceEngine>,
+    conflict_resolver: Arc<CrossSourceResolver>,
+    ai_causal_builder: Arc<AICausalGraphBuilder>,
+    wasm_client: Arc<WasmEdgeClient>,
+    compliance_generator: Arc<ComplianceReportGenerator>,
     start_time: std::time::Instant,
 }
 
@@ -65,12 +72,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let braided_engine = Arc::new(BraidedCordDataEngine::new().await);
     let solana_event_logger = Arc::new(SolanaEventLogger::new(braided_engine).await);
 
+    let confidence_engine = Arc::new(EnhancedConfidenceEngine::new());
+    let conflict_resolver = Arc::new(CrossSourceResolver::new());
+    let ai_causal_builder = Arc::new(AICausalGraphBuilder::new());
+    let wasm_client = Arc::new(WasmEdgeClient::new());
+    let compliance_generator = Arc::new(ComplianceReportGenerator::new());
+
     let state = Arc::new(AppState {
         hierarchy,
         causal_agent,
         quantum_audit_engine: Some(quantum_engine),
         wealth_engine,
         solana_event_logger,
+        confidence_engine,
+        conflict_resolver,
+        ai_causal_builder,
+        wasm_client,
+        compliance_generator,
         start_time: std::time::Instant::now(),
     });
 
@@ -101,6 +119,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/solana/event/volatility_analysis", post(analyze_contract_volatility))
         .route("/solana/events", get(get_solana_events))
         .route("/solana/events/:event_id", get(get_solana_event_details))
+        .route("/confidence/multi_source_event", post(process_multi_source_event))
+        .route("/confidence/conflict_analysis", post(analyze_conflict))
+        .route("/causal_graph/insights/:session_id", get(get_causal_insights))
+        .route("/causal_graph/build", post(build_causal_graph))
+        .route("/edge/deduplication", post(process_edge_deduplication))
+        .route("/edge/wasm_modules", post(register_wasm_module))
+        .route("/compliance/generate_report", post(generate_compliance_report))
+        .route("/compliance/reports/:report_id", get(get_compliance_report))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
         .with_state(state);
@@ -556,6 +582,147 @@ async fn get_solana_event_details(
 ) -> Result<Json<SolanaEventData>, StatusCode> {
     match state.solana_event_logger.get_event_by_id(&event_id).await {
         Some(event_data) => Ok(Json(event_data)),
+        None => Err(StatusCode::NOT_FOUND),
+    }
+}
+
+async fn process_multi_source_event(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let event_id = payload.get("event_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+    
+    let event_type = payload.get("event_type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    let source_data: Vec<EventSourceData> = payload.get("source_data")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default();
+
+    match state.causal_agent.process_multi_source_event(event_id.clone(), event_type, source_data).await {
+        Ok(result) => Ok(Json(serde_json::json!({
+            "status": "success",
+            "event_id": result,
+            "message": "Multi-source event processed successfully"
+        }))),
+        Err(e) => {
+            eprintln!("Error processing multi-source event: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+async fn analyze_conflict(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<serde_json::Value>,
+) -> Result<Json<ConflictAnalysis>, StatusCode> {
+    let sources: Vec<EventSourceData> = payload.get("sources")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default();
+    
+    let event_type = payload.get("event_type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+
+    let analysis = state.causal_agent.analyze_conflict(&sources, event_type.to_string()).await;
+    Ok(Json(analysis))
+}
+
+async fn get_causal_insights(
+    State(state): State<Arc<AppState>>,
+    Path(session_id): Path<String>,
+) -> Result<Json<CausalInsights>, StatusCode> {
+    match state.causal_agent.get_causal_insights(&session_id).await {
+        Ok(insights) => Ok(Json(insights)),
+        Err(e) => {
+            eprintln!("Error getting causal insights: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+async fn build_causal_graph(
+    State(state): State<Arc<AppState>>,
+    Json(_payload): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let session_id = state.causal_agent.create_session().await;
+    
+    Ok(Json(serde_json::json!({
+        "status": "success",
+        "session_id": session_id,
+        "message": "Causal graph building session created"
+    })))
+}
+
+async fn process_edge_deduplication(
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<EdgeDeduplicationRequest>,
+) -> Result<Json<EdgeDeduplicationResult>, StatusCode> {
+    match state.wasm_client.process_deduplication_request(request).await {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => {
+            eprintln!("Error processing edge deduplication: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+async fn register_wasm_module(
+    State(state): State<Arc<AppState>>,
+    Json(config): Json<WasmModuleConfig>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    match state.wasm_client.register_wasm_module(config).await {
+        Ok(_) => Ok(Json(serde_json::json!({
+            "status": "success",
+            "message": "WASM module registered successfully"
+        }))),
+        Err(e) => {
+            eprintln!("Error registering WASM module: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+async fn generate_compliance_report(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<serde_json::Value>,
+) -> Result<Json<ComplianceReport>, StatusCode> {
+    let report_type: ReportType = payload.get("report_type")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or(ReportType::Custom("default".to_string()));
+
+    let period_start = payload.get("period_start")
+        .and_then(|v| v.as_str())
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.with_timezone(&chrono::Utc))
+        .unwrap_or_else(|| chrono::Utc::now() - chrono::Duration::days(30));
+
+    let period_end = payload.get("period_end")
+        .and_then(|v| v.as_str())
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.with_timezone(&chrono::Utc))
+        .unwrap_or_else(chrono::Utc::now);
+
+    match state.compliance_generator.generate_report(report_type, period_start, period_end).await {
+        Ok(report) => Ok(Json(report)),
+        Err(e) => {
+            eprintln!("Error generating compliance report: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+async fn get_compliance_report(
+    State(state): State<Arc<AppState>>,
+    Path(report_id): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    match state.compliance_generator.get_report(&report_id).await {
+        Some(report) => Ok(Json(serde_json::json!(report))),
         None => Err(StatusCode::NOT_FOUND),
     }
 }

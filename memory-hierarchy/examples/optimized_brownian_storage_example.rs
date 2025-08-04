@@ -205,7 +205,7 @@ async fn main() {
                     println!("   ✓ Successfully loaded paths from memory-mapped file");
                     println!("   ✓ Loaded {} paths with {} time steps each", 
                              loaded_paths.len(), 
-                             loaded_paths.get(0).map_or(0, |p| p.len()));
+                             loaded_paths.first().map_or(0, |p| p.len()));
                 },
                 Err(e) => println!("   ✗ Failed to load from memory-mapped file: {}", e),
             }
