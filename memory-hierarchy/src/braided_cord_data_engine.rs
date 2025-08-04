@@ -32,6 +32,11 @@ pub enum DataType {
     SolanaTransactions,
     AnchorEvents,
     ContractAudits,
+    ConfidenceScores,
+    ConflictResolutions,
+    CausalGraphs,
+    EdgeDeduplication,
+    ComplianceReports,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

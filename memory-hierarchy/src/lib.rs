@@ -17,6 +17,11 @@ pub mod microservices_orchestrator;
 pub mod enhanced_braided_processor;
 pub mod braided_cord_data_engine;
 pub mod solana_event_logger;
+pub mod enhanced_confidence_engine;
+pub mod cross_source_resolver;
+pub mod ai_causal_graph_builder;
+pub mod wasm_edge_client;
+pub mod compliance_report_generator;
 
 pub use ai_optimization::{AIModel, AIModelOptimizer, BraidedBrownianModel, QuantizationLevel, PruningStrategy, OptimizationMetadata, BrownianStorageConfig, OptimizedPathStorage, SparsePathMatrix, StoragePerformanceMetrics};
 pub use causal_data_agent::{CausalDataAgent, DataInventory, CausalQuestion, UserResponse, AnalysisSession, SessionStatus};
@@ -31,6 +36,11 @@ pub use microservices_orchestrator::{MicroservicesOrchestrator, ServiceRegistry}
 pub use enhanced_braided_processor::{EnhancedAppState, create_enhanced_router, EnhancedBraidedRequest, EnhancedBraidedResponse};
 pub use braided_cord_data_engine::{BraidedCordDataEngine, DataType, DataTier, DataPlacementRule, CausalDataRequest, DataEngineMetrics};
 pub use solana_event_logger::{SolanaEventLogger, SolanaEventData, SolanaEventType, MertonJumpParams};
+pub use enhanced_confidence_engine::{EnhancedConfidenceEngine, EventSource, EventSourceData, SourceType, MultiSourceEvent};
+pub use cross_source_resolver::{CrossSourceResolver, ConflictAnalysis, ConflictSeverity, ResolutionStrategy};
+pub use ai_causal_graph_builder::{AICausalGraphBuilder, CausalNode, CausalEdge, CausalGraph, CausalNodeType, GraphBuildRequest, CausalInsight};
+pub use wasm_edge_client::*;
+pub use compliance_report_generator::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MemoryLevel {

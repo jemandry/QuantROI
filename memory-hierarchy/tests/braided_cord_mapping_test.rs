@@ -1,5 +1,4 @@
 use memory_hierarchy::{BraidedBrownianModel, QuantizationLevel, PruningStrategy};
-use std::collections::HashMap;
 
 #[tokio::test]
 async fn test_braided_cord_mapping_correlations() {
@@ -62,10 +61,10 @@ async fn test_braided_cord_topological_invariants() {
     let mut crossings = 0;
     let mut winding_numbers = Vec::new();
     
-    for strand in 0..3 {
+    for path in paths.iter().take(3) {
         let mut winding = 0.0;
-        for step in 1..paths[strand].len() {
-            let diff = paths[strand][step] - paths[strand][step-1];
+        for step in 1..path.len() {
+            let diff = path[step] - path[step-1];
             winding += diff;
         }
         winding_numbers.push(winding);

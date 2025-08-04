@@ -12,9 +12,11 @@ fn bench_memory_hierarchy_operations(c: &mut Criterion) {
             let hierarchy = MemoryHierarchy::new();
             let data = vec![42u8; size];
             
-            b.to_async(&rt).iter(|| async {
-                let key = format!("bench_key_{}", rand::random::<u32>());
-                hierarchy.put(black_box(key), black_box(data.clone())).await
+            b.iter(|| {
+                rt.block_on(async {
+                    let key = format!("bench_key_{}", rand::random::<u32>());
+                    hierarchy.put(black_box(key), black_box(data.clone())).await
+                })
             });
         });
         
@@ -29,9 +31,11 @@ fn bench_memory_hierarchy_operations(c: &mut Criterion) {
                 }
             });
             
-            b.to_async(&rt).iter(|| async {
-                let key = format!("bench_key_{}", rand::random::<u32>() % 100);
-                hierarchy.get(black_box(&key)).await
+            b.iter(|| {
+                rt.block_on(async {
+                    let key = format!("bench_key_{}", rand::random::<u32>() % 100);
+                    hierarchy.get(black_box(&key)).await
+                })
             });
         });
     }
@@ -52,8 +56,9 @@ fn bench_cache_replacement_policies(c: &mut Criterion) {
     ];
     
     for (name, policy) in policies.iter() {
-        group.bench_function(name, |b| {
-            b.to_async(&rt).iter(|| async {
+        group.bench_function(*name, |b| {
+            b.iter(|| {
+                rt.block_on(async {
                 let mut cache = Cache::new(MemoryLevel::L1Cache, policy.clone());
                 let data = vec![42u8; 64];
                 
@@ -66,6 +71,7 @@ fn bench_cache_replacement_policies(c: &mut Criterion) {
                         cache.get(black_box(&key)).await;
                     }
                 }
+                })
             });
         });
     }
@@ -89,11 +95,13 @@ fn bench_locality_patterns(c: &mut Criterion) {
             }
         });
         
-        b.to_async(&rt).iter(|| async {
-            for i in 0..100 {
-                let key = format!("seq_{}", i);
-                hierarchy.get(black_box(&key)).await;
-            }
+        b.iter(|| {
+            rt.block_on(async {
+                for i in 0..100 {
+                    let key = format!("seq_{}", i);
+                    hierarchy.get(black_box(&key)).await;
+                }
+            })
         });
     });
     
@@ -108,12 +116,14 @@ fn bench_locality_patterns(c: &mut Criterion) {
             }
         });
         
-        b.to_async(&rt).iter(|| async {
-            for _ in 0..100 {
-                let i = rand::random::<usize>() % 1000;
-                let key = format!("rand_{}", i);
-                hierarchy.get(black_box(&key)).await;
-            }
+        b.iter(|| {
+            rt.block_on(async {
+                for _ in 0..100 {
+                    let i = rand::random::<usize>() % 1000;
+                    let key = format!("rand_{}", i);
+                    hierarchy.get(black_box(&key)).await;
+                }
+            })
         });
     });
     
@@ -127,7 +137,8 @@ fn bench_concurrent_access(c: &mut Criterion) {
     
     for num_tasks in [1, 2, 4, 8].iter() {
         group.bench_with_input(BenchmarkId::new("concurrent", num_tasks), num_tasks, |b, &num_tasks| {
-            b.to_async(&rt).iter(|| async {
+            b.iter(|| {
+                rt.block_on(async {
                 let hierarchy = std::sync::Arc::new(MemoryHierarchy::new());
                 
                 for i in 0..100 {
@@ -151,6 +162,7 @@ fn bench_concurrent_access(c: &mut Criterion) {
                 for handle in handles {
                     handle.await.unwrap();
                 }
+                })
             });
         });
     }

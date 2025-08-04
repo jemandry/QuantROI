@@ -5,6 +5,149 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 
+use crate::enhanced_confidence_engine::EnhancedConfidenceEngine;
+use crate::cross_source_resolver::CrossSourceResolver;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CausalNode {
+    pub node_id: String,
+    pub node_type: CausalNodeType,
+    pub name: String,
+    pub description: String,
+    pub temporal_weight: f32,
+    pub confidence_score: f32,
+    pub last_updated: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum CausalNodeType {
+    Exogenous,
+    Mediator,
+    Outcome,
+    Confounder,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CausalEdge {
+    pub edge_id: String,
+    pub source_node: String,
+    pub target_node: String,
+    pub causal_strength: f32,
+    pub temporal_lag: i64,
+    pub confidence_score: f32,
+    pub decay_factor: f32,
+    pub evidence_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CausalGraph {
+    pub graph_id: String,
+    pub nodes: HashMap<String, CausalNode>,
+    pub edges: HashMap<String, CausalEdge>,
+    pub temporal_window: i64,
+    pub confidence_threshold: f32,
+    pub created_at: DateTime<Utc>,
+    pub last_updated: DateTime<Utc>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug)]
+pub struct CausalGraphBuilder {
+    graphs: HashMap<String, CausalGraph>,
+    temporal_decay_model: TemporalDecayModel,
+    semantic_analyzer: SemanticAnalyzer,
+}
+
+impl Default for CausalGraphBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl CausalGraphBuilder {
+    pub fn new() -> Self {
+        Self {
+            graphs: HashMap::new(),
+            temporal_decay_model: TemporalDecayModel::default(),
+            semantic_analyzer: SemanticAnalyzer::default(),
+        }
+    }
+
+    pub fn build_graph(&self, _events: &[String]) -> CausalGraph {
+        CausalGraph {
+            graph_id: uuid::Uuid::new_v4().to_string(),
+            nodes: std::collections::HashMap::new(),
+            edges: std::collections::HashMap::new(),
+            temporal_window: 86400000, // 24 hours in milliseconds
+            confidence_threshold: 0.7,
+            created_at: chrono::Utc::now(),
+            last_updated: chrono::Utc::now(),
+        }
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Debug)]
+pub struct TemporalDecayModel {
+    decay_rate: f32,
+    half_life_ms: i64,
+    minimum_weight: f32,
+}
+
+impl Default for TemporalDecayModel {
+    fn default() -> Self {
+        Self {
+            decay_rate: 0.1,
+            half_life_ms: 3600000, // 1 hour
+            minimum_weight: 0.01,
+        }
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Debug)]
+pub struct SemanticAnalyzer {
+    embeddings_cache: HashMap<String, Vec<f32>>,
+    similarity_threshold: f32,
+}
+
+impl Default for SemanticAnalyzer {
+    fn default() -> Self {
+        Self {
+            embeddings_cache: HashMap::new(),
+            similarity_threshold: 0.8,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CausalInsights {
+    pub session_id: String,
+    pub primary_causal_chains: Vec<CausalChain>,
+    pub confidence_distribution: HashMap<String, f32>,
+    pub temporal_patterns: Vec<TemporalPattern>,
+    pub recommendations: Vec<String>,
+    pub overall_confidence: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CausalChain {
+    pub chain_id: String,
+    pub nodes: Vec<String>,
+    pub total_strength: f32,
+    pub temporal_span: i64,
+    pub confidence_score: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TemporalPattern {
+    pub pattern_id: String,
+    pub pattern_type: String,
+    pub frequency: f32,
+    pub strength: f32,
+    pub time_window: i64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DataInventory {
     pub stock_symbol: Option<String>,
@@ -65,6 +208,10 @@ pub struct CausalDataAgent {
     baseline_questions: Vec<CausalQuestion>,
     confidence_threshold: f32,
     quantum_audit_engine: Option<Box<dyn crate::quantum_audit::QuantumAuditEngine + Send + Sync>>,
+    confidence_engine: Arc<EnhancedConfidenceEngine>,
+    conflict_resolver: Arc<CrossSourceResolver>,
+    #[allow(dead_code)]
+    causal_graph_builder: Arc<RwLock<CausalGraphBuilder>>,
 }
 
 impl Default for CausalDataAgent {
@@ -139,6 +286,9 @@ impl CausalDataAgent {
             baseline_questions,
             confidence_threshold: 0.7,
             quantum_audit_engine: None,
+            confidence_engine: Arc::new(EnhancedConfidenceEngine::new()),
+            conflict_resolver: Arc::new(CrossSourceResolver::new()),
+            causal_graph_builder: Arc::new(RwLock::new(CausalGraphBuilder::new())),
         }
     }
 
@@ -518,11 +668,18 @@ impl CausalDataAgent {
             },
         ];
 
+        let confidence_engine = Arc::new(crate::enhanced_confidence_engine::EnhancedConfidenceEngine::new());
+        let conflict_resolver = Arc::new(crate::cross_source_resolver::CrossSourceResolver::new());
+        let causal_graph_builder = Arc::new(RwLock::new(CausalGraphBuilder::new()));
+
         Self {
             sessions: Arc::new(RwLock::new(HashMap::new())),
             baseline_questions,
             confidence_threshold: 0.7,
             quantum_audit_engine: quantum_engine,
+            confidence_engine,
+            conflict_resolver,
+            causal_graph_builder,
         }
     }
     
@@ -554,6 +711,33 @@ impl CausalDataAgent {
             ))
         } else {
             Err("Quantum audit engine not available".to_string())
+        }
+    }
+
+    pub async fn process_multi_source_event(&self, event_id: String, event_type: String, source_data: Vec<crate::enhanced_confidence_engine::EventSourceData>) -> Result<String, String> {
+        match self.confidence_engine.process_multi_source_event(event_id.clone(), event_type, source_data).await {
+            Ok(result) => Ok(format!("Processed event {} with confidence {}", event_id, result.confidence_score)),
+            Err(e) => Err(format!("Failed to process multi-source event: {}", e)),
+        }
+    }
+
+    pub async fn analyze_conflict(&self, sources: &[crate::enhanced_confidence_engine::EventSourceData], event_type: String) -> crate::cross_source_resolver::ConflictAnalysis {
+        self.conflict_resolver.analyze_conflict(sources, &event_type).await
+    }
+
+    pub async fn get_causal_insights(&self, session_id: &str) -> Result<CausalInsights, String> {
+        let sessions = self.sessions.read().await;
+        if let Some(session) = sessions.get(session_id) {
+            Ok(CausalInsights {
+                session_id: session_id.to_string(),
+                primary_causal_chains: vec![], // TODO: Extract from causal graph builder
+                confidence_distribution: std::collections::HashMap::new(), // TODO: Extract from session
+                temporal_patterns: vec![], // TODO: Extract from temporal analysis
+                recommendations: vec!["Continue data collection".to_string()],
+                overall_confidence: session.confidence_score,
+            })
+        } else {
+            Err(format!("Session {} not found", session_id))
         }
     }
 }
