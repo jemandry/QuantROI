@@ -16,7 +16,8 @@ pub mod ai_architect_enhancements;
 pub mod microservices_orchestrator;
 pub mod enhanced_braided_processor;
 pub mod braided_cord_data_engine;
-pub use ai_optimization::{AIModel, AIModelOptimizer, BraidedBrownianModel, QuantizationLevel, PruningStrategy, OptimizationMetadata};
+
+pub use ai_optimization::{AIModel, AIModelOptimizer, BraidedBrownianModel, QuantizationLevel, PruningStrategy, OptimizationMetadata, BrownianStorageConfig, OptimizedPathStorage, SparsePathMatrix, StoragePerformanceMetrics};
 pub use causal_data_agent::{CausalDataAgent, DataInventory, CausalQuestion, UserResponse, AnalysisSession, SessionStatus};
 pub use brownian_volatility_strand::{BrownianVolatilityStrand, BrownianMotionParameters, VolatilitySimulationRecord};
 pub use async_volatility_engine::{AsyncVolatilityEngine, VolatilityStrandStatistics};
