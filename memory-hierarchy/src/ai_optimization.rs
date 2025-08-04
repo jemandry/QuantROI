@@ -2,6 +2,17 @@ use std::collections::HashMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 use std::hash::{Hash, Hasher};
+use std::fs::{File, OpenOptions};
+use std::io::{Read, Write, Seek, SeekFrom};
+use std::path::Path;
+use memmap2::{MmapOptions, MmapMut};
+use rayon::prelude::*;
+use lru::LruCache;
+use serde::{Serialize, Deserialize};
+use tokio::fs as async_fs;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use std::sync::{Arc, Mutex};
+use std::num::NonZeroUsize;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum QuantizationLevel {
@@ -283,6 +294,85 @@ pub struct BraidedBrownianModel {
     pub sparsity: f32,
     pub pruning_strategy: Option<PruningStrategy>,
     pub metadata: OptimizationMetadata,
+    pub storage_config: BrownianStorageConfig,
+    pub path_cache: Arc<Mutex<OptimizedPathCache>>,
+    pub memory_pool: Arc<Mutex<PathMemoryPool>>,
+    pub storage_stats: Arc<Mutex<StoragePerformanceMetrics>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct BrownianStorageConfig {
+    pub use_memory_mapping: bool,
+    pub compression_enabled: bool,
+    pub batch_size: usize,
+    pub cache_hot_paths: bool,
+    pub storage_path: String,
+}
+
+#[derive(Debug)]
+pub struct OptimizedPathCache {
+    pub hot_paths: LruCache<String, CompressedPathBatch>,
+    pub warm_paths: HashMap<String, String>, // path_id -> file_path
+    pub cache_hits: u64,
+    pub cache_misses: u64,
+    pub hot_cache_size: usize,
+    pub warm_cache_size: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct OptimizedPathStorage {
+    pub data: Vec<f32>,
+    pub stride: usize,
+    pub num_strands: usize,
+    pub compression_enabled: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct SparsePathMatrix {
+    pub values: Vec<f32>,
+    pub indices: Vec<usize>,
+    pub indptr: Vec<usize>,
+    pub sparsity: f32,
+    pub shape: (usize, usize),
+}
+
+#[derive(Debug)]
+pub struct PathMemoryPool {
+    pub pools: Vec<Vec<f32>>,
+    pub pool_size: usize,
+    pub active_pool: usize,
+    pub available_pools: Vec<usize>,
+}
+
+#[derive(Debug, Clone)]
+pub struct StoragePerformanceMetrics {
+    pub cache_hits: u64,
+    pub cache_misses: u64,
+    pub hot_cache_size: usize,
+    pub warm_cache_size: usize,
+    pub total_compressed_size: usize,
+    pub average_compression_ratio: f32,
+    pub average_access_latency: Duration,
+    pub throughput_paths_per_sec: u64,
+    pub memory_utilization: f32,
+}
+
+#[derive(Debug, Clone)]
+pub struct CompressedPathBatch {
+    pub compressed_data: Vec<u8>,
+    pub batch_metadata: BatchMetadata,
+    pub last_accessed: SystemTime,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchMetadata {
+    pub batch_id: String,
+    pub num_paths: usize,
+    pub time_steps: usize,
+    pub compression_ratio: f32,
+    pub original_size_bytes: usize,
+    pub compressed_size_bytes: usize,
+    pub rng_seed: u64,
 }
 
 impl BraidedBrownianModel {
@@ -312,6 +402,43 @@ impl BraidedBrownianModel {
             calibration_data_hash: "braided_original".to_string(),
         };
 
+        let storage_config = BrownianStorageConfig {
+            use_memory_mapping: time_steps > 10000,
+            compression_enabled: true,
+            batch_size: 1000,
+            cache_hot_paths: true,
+            storage_path: format!("/tmp/brownian_paths_{}", id),
+        };
+
+        let cache_capacity = NonZeroUsize::new(100).unwrap();
+        let optimized_cache = OptimizedPathCache {
+            hot_paths: LruCache::new(cache_capacity),
+            warm_paths: HashMap::new(),
+            cache_hits: 0,
+            cache_misses: 0,
+            hot_cache_size: 0,
+            warm_cache_size: 0,
+        };
+
+        let memory_pool = PathMemoryPool {
+            pools: Vec::with_capacity(10),
+            pool_size: time_steps * num_strands,
+            active_pool: 0,
+            available_pools: Vec::new(),
+        };
+
+        let storage_stats = StoragePerformanceMetrics {
+            cache_hits: 0,
+            cache_misses: 0,
+            hot_cache_size: 0,
+            warm_cache_size: 0,
+            total_compressed_size: 0,
+            average_compression_ratio: 1.0,
+            average_access_latency: Duration::from_nanos(0),
+            throughput_paths_per_sec: 0,
+            memory_utilization: 0.0,
+        };
+
         Self {
             id,
             num_strands,
@@ -323,6 +450,10 @@ impl BraidedBrownianModel {
             sparsity: 0.0,
             pruning_strategy: None,
             metadata,
+            storage_config,
+            path_cache: Arc::new(Mutex::new(optimized_cache)),
+            memory_pool: Arc::new(Mutex::new(memory_pool)),
+            storage_stats: Arc::new(Mutex::new(storage_stats)),
         }
     }
 
@@ -354,19 +485,200 @@ impl BraidedBrownianModel {
         self.generate_braided_paths(initial_conditions).await
     }
 
+    pub fn new_with_storage_config(id: String, num_strands: usize, time_steps: usize, config: BrownianStorageConfig) -> Self {
+        let mut model = Self::new(id, num_strands, time_steps);
+        model.storage_config = config;
+        model
+    }
+
+    pub fn get_storage_stats(&self) -> StoragePerformanceMetrics {
+        self.storage_stats.lock().unwrap().clone()
+    }
+
+    pub async fn create_sparse_matrix(&self, paths: &[Vec<f32>], sparsity_threshold: f32) -> SparsePathMatrix {
+        let mut values = Vec::new();
+        let mut indices = Vec::new();
+        let mut indptr = vec![0];
+        let mut nnz_count = 0;
+        
+        for path in paths {
+            for &value in path {
+                if value.abs() > sparsity_threshold {
+                    values.push(value);
+                    indices.push(nnz_count);
+                    nnz_count += 1;
+                }
+            }
+            indptr.push(values.len());
+        }
+        
+        let total_elements = paths.len() * paths.get(0).map_or(0, |p| p.len());
+        let actual_sparsity = 1.0 - (values.len() as f32 / total_elements as f32);
+        
+        SparsePathMatrix {
+            values,
+            indices,
+            indptr,
+            sparsity: actual_sparsity,
+            shape: (paths.len(), paths.get(0).map_or(0, |p| p.len())),
+        }
+    }
+
+    pub async fn save_to_memory_mapped_file(&self, paths: &[Vec<f32>], file_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+        if !self.storage_config.use_memory_mapping {
+            return Ok(());
+        }
+        
+        let total_size = paths.len() * paths.get(0).map_or(0, |p| p.len()) * 4; // 4 bytes per f32
+        let file = OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .open(file_path)?;
+        
+        file.set_len(total_size as u64)?;
+        
+        let mut mmap = unsafe { MmapOptions::new().map_mut(&file)? };
+        
+        let mut offset = 0;
+        for path in paths {
+            for &value in path {
+                let bytes = value.to_le_bytes();
+                mmap[offset..offset + 4].copy_from_slice(&bytes);
+                offset += 4;
+            }
+        }
+        
+        mmap.flush()?;
+        Ok(())
+    }
+
+    pub async fn load_from_memory_mapped_file(&self, file_path: &str) -> Result<Vec<Vec<f32>>, Box<dyn std::error::Error>> {
+        if !self.storage_config.use_memory_mapping {
+            return Ok(Vec::new());
+        }
+        
+        let file = File::open(file_path)?;
+        let mmap = unsafe { MmapOptions::new().map(&file)? };
+        
+        let mut paths = Vec::with_capacity(self.num_strands);
+        let mut offset = 0;
+        
+        for _ in 0..self.num_strands {
+            let mut path = Vec::with_capacity(self.time_steps + 1);
+            for _ in 0..=self.time_steps {
+                if offset + 4 <= mmap.len() {
+                    let bytes = [mmap[offset], mmap[offset + 1], mmap[offset + 2], mmap[offset + 3]];
+                    let value = f32::from_le_bytes(bytes);
+                    path.push(value);
+                    offset += 4;
+                }
+            }
+            paths.push(path);
+        }
+        
+        Ok(paths)
+    }
+
+    pub fn allocate_from_pool(&self) -> Option<Vec<f32>> {
+        let mut pool = self.memory_pool.lock().unwrap();
+        
+        if let Some(pool_idx) = pool.available_pools.pop() {
+            if pool_idx < pool.pools.len() {
+                let mut allocated = pool.pools.swap_remove(pool_idx);
+                allocated.clear();
+                allocated.resize(pool.pool_size, 0.0);
+                return Some(allocated);
+            }
+        }
+        
+        if pool.pools.len() < 10 { // Limit pool size
+            let new_pool = vec![0.0; pool.pool_size];
+            Some(new_pool)
+        } else {
+            None
+        }
+    }
+
+    pub fn return_to_pool(&self, mut buffer: Vec<f32>) {
+        let mut pool = self.memory_pool.lock().unwrap();
+        
+        if pool.pools.len() < 10 {
+            buffer.clear();
+            let new_index = pool.pools.len();
+            pool.pools.push(buffer);
+            pool.available_pools.push(new_index);
+        }
+    }
+
+    pub async fn compress_and_store_batch(&self, paths: &[Vec<f32>], batch_id: &str) -> Result<String, Box<dyn std::error::Error>> {
+        let compressed_data = self.compress_paths(paths);
+        let file_path = format!("{}/batch_{}.zst", self.storage_config.storage_path, batch_id);
+        
+        if let Some(parent) = Path::new(&file_path).parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+        
+        let mut file = async_fs::File::create(&file_path).await?;
+        file.write_all(&compressed_data).await?;
+        file.flush().await?;
+        
+        if let Ok(mut stats) = self.storage_stats.lock() {
+            stats.total_compressed_size += compressed_data.len();
+            let original_size = paths.len() * paths.get(0).map_or(0, |p| p.len()) * 4;
+            let compression_ratio = compressed_data.len() as f32 / original_size as f32;
+            stats.average_compression_ratio = (stats.average_compression_ratio * 0.9) + (compression_ratio * 0.1);
+        }
+        
+        Ok(file_path)
+    }
+
     pub async fn generate_braided_paths(&self, initial_conditions: &[f32]) -> Vec<Vec<f32>> {
-        let mut paths: Vec<Vec<f32>> = Vec::new();
+        let start_time = SystemTime::now();
+        
+        let cache_key = self.generate_cache_key(initial_conditions);
+        if let Some(cached_paths) = self.get_cached_paths(&cache_key).await {
+            self.update_cache_stats(true, start_time).await;
+            return cached_paths;
+        }
+        
+        let optimized_storage = self.generate_optimized_paths(initial_conditions).await;
+        let paths = self.convert_to_vec_format(&optimized_storage);
+        
+        self.cache_paths(&cache_key, &paths).await;
+        self.update_cache_stats(false, start_time).await;
+        
+        paths
+    }
+
+    async fn generate_optimized_paths(&self, initial_conditions: &[f32]) -> OptimizedPathStorage {
+        let total_size = self.num_strands * (self.time_steps + 1);
+        let mut flat_data = vec![0.0f32; total_size];
         
         for strand in 0..self.num_strands {
             let initial_value = initial_conditions[strand % initial_conditions.len()];
-            paths.push(vec![initial_value]);
+            flat_data[strand * (self.time_steps + 1)] = initial_value;
         }
         
-        for step in 0..self.time_steps {
-            let mut new_values = Vec::new();
-            
+        let batch_size = self.storage_config.batch_size;
+        for batch_start in (0..self.time_steps).step_by(batch_size) {
+            let batch_end = (batch_start + batch_size).min(self.time_steps);
+            self.process_batch(&mut flat_data, batch_start, batch_end).await;
+        }
+        
+        OptimizedPathStorage {
+            data: flat_data,
+            stride: self.time_steps + 1,
+            num_strands: self.num_strands,
+            compression_enabled: self.storage_config.compression_enabled,
+        }
+    }
+
+    async fn process_batch(&self, flat_data: &mut [f32], batch_start: usize, batch_end: usize) {
+        for step in batch_start..batch_end {
             for strand in 0..self.num_strands {
-                let current_value = paths[strand][step];
+                let current_idx = strand * (self.time_steps + 1) + step;
+                let current_value = flat_data[current_idx];
                 
                 let (next_value, random) = if let Some(ref brownian_params) = self.brownian_params {
                     let sqrt_dt = (brownian_params.dt as f32).sqrt();
@@ -402,13 +714,13 @@ impl BraidedBrownianModel {
                     let random = normal * 0.1;
                     (current_value, random)
                 };
-                
                 let mut braided_increment = random;
                 
                 for other_strand in 0..self.num_strands {
                     if other_strand != strand {
                         let weight_idx = (strand * self.num_strands + other_strand) % self.weights_conv.len();
-                        let other_value = paths[other_strand][step];
+                        let other_idx = other_strand * (self.time_steps + 1) + step;
+                        let other_value = flat_data[other_idx];
                         
                         let relative_position = current_value - other_value;
                         let braiding_force = self.weights_conv[weight_idx] * relative_position * 0.1;
@@ -429,46 +741,215 @@ impl BraidedBrownianModel {
                 let crossing_amplitude = if (step / (self.time_steps / 4)) % 2 == strand % 2 { 0.15 } else { -0.15 };
                 let periodic_braiding = (braid_phase + strand_offset).sin() * crossing_amplitude;
                 
+                let linear_weight_idx = (strand * self.time_steps + step) % self.weights_linear.len();
+                let linear_contribution = self.weights_linear[linear_weight_idx] * current_value * 0.001;
+                
                 braided_increment += periodic_braiding;
                 
                 let final_value = if self.brownian_params.is_some() {
-                    next_value + braided_increment * 0.2  // Apply braiding as small perturbation to Brownian motion
+                    next_value + braided_increment * 0.2 + linear_contribution  // Apply braiding as small perturbation to Brownian motion
                 } else {
-                    current_value + braided_increment
+                    current_value + braided_increment + linear_contribution
                 };
-                new_values.push(final_value);
-            }
-            
-            for (strand, &new_value) in new_values.iter().enumerate() {
-                paths[strand].push(new_value);
+                
+                let next_idx = strand * (self.time_steps + 1) + step + 1;
+                flat_data[next_idx] = final_value;
             }
         }
+    }
+
+    fn convert_to_vec_format(&self, storage: &OptimizedPathStorage) -> Vec<Vec<f32>> {
+        let mut paths = Vec::with_capacity(self.num_strands);
         
-        let base_latency = Duration::from_micros(500);
-        let optimized_latency = Duration::from_nanos(
-            (base_latency.as_nanos() as f32 / self.metadata.speedup_factor) as u64
-        );
-        tokio::time::sleep(optimized_latency).await;
+        for strand in 0..self.num_strands {
+            let start_idx = strand * storage.stride;
+            let end_idx = start_idx + self.time_steps + 1;
+            let strand_data = storage.data[start_idx..end_idx].to_vec();
+            paths.push(strand_data);
+        }
         
         paths
     }
 
+    fn generate_cache_key(&self, initial_conditions: &[f32]) -> String {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::Hasher;
+        
+        let mut hasher = DefaultHasher::new();
+        hasher.write(self.id.as_bytes());
+        hasher.write_u64(self.num_strands as u64);
+        hasher.write_u64(self.time_steps as u64);
+        
+        for &value in initial_conditions {
+            hasher.write_u32(value.to_bits());
+        }
+        
+        format!("braided_{}_{}", self.id, hasher.finish())
+    }
+
+    async fn get_cached_paths(&self, cache_key: &str) -> Option<Vec<Vec<f32>>> {
+        let mut cache = self.path_cache.lock().unwrap();
+        
+        if let Some(compressed_batch) = cache.hot_paths.get(cache_key) {
+            let compressed_data = compressed_batch.compressed_data.clone();
+            let batch_metadata = compressed_batch.batch_metadata.clone();
+            cache.cache_hits += 1;
+            drop(cache);
+            return Some(self.decompress_paths(&compressed_data, &batch_metadata));
+        }
+        
+        cache.cache_misses += 1;
+        None
+    }
+
+    async fn cache_paths(&self, cache_key: &str, paths: &[Vec<f32>]) {
+        if !self.storage_config.cache_hot_paths {
+            return;
+        }
+        
+        let compressed_data = self.compress_paths(paths);
+        let batch_metadata = BatchMetadata {
+            batch_id: cache_key.to_string(),
+            num_paths: paths.len(),
+            time_steps: self.time_steps,
+            compression_ratio: compressed_data.len() as f32 / (paths.len() * self.time_steps * 4) as f32,
+            original_size_bytes: paths.len() * self.time_steps * 4,
+            compressed_size_bytes: compressed_data.len(),
+            rng_seed: 12345,
+        };
+        
+        let compressed_batch = CompressedPathBatch {
+            compressed_data,
+            batch_metadata,
+            last_accessed: SystemTime::now(),
+        };
+        
+        let mut cache = self.path_cache.lock().unwrap();
+        cache.hot_paths.put(cache_key.to_string(), compressed_batch);
+        cache.hot_cache_size = cache.hot_paths.len();
+    }
+
+    fn compress_paths(&self, paths: &[Vec<f32>]) -> Vec<u8> {
+        if !self.storage_config.compression_enabled {
+            return bincode::serialize(paths).unwrap_or_default();
+        }
+        
+        let delta_encoded = self.delta_encode_paths(paths);
+        let quantized = if self.quantization != QuantizationLevel::FP32 {
+            self.quantize_for_compression(&delta_encoded)
+        } else {
+            delta_encoded
+        };
+        
+        let serialized = bincode::serialize(&quantized).unwrap_or_default();
+        zstd::encode_all(&serialized[..], 3).unwrap_or(serialized)
+    }
+
+    fn decompress_paths(&self, compressed_data: &[u8], _metadata: &BatchMetadata) -> Vec<Vec<f32>> {
+        if !self.storage_config.compression_enabled {
+            return bincode::deserialize(compressed_data).unwrap_or_default();
+        }
+        
+        let decompressed = zstd::decode_all(compressed_data).unwrap_or_else(|_| compressed_data.to_vec());
+        let quantized: Vec<Vec<f32>> = bincode::deserialize(&decompressed).unwrap_or_default();
+        let delta_encoded = if self.quantization != QuantizationLevel::FP32 {
+            self.dequantize_from_compression(&quantized)
+        } else {
+            quantized
+        };
+        
+        self.delta_decode_paths(&delta_encoded)
+    }
+
+    fn delta_encode_paths(&self, paths: &[Vec<f32>]) -> Vec<Vec<f32>> {
+        paths.iter().map(|path| {
+            let mut delta_path = Vec::with_capacity(path.len());
+            if !path.is_empty() {
+                delta_path.push(path[0]);
+                for i in 1..path.len() {
+                    delta_path.push(path[i] - path[i-1]);
+                }
+            }
+            delta_path
+        }).collect()
+    }
+
+    fn delta_decode_paths(&self, delta_paths: &[Vec<f32>]) -> Vec<Vec<f32>> {
+        delta_paths.iter().map(|delta_path| {
+            let mut path = Vec::with_capacity(delta_path.len());
+            if !delta_path.is_empty() {
+                path.push(delta_path[0]);
+                for i in 1..delta_path.len() {
+                    path.push(path[i-1] + delta_path[i]);
+                }
+            }
+            path
+        }).collect()
+    }
+
+    fn quantize_for_compression(&self, paths: &[Vec<f32>]) -> Vec<Vec<f32>> {
+        let scale = match self.quantization {
+            QuantizationLevel::INT8 => 127.0,
+            QuantizationLevel::INT4 => 7.0,
+            QuantizationLevel::FP16 => 1.0,
+            _ => 1.0,
+        };
+        
+        paths.iter().map(|path| {
+            path.iter().map(|&value| {
+                let quantized = (value * scale).round() / scale;
+                quantized
+            }).collect()
+        }).collect()
+    }
+
+    fn dequantize_from_compression(&self, paths: &[Vec<f32>]) -> Vec<Vec<f32>> {
+        paths.to_vec()
+    }
+
+    async fn update_cache_stats(&self, cache_hit: bool, start_time: SystemTime) {
+        let mut stats = self.storage_stats.lock().unwrap();
+        
+        if cache_hit {
+            stats.cache_hits += 1;
+        } else {
+            stats.cache_misses += 1;
+        }
+        
+        let elapsed = start_time.elapsed().unwrap_or(Duration::from_nanos(0));
+        stats.average_access_latency = Duration::from_nanos(
+            (stats.average_access_latency.as_nanos() as f64 * 0.9 + elapsed.as_nanos() as f64 * 0.1) as u64
+        );
+        
+        let cache = self.path_cache.lock().unwrap();
+        stats.hot_cache_size = cache.hot_cache_size;
+        stats.warm_cache_size = cache.warm_cache_size;
+    }
+
+
     pub fn calculate_risk_moments(&self, paths: &[Vec<f32>]) -> Vec<f32> {
-        let mut moments = Vec::new();
+        let mut moments = Vec::with_capacity(paths.len() * 3);
         
         for path in paths {
             if path.is_empty() { continue; }
             
-            let mean = path.iter().sum::<f32>() / path.len() as f32;
+            let n = path.len() as f32;
+            let mean = path.iter().sum::<f32>() / n;
             
-            let variance = path.iter()
-                .map(|x| (x - mean).powi(2))
-                .sum::<f32>() / path.len() as f32;
+            let mut variance_sum = 0.0f32;
+            let mut skewness_sum = 0.0f32;
             
+            for &value in path {
+                let diff = value - mean;
+                let diff_squared = diff * diff;
+                variance_sum += diff_squared;
+                skewness_sum += diff_squared * diff;
+            }
+            
+            let variance = variance_sum / n;
             let skewness = if variance > 0.0 {
-                path.iter()
-                    .map(|x| ((x - mean) / variance.sqrt()).powi(3))
-                    .sum::<f32>() / path.len() as f32
+                let std_dev = variance.sqrt();
+                skewness_sum / (n * variance * std_dev)
             } else {
                 0.0
             };
@@ -477,6 +958,67 @@ impl BraidedBrownianModel {
         }
         
         moments
+    }
+
+    pub fn calculate_risk_moments_parallel(&self, paths: &[Vec<f32>]) -> Vec<(f32, f32, f32)> {
+        use rayon::prelude::*;
+        
+        let start_time = SystemTime::now();
+        
+        let results: Vec<(f32, f32, f32)> = paths.par_iter()
+            .map(|path| self.calculate_moments_simd_optimized(path))
+            .collect();
+        
+        let elapsed = start_time.elapsed().unwrap_or(Duration::from_nanos(0));
+        let throughput = (paths.len() as f64 / elapsed.as_secs_f64()) as u64;
+        
+        if let Ok(mut stats) = self.storage_stats.lock() {
+            stats.throughput_paths_per_sec = throughput;
+        }
+        
+        results
+    }
+
+    fn calculate_moments_simd_optimized(&self, path: &[f32]) -> (f32, f32, f32) {
+        if path.is_empty() {
+            return (0.0, 0.0, 0.0);
+        }
+        
+        let n = path.len() as f32;
+        let mean = self.kahan_sum(path) / n;
+        
+        let variance = path.par_iter()
+            .map(|&x| (x - mean).powi(2))
+            .sum::<f32>() / n;
+        
+        let skewness = if variance > 1e-10 {
+            let std_dev = variance.sqrt();
+            let skew_sum = path.par_iter()
+                .map(|&x| {
+                    let normalized = (x - mean) / std_dev;
+                    normalized.powi(3)
+                })
+                .sum::<f32>();
+            skew_sum / n
+        } else {
+            0.0
+        };
+        
+        (mean, variance, skewness)
+    }
+
+    fn kahan_sum(&self, values: &[f32]) -> f32 {
+        let mut sum = 0.0f32;
+        let mut c = 0.0f32;
+        
+        for &value in values {
+            let y = value - c;
+            let t = sum + y;
+            c = (t - sum) - y;
+            sum = t;
+        }
+        
+        sum
     }
 
     pub fn quantize(&mut self, level: QuantizationLevel) -> Result<(), String> {
