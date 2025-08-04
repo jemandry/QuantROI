@@ -1216,6 +1216,154 @@ async def get_phase1_statistics():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/ai/phase2/enhance_event")
+async def enhance_market_event(request: Dict[str, Any] = Body(...)):
+    """Process market event through Phase 2 AI enhancement pipeline"""
+    try:
+        import sys
+        sys.path.append('ai-models/src')
+        from phase2_ai_enhancement_engine import Phase2AIEnhancementEngine
+        
+        engine = Phase2AIEnhancementEngine()
+        event_data = request.get('event', {})
+        
+        enhanced_result = await engine.process_enhanced_market_event(event_data)
+        await engine.shutdown()
+        
+        return {
+            "status": "success",
+            "enhanced_result": enhanced_result,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/ai/phase2/analytics_dashboard")
+async def get_analytics_dashboard():
+    """Get real-time analytics dashboard data"""
+    try:
+        import sys
+        sys.path.append('ai-models/src')
+        from real_time_analytics_dashboard import RealTimeAnalyticsDashboard
+        
+        dashboard = RealTimeAnalyticsDashboard()
+        dashboard_data = await dashboard.get_dashboard_data()
+        
+        return {
+            "status": "success",
+            "dashboard_data": dashboard_data,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/ai/phase2/distributed_process")
+async def submit_distributed_task(request: Dict[str, Any] = Body(...)):
+    """Submit task to distributed AI processor"""
+    try:
+        import sys
+        sys.path.append('ai-models/src')
+        from distributed_ai_processor import DistributedAIProcessor
+        
+        processor = DistributedAIProcessor()
+        await processor.start_processing()
+        
+        event_data = request.get('event', {})
+        priority = request.get('priority', 1)
+        processing_type = request.get('processing_type', 'full')
+        
+        task_id = await processor.submit_task(event_data, priority, processing_type)
+        result = await processor.get_result(task_id, timeout=30.0)
+        
+        await processor.shutdown()
+        
+        return {
+            "status": "success",
+            "task_id": task_id,
+            "result": result,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/ai/phase2/performance_dashboard")
+async def get_ai_performance_dashboard():
+    """Get AI performance dashboard with Phase 1 and Phase 2 metrics"""
+    try:
+        import sys
+        sys.path.append('ai-models/src')
+        from phase2_ai_enhancement_engine import Phase2AIEnhancementEngine
+        
+        engine = Phase2AIEnhancementEngine()
+        performance_data = await engine.get_ai_performance_dashboard()
+        await engine.shutdown()
+        
+        return {
+            "status": "success",
+            "performance_data": performance_data,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/ai/phase2/processing_stats")
+async def get_distributed_processing_stats():
+    """Get distributed processing statistics"""
+    try:
+        import sys
+        sys.path.append('ai-models/src')
+        from distributed_ai_processor import DistributedAIProcessor
+        
+        processor = DistributedAIProcessor()
+        stats = await processor.get_processing_stats()
+        
+        return {
+            "status": "success",
+            "processing_stats": stats,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/ai/phase2/start_monitoring")
+async def start_real_time_monitoring():
+    """Start real-time analytics dashboard monitoring"""
+    try:
+        import sys
+        sys.path.append('ai-models/src')
+        from real_time_analytics_dashboard import RealTimeAnalyticsDashboard
+        
+        dashboard = RealTimeAnalyticsDashboard()
+        
+        monitoring_task = asyncio.create_task(dashboard.start_real_time_monitoring())
+        
+        return {
+            "status": "success",
+            "message": "Real-time monitoring started",
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/ai/phase2/historical_performance")
+async def get_historical_performance(hours: int = 24):
+    """Get historical performance data"""
+    try:
+        import sys
+        sys.path.append('ai-models/src')
+        from real_time_analytics_dashboard import RealTimeAnalyticsDashboard
+        
+        dashboard = RealTimeAnalyticsDashboard()
+        historical_data = await dashboard.get_historical_performance(hours=hours)
+        
+        return {
+            "status": "success",
+            "historical_data": historical_data,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 if __name__ == "__main__":
     import uvicorn
