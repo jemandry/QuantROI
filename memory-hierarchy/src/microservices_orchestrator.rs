@@ -28,6 +28,12 @@ pub struct MicroservicesOrchestrator {
     health_checks: Arc<RwLock<HashMap<String, bool>>>,
 }
 
+impl Default for MicroservicesOrchestrator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MicroservicesOrchestrator {
     pub fn new() -> Self {
         Self {
@@ -76,7 +82,7 @@ impl MicroservicesOrchestrator {
     ) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
         let client = reqwest::Client::new();
         let response = client
-            .post(&format!("{}{}", base_url, endpoint))
+            .post(format!("{}{}", base_url, endpoint))
             .json(&payload)
             .send()
             .await?;
@@ -113,7 +119,7 @@ impl MicroservicesOrchestrator {
             .build()
         {
             if let Ok(response) = client
-                .get(&format!("{}/health", base_url))
+                .get(format!("{}/health", base_url))
                 .send()
                 .await
             {
@@ -124,6 +130,7 @@ impl MicroservicesOrchestrator {
     }
 }
 
+#[allow(dead_code)]
 pub struct DistributedProcessingManager {
     worker_pool: Arc<RwLock<Vec<WorkerNode>>>,
     resource_predictor: Arc<RwLock<ResourcePredictor>>,
@@ -139,12 +146,14 @@ pub struct WorkerNode {
     pub current_load: f64,
 }
 
+#[allow(dead_code)]
 pub struct ResourcePredictor {
     historical_usage: Vec<ResourceUsage>,
     prediction_model: PredictionModel,
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ResourceUsage {
     timestamp: u64,
     cpu_utilization: f64,
@@ -153,9 +162,16 @@ pub struct ResourceUsage {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct PredictionModel {
     weights: Vec<f64>,
     bias: f64,
+}
+
+impl Default for ResourcePredictor {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ResourcePredictor {
@@ -193,6 +209,12 @@ impl ResourcePredictor {
         }
         
         (base_cpu, base_memory)
+    }
+}
+
+impl Default for DistributedProcessingManager {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

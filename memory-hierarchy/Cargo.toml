@@ -37,8 +37,7 @@ redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
 zstd = "0.13"
 lz4 = "1.24"
 reqwest = { version = "0.11", features = ["json"] }
-sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid"], optional = true }
-rdkafka = { version = "0.36", features = ["cmake-build"], optional = true }
+# rdkafka = { version = "0.36", features = ["cmake-build"], optional = true } # Disabled due to cmake dependency
 prometheus = "0.13"
 hyper = { version = "1.0", features = ["full"] }
 memmap2 = "0.9"
@@ -53,11 +52,11 @@ bincode = "1.3"
 flate2 = "1.0"
 num_cpus = "1.16"
 base64 = "0.21"
-
 [features]
 default = ["quantum-simulation"]
 quantum-simulation = []
 quantum-hardware = ["quantum-simulation"]
+solana-integration = []
 
 [dev-dependencies]
 criterion = "0.5"

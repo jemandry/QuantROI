@@ -128,8 +128,8 @@ impl TradingWealthEngine {
         
         let mut hasher = Sha3_256::new();
         hasher.update(project_id.as_bytes());
-        hasher.update(&wealth_target.to_le_bytes());
-        hasher.update(&Utc::now().timestamp().to_le_bytes());
+        hasher.update(wealth_target.to_le_bytes());
+        hasher.update(Utc::now().timestamp().to_le_bytes());
         let hash_tracking = hasher.finalize().to_vec();
         
         let project = CausalProject {
@@ -233,7 +233,7 @@ impl TradingWealthEngine {
         let mut hasher = Sha3_256::new();
         hasher.update(entry_id.as_bytes());
         hasher.update(description.as_bytes());
-        hasher.update(&timestamp.timestamp().to_le_bytes());
+        hasher.update(timestamp.timestamp().to_le_bytes());
         let hash = hasher.finalize().to_vec();
         
         let entry = AuditEntry {

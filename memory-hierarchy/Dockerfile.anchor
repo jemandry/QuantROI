@@ -1,0 +1,44 @@
+FROM ubuntu:24.04
+
+WORKDIR /app
+
+# Install system dependencies with GLIBC 2.39 support
+RUN apt-get update && apt-get install -y \
+    curl \
+    pkg-config \
+    libssl-dev \
+    build-essential \
+    ca-certificates \
+    git \
+    nodejs \
+    npm \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Install Solana CLI v1.18.22 for compatibility
+RUN sh -c "$(curl -sSfL https://release.anza.xyz/v1.18.22/install)"
+ENV PATH="/root/.local/share/solana/install/active_release/bin:${PATH}"
+
+# Install Anchor CLI via npm (more stable than cargo build)
+RUN npm install -g @coral-xyz/anchor-cli@0.29.0
+
+# Verify installations (cargo-build-sbf comes with Solana CLI)
+RUN solana --version && anchor --version
+
+# Create app user
+RUN useradd -r -s /bin/false appuser && \
+    mkdir -p /app/contracts /app/target /app/.anchor && \
+    chown -R appuser:appuser /app
+
+USER appuser
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD anchor --version && solana --version || exit 1
+
+EXPOSE 8899
+
+CMD ["bash"]

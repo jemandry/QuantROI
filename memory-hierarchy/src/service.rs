@@ -1,4 +1,4 @@
-use memory_hierarchy::{MemoryHierarchy, CausalDataAgent, TradingWealthEngine, QuantumMode, QuantumAuditEngine, QuantumSimulationEngine, ClassicalAuditEngine};
+use memory_hierarchy::{MemoryHierarchy, CausalDataAgent, TradingWealthEngine, QuantumMode, QuantumAuditEngine, QuantumSimulationEngine, BraidedCordDataEngine, SolanaEventLogger, SolanaEventData, MertonJumpParams};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::info;
@@ -45,6 +45,7 @@ struct AppState {
     causal_agent: CausalDataAgent,
     quantum_audit_engine: Option<Arc<dyn QuantumAuditEngine + Send + Sync>>,
     wealth_engine: Arc<RwLock<TradingWealthEngine>>,
+    solana_event_logger: Arc<SolanaEventLogger>,
     start_time: std::time::Instant,
 }
 
@@ -60,12 +61,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let causal_agent = hierarchy.create_quantum_causal_agent(QuantumMode::Simulation);
     let quantum_engine: Arc<dyn QuantumAuditEngine + Send + Sync> = Arc::new(QuantumSimulationEngine::new());
     let wealth_engine = Arc::new(RwLock::new(TradingWealthEngine::new()));
+    
+    let braided_engine = Arc::new(BraidedCordDataEngine::new().await);
+    let solana_event_logger = Arc::new(SolanaEventLogger::new(braided_engine).await);
 
     let state = Arc::new(AppState {
         hierarchy,
         causal_agent,
         quantum_audit_engine: Some(quantum_engine),
         wealth_engine,
+        solana_event_logger,
         start_time: std::time::Instant::now(),
     });
 
@@ -91,6 +96,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/wealth/project/:project_id", get(get_wealth_project))
         .route("/wealth/project/:project_id/delegate", post(delegate_project_task))
         .route("/wealth/milestones", get(get_wealth_milestones))
+        .route("/solana/event/anchor_build", post(log_anchor_build_event))
+        .route("/solana/event/contract_execution", post(log_contract_execution_event))
+        .route("/solana/event/volatility_analysis", post(analyze_contract_volatility))
+        .route("/solana/events", get(get_solana_events))
+        .route("/solana/events/:event_id", get(get_solana_event_details))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
         .with_state(state);
@@ -440,4 +450,112 @@ async fn get_wealth_milestones(State(state): State<Arc<AppState>>) -> Json<serde
     Json(serde_json::json!({
         "milestones": milestones
     }))
+}
+
+#[derive(Deserialize)]
+struct AnchorBuildRequest {
+    project_path: String,
+    success: bool,
+}
+
+#[derive(Deserialize)]
+struct ContractExecutionRequest {
+    transaction_signature: String,
+    program_id: String,
+    merton_params: MertonJumpParams,
+}
+
+#[derive(Deserialize)]
+struct VolatilityAnalysisRequest {
+    event_id: String,
+}
+
+async fn log_anchor_build_event(
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<AnchorBuildRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    match state.solana_event_logger.log_anchor_build_event(&request.project_path, request.success).await {
+        Ok(event_id) => Ok(Json(serde_json::json!({
+            "event_id": event_id,
+            "status": "logged",
+            "project_path": request.project_path,
+            "success": request.success
+        }))),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
+async fn log_contract_execution_event(
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<ContractExecutionRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let program_id = request.program_id.clone();
+    
+    match state.solana_event_logger.log_contract_execution_with_volatility(
+        &request.transaction_signature,
+        &program_id,
+        request.merton_params,
+    ).await {
+        Ok(event_id) => Ok(Json(serde_json::json!({
+            "event_id": event_id,
+            "status": "logged",
+            "transaction_signature": request.transaction_signature,
+            "volatility_modeling": "applied"
+        }))),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
+async fn analyze_contract_volatility(
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<VolatilityAnalysisRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    match state.solana_event_logger.get_event_by_id(&request.event_id).await {
+        Some(event_data) => {
+            if let Some(volatility_impact) = event_data.volatility_impact {
+                Ok(Json(serde_json::json!({
+                    "event_id": request.event_id,
+                    "volatility_path": volatility_impact.volatility_path,
+                    "confidence_score": volatility_impact.confidence_score,
+                    "merton_params": volatility_impact.merton_jump_params
+                })))
+            } else {
+                Ok(Json(serde_json::json!({
+                    "event_id": request.event_id,
+                    "volatility_impact": "none"
+                })))
+            }
+        },
+        None => Err(StatusCode::NOT_FOUND),
+    }
+}
+
+async fn get_solana_events(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let events = state.solana_event_logger.get_cached_events().await;
+    let event_summaries: Vec<serde_json::Value> = events.iter().map(|(id, event)| {
+        serde_json::json!({
+            "event_id": id,
+            "event_type": event.event_type,
+            "timestamp_ns": event.timestamp_ns,
+            "program_id": event.program_id,
+            "has_volatility_impact": event.volatility_impact.is_some()
+        })
+    }).collect();
+    
+    Ok(Json(serde_json::json!({
+        "total_events": events.len(),
+        "events": event_summaries
+    })))
+}
+
+async fn get_solana_event_details(
+    State(state): State<Arc<AppState>>,
+    Path(event_id): Path<String>,
+) -> Result<Json<SolanaEventData>, StatusCode> {
+    match state.solana_event_logger.get_event_by_id(&event_id).await {
+        Some(event_data) => Ok(Json(event_data)),
+        None => Err(StatusCode::NOT_FOUND),
+    }
 }

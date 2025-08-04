@@ -199,6 +199,45 @@ services:
     depends_on:
       - prometheus
 
+  anchor-cli-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.anchor
+    environment:
+      - SOLANA_RPC_URL=http://solana-test-validator:8899
+      - ANCHOR_PROVIDER_URL=http://solana-test-validator:8899
+      - ANCHOR_WALLET=/app/.anchor/test-ledger/faucet-keypair.json
+    volumes:
+      - ../solana-contracts:/app/contracts
+      - anchor_build_cache:/app/target
+      - anchor_node_modules:/app/node_modules
+    networks:
+      - quantroi-network
+    restart: unless-stopped
+    depends_on:
+      - solana-test-validator
+      - memory-hierarchy-service
+    command: ["tail", "-f", "/dev/null"]
+
+  solana-test-validator:
+    image: solanalabs/solana:v1.18.22
+    ports:
+      - "8899:8899"
+      - "8900:8900"
+    volumes:
+      - solana_test_ledger:/app/test-ledger
+    networks:
+      - quantroi-network
+    restart: unless-stopped
+    command: [
+      "solana-test-validator",
+      "--ledger", "/app/test-ledger",
+      "--bind-address", "0.0.0.0",
+      "--rpc-port", "8899",
+      "--faucet-port", "8900",
+      "--reset"
+    ]
+
 volumes:
   memory_hierarchy_data:
   braided_models_data:
@@ -208,6 +247,9 @@ volumes:
   zookeeper_memory_hierarchy:
   prometheus_data:
   grafana_data:
+  anchor_build_cache:
+  anchor_node_modules:
+  solana_test_ledger:
 
 networks:
   quantroi-network:

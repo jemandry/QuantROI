@@ -158,7 +158,7 @@ async fn generate_paths(
                     
                     let metadata = ModelMetadata {
                         num_strands: paths.len(),
-                        time_steps: paths.get(0).map_or(0, |p| p.len()),
+                        time_steps: paths.first().map_or(0, |p| p.len()),
                         quantization_level: "INT8".to_string(), // Would be retrieved from actual model
                         sparsity: 0.4,
                         accuracy_retention: 0.93,

@@ -1,10 +1,7 @@
 use std::collections::HashMap;
 use std::fs::OpenOptions;
-use std::io::{Write, Seek, SeekFrom};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tokio::fs::File;
-use tokio::io::{AsyncWriteExt, AsyncSeekExt};
 use memmap2::{MmapMut, MmapOptions};
 use serde::{Serialize, Deserialize};
 use sha2::{Sha256, Digest};
@@ -62,6 +59,7 @@ impl BrownianVolatilityStrand {
 
         let file = OpenOptions::new()
             .create(true)
+            .truncate(true)
             .read(true)
             .write(true)
             .open(&file_path)?;

@@ -1,11 +1,10 @@
 
 use std::sync::Arc;
-use tokio::sync::RwLock;
 use serde::{Serialize, Deserialize};
 use axum::{
-    extract::{Path, State},
+    extract::State,
     http::StatusCode,
-    response::{Json, Result as AxumResult},
+    response::Json,
     routing::{get, post},
     Router,
 };
@@ -14,7 +13,6 @@ use crate::ai_architect_enhancements::{
     StochasticModelType, NumericalScheme, EnhancedSimulationParameters,
     DistributedProcessingManager, WorkerNode
 };
-use tracing::{info, error};
 use crate::microservices_orchestrator::MicroservicesOrchestrator;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -136,7 +134,7 @@ async fn enhanced_simulate(
         model_type,
         numerical_scheme,
         dt: 1.0 / 252.0,
-        initial_value: request.initial_conditions.get(0).copied().unwrap_or(100.0) as f64,
+        initial_value: request.initial_conditions.first().copied().unwrap_or(100.0) as f64,
         correlation_matrix: None,
         seed: Some(42),
         meta_learning_enabled: request.enable_meta_learning,
@@ -282,6 +280,7 @@ async fn enhanced_stats(
     }))
 }
 
+#[allow(dead_code)]
 async fn list_workers(
     State(state): State<Arc<EnhancedAppState>>,
 ) -> Json<serde_json::Value> {

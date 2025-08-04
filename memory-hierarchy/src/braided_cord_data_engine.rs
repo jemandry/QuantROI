@@ -4,13 +4,13 @@ use tokio::sync::RwLock;
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 use std::time::{SystemTime, UNIX_EPOCH};
+use base64::Engine;
 
 use crate::ai_architect_enhancements::{
     TieredStorageManager, TieredStorageConfig, EnhancedSimulationEngine,
     StochasticModelType, NumericalScheme, EnhancedSimulationParameters
 };
-use crate::microservices_orchestrator::{MicroservicesOrchestrator, ServiceRegistry};
-use crate::brownian_volatility_strand::{BrownianMotionParameters, VolatilitySimulationRecord};
+use crate::microservices_orchestrator::MicroservicesOrchestrator;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DataTier {
@@ -29,6 +29,9 @@ pub enum DataType {
     CausalEvents,
     SimulationResults,
     HistoricalData,
+    SolanaTransactions,
+    AnchorEvents,
+    ContractAudits,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -61,6 +64,7 @@ pub struct DataEngineMetrics {
     pub compaction_savings_percent: f64,
 }
 
+#[allow(dead_code)]
 pub struct BraidedCordDataEngine {
     tiered_storage: Arc<TieredStorageManager>,
     simulation_engine: Arc<EnhancedSimulationEngine>,
@@ -251,7 +255,7 @@ impl BraidedCordDataEngine {
             );
             
             if let Some(data) = self.retrieve_data_with_promotion(&data_key, data_type.clone()).await? {
-                results.insert(format!("{:?}", data_type), base64::encode(&data));
+                results.insert(format!("{:?}", data_type), base64::engine::general_purpose::STANDARD.encode(&data));
             }
         }
         
@@ -338,13 +342,9 @@ impl BraidedCordDataEngine {
         data_id: &str,
         data_payload: &[u8],
         _timestamp_ns: u64,
-        compression_enabled: bool,
+        _compression_enabled: bool,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let processed_data = if compression_enabled {
-            data_payload.to_vec()
-        } else {
-            data_payload.to_vec()
-        };
+        let processed_data = data_payload.to_vec();
         
         let _warm_key = format!("warm:{}", data_id);
         let _data_size = processed_data.len();
@@ -357,13 +357,9 @@ impl BraidedCordDataEngine {
         data_id: &str,
         data_payload: &[u8],
         _timestamp_ns: u64,
-        compression_enabled: bool,
+        _compression_enabled: bool,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let processed_data = if compression_enabled {
-            data_payload.to_vec()
-        } else {
-            data_payload.to_vec()
-        };
+        let processed_data = data_payload.to_vec();
         
         let _cold_key = format!("cold:{}", data_id);
         let _data_size = processed_data.len();

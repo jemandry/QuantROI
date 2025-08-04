@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DataInventory {
     pub stock_symbol: Option<String>,
     pub time_period: Option<String>,
@@ -20,23 +20,6 @@ pub struct DataInventory {
     pub custom_factors: HashMap<String, bool>,
 }
 
-impl Default for DataInventory {
-    fn default() -> Self {
-        Self {
-            stock_symbol: None,
-            time_period: None,
-            volume_data: false,
-            news_data: false,
-            options_data: false,
-            earnings_data: false,
-            insider_trading: false,
-            market_events: false,
-            seasonal_data: false,
-            etf_flows: false,
-            custom_factors: HashMap::new(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CausalQuestion {
@@ -82,6 +65,12 @@ pub struct CausalDataAgent {
     baseline_questions: Vec<CausalQuestion>,
     confidence_threshold: f32,
     quantum_audit_engine: Option<Box<dyn crate::quantum_audit::QuantumAuditEngine + Send + Sync>>,
+}
+
+impl Default for CausalDataAgent {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl CausalDataAgent {

@@ -47,6 +47,7 @@ pub trait QuantumAuditEngine {
     async fn generate_quantum_hash(&self, data: &[u8]) -> Result<Vec<u8>, String>;
 }
 
+#[allow(dead_code)]
 pub struct QuantumSimulationEngine {
     braided_model: crate::ai_optimization::BraidedBrownianModel,
     quantum_circuits: HashMap<String, QuantumCircuit>,
@@ -77,6 +78,12 @@ pub enum QuantumGate {
     CNOT(usize, usize),
     Rotation(usize, f32),
     Measurement(usize),
+}
+
+impl Default for QuantumSimulationEngine {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl QuantumSimulationEngine {
@@ -205,7 +212,7 @@ impl QuantumSimulationEngine {
     async fn generate_quantum_hash_internal(&self, data: &[u8]) -> Result<Vec<u8>, String> {
         let mut hasher = Sha3_256::new();
         hasher.update(data);
-        hasher.update(&Utc::now().timestamp().to_le_bytes());
+        hasher.update(Utc::now().timestamp().to_le_bytes());
         hasher.update(b"quantum_audit_salt");
         Ok(hasher.finalize().to_vec())
     }
@@ -213,7 +220,7 @@ impl QuantumSimulationEngine {
 
 #[async_trait]
 impl QuantumAuditEngine for QuantumSimulationEngine {
-    async fn create_audit_session(&self, mode: QuantumMode) -> Result<String, String> {
+    async fn create_audit_session(&self, _mode: QuantumMode) -> Result<String, String> {
         let session_id = Uuid::new_v4().to_string();
         Ok(session_id)
     }
@@ -244,8 +251,15 @@ impl QuantumAuditEngine for QuantumSimulationEngine {
     }
 }
 
+#[allow(dead_code)]
 pub struct ClassicalAuditEngine {
     sessions: HashMap<String, QuantumAuditSession>,
+}
+
+impl Default for ClassicalAuditEngine {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ClassicalAuditEngine {
@@ -258,7 +272,7 @@ impl ClassicalAuditEngine {
     async fn classical_audit(&self, data: &[u8]) -> Result<QuantumAuditResult, String> {
         let mut hasher = Sha3_256::new();
         hasher.update(data);
-        hasher.update(&Utc::now().timestamp().to_le_bytes());
+        hasher.update(Utc::now().timestamp().to_le_bytes());
         let classical_hash = hasher.finalize().to_vec();
         
         Ok(QuantumAuditResult {
@@ -276,7 +290,7 @@ impl ClassicalAuditEngine {
 
 #[async_trait]
 impl QuantumAuditEngine for ClassicalAuditEngine {
-    async fn create_audit_session(&self, mode: QuantumMode) -> Result<String, String> {
+    async fn create_audit_session(&self, _mode: QuantumMode) -> Result<String, String> {
         let session_id = Uuid::new_v4().to_string();
         Ok(session_id)
     }

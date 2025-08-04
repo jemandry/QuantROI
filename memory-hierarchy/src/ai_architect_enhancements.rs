@@ -5,7 +5,6 @@ use tokio::sync::RwLock;
 use serde::{Serialize, Deserialize};
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
-use rand_distr::StandardNormal;
 use crate::brownian_volatility_strand::{BrownianMotionParameters, VolatilitySimulationRecord};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -84,6 +83,12 @@ pub struct QueryOptimizationCache {
     access_frequency: Arc<RwLock<HashMap<String, f64>>>,
 }
 
+impl Default for QueryOptimizationCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl QueryOptimizationCache {
     pub fn new() -> Self {
         Self {
@@ -160,6 +165,7 @@ impl QueryOptimizationCache {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct MetaLearningModelSelector {
     model_performance: Arc<RwLock<HashMap<String, f64>>>,
     regime_detector: Arc<RwLock<MarketRegimeDetector>>,
@@ -179,6 +185,12 @@ pub enum MarketRegime {
     Trending,
     MeanReverting,
     Crisis,
+}
+
+impl Default for MetaLearningModelSelector {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MetaLearningModelSelector {
@@ -287,6 +299,7 @@ impl MetaLearningModelSelector {
     }
 }
 
+#[allow(dead_code)]
 pub struct EnhancedSimulationEngine {
     query_cache: QueryOptimizationCache,
     model_selector: MetaLearningModelSelector,
@@ -569,6 +582,7 @@ pub struct CompactionStats {
     pub last_compaction_timestamp: u128,
 }
 
+#[allow(dead_code)]
 pub struct TieredStorageManager {
     config: TieredStorageConfig,
     hot_tier: Arc<RwLock<HashMap<String, VolatilitySimulationRecord>>>,
@@ -713,6 +727,7 @@ impl TieredStorageManager {
     }
 }
 
+#[allow(dead_code)]
 pub struct DistributedProcessingManager {
     worker_pool: Arc<RwLock<Vec<WorkerNode>>>,
     resource_predictor: Arc<RwLock<ResourcePredictor>>,
@@ -728,12 +743,14 @@ pub struct WorkerNode {
     pub current_load: f64,
 }
 
+#[allow(dead_code)]
 pub struct ResourcePredictor {
     historical_usage: Vec<ResourceUsage>,
     prediction_model: PredictionModel,
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ResourceUsage {
     timestamp: u64,
     cpu_utilization: f64,
@@ -742,9 +759,16 @@ pub struct ResourceUsage {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct PredictionModel {
     weights: Vec<f64>,
     bias: f64,
+}
+
+impl Default for ResourcePredictor {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ResourcePredictor {
@@ -782,6 +806,12 @@ impl ResourcePredictor {
         }
         
         (base_cpu, base_memory)
+    }
+}
+
+impl Default for DistributedProcessingManager {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

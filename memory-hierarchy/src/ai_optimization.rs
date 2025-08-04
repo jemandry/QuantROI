@@ -3,14 +3,13 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 use std::hash::{Hash, Hasher};
 use std::fs::{File, OpenOptions};
-use std::io::{Read, Write, Seek, SeekFrom};
 use std::path::Path;
-use memmap2::{MmapOptions, MmapMut};
+use memmap2::MmapOptions;
 use rayon::prelude::*;
 use lru::LruCache;
 use serde::{Serialize, Deserialize};
 use tokio::fs as async_fs;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 use std::sync::{Arc, Mutex};
 use std::num::NonZeroUsize;
 
@@ -512,7 +511,7 @@ impl BraidedBrownianModel {
             indptr.push(values.len());
         }
         
-        let total_elements = paths.len() * paths.get(0).map_or(0, |p| p.len());
+        let total_elements = paths.len() * paths.first().map_or(0, |p| p.len());
         let actual_sparsity = 1.0 - (values.len() as f32 / total_elements as f32);
         
         SparsePathMatrix {
@@ -520,7 +519,7 @@ impl BraidedBrownianModel {
             indices,
             indptr,
             sparsity: actual_sparsity,
-            shape: (paths.len(), paths.get(0).map_or(0, |p| p.len())),
+            shape: (paths.len(), paths.first().map_or(0, |p| p.len())),
         }
     }
 
@@ -529,9 +528,10 @@ impl BraidedBrownianModel {
             return Ok(());
         }
         
-        let total_size = paths.len() * paths.get(0).map_or(0, |p| p.len()) * 4; // 4 bytes per f32
+        let total_size = paths.len() * paths.first().map_or(0, |p| p.len()) * 4; // 4 bytes per f32
         let file = OpenOptions::new()
             .create(true)
+            .truncate(true)
             .read(true)
             .write(true)
             .open(file_path)?;
@@ -625,7 +625,7 @@ impl BraidedBrownianModel {
         
         if let Ok(mut stats) = self.storage_stats.lock() {
             stats.total_compressed_size += compressed_data.len();
-            let original_size = paths.len() * paths.get(0).map_or(0, |p| p.len()) * 4;
+            let original_size = paths.len() * paths.first().map_or(0, |p| p.len()) * 4;
             let compression_ratio = compressed_data.len() as f32 / original_size as f32;
             stats.average_compression_ratio = (stats.average_compression_ratio * 0.9) + (compression_ratio * 0.1);
         }
@@ -897,8 +897,7 @@ impl BraidedBrownianModel {
         
         paths.iter().map(|path| {
             path.iter().map(|&value| {
-                let quantized = (value * scale).round() / scale;
-                quantized
+                (value * scale).round() / scale
             }).collect()
         }).collect()
     }

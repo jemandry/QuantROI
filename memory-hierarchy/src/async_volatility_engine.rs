@@ -147,7 +147,7 @@ impl AsyncVolatilityEngine {
             return Err("Dimension mismatch in correlation parameters".into());
         }
 
-        let cholesky = self.cholesky_decomposition(&correlation_matrix)?;
+        let _cholesky = self.cholesky_decomposition(&correlation_matrix)?;
         
         let mut results = HashMap::new();
         let mut handles = Vec::new();

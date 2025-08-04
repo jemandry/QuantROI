@@ -9,6 +9,7 @@ pub struct QuantumMLPredictor {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct QuantumNeuralNetwork {
     quantum_layers: Vec<QuantumLayer>,
     classical_layers: Vec<ClassicalLayer>,
@@ -16,6 +17,7 @@ pub struct QuantumNeuralNetwork {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct QuantumLayer {
     qubits: usize,
     gates: Vec<crate::quantum_audit::QuantumGate>,
@@ -162,6 +164,12 @@ impl QuantumMLPredictor {
     }
 }
 
+impl Default for QuantumNeuralNetwork {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl QuantumNeuralNetwork {
     pub fn new() -> Self {
         let quantum_layers = vec![
@@ -244,8 +252,8 @@ impl QuantumNeuralNetwork {
     async fn apply_quantum_gates(&self, input: &[f32], _gates: &[crate::quantum_audit::QuantumGate]) -> Vec<f32> {
         let mut output = input.to_vec();
         
-        for i in 0..output.len() {
-            output[i] = (output[i] * std::f32::consts::PI / 2.0).sin();
+        for item in &mut output {
+            *item = (*item * std::f32::consts::PI / 2.0).sin();
         }
         
         output
@@ -264,13 +272,13 @@ impl QuantumNeuralNetwork {
     async fn apply_classical_layer(&self, input: &[f32], layer: &ClassicalLayer) -> Vec<f32> {
         let mut output = vec![0.0; layer.neurons];
         
-        for i in 0..layer.neurons {
+        for (i, output_neuron) in output.iter_mut().enumerate().take(layer.neurons) {
             let mut sum = layer.bias[i];
-            for j in 0..input.len().min(layer.weights[i].len()) {
-                sum += input[j] * layer.weights[i][j];
+            for (j, &input_val) in input.iter().enumerate().take(input.len().min(layer.weights[i].len())) {
+                sum += input_val * layer.weights[i][j];
             }
             
-            output[i] = match layer.activation {
+            *output_neuron = match layer.activation {
                 ActivationFunction::ReLU => sum.max(0.0),
                 ActivationFunction::Sigmoid => 1.0 / (1.0 + (-sum).exp()),
                 ActivationFunction::Tanh => sum.tanh(),
