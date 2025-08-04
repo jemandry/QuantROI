@@ -15,6 +15,7 @@ pub mod quantum_ml;
 pub mod ai_architect_enhancements;
 pub mod microservices_orchestrator;
 pub mod enhanced_braided_processor;
+pub mod braided_cord_data_engine;
 pub use ai_optimization::{AIModel, AIModelOptimizer, BraidedBrownianModel, QuantizationLevel, PruningStrategy, OptimizationMetadata};
 pub use causal_data_agent::{CausalDataAgent, DataInventory, CausalQuestion, UserResponse, AnalysisSession, SessionStatus};
 pub use brownian_volatility_strand::{BrownianVolatilityStrand, BrownianMotionParameters, VolatilitySimulationRecord};
@@ -26,6 +27,7 @@ pub use quantum_ml::{QuantumMLPredictor, RegulatoryPattern};
 pub use ai_architect_enhancements::{EnhancedSimulationEngine, TieredStorageManager, TieredStorageConfig, StochasticModelType, NumericalScheme, EnhancedSimulationParameters, DistributedProcessingManager, WorkerNode};
 pub use microservices_orchestrator::{MicroservicesOrchestrator, ServiceRegistry};
 pub use enhanced_braided_processor::{EnhancedAppState, create_enhanced_router, EnhancedBraidedRequest, EnhancedBraidedResponse};
+pub use braided_cord_data_engine::{BraidedCordDataEngine, DataTier, DataType, DataPlacementRule, CausalDataRequest, DataEngineMetrics};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MemoryLevel {

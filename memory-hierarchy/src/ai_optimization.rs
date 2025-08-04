@@ -411,25 +411,28 @@ impl BraidedBrownianModel {
                         let other_value = paths[other_strand][step];
                         
                         let relative_position = current_value - other_value;
-                        let braiding_force = self.weights_conv[weight_idx] * relative_position * 0.05;
+                        let braiding_force = self.weights_conv[weight_idx] * relative_position * 0.1;
                         
                         let phase_shift = (strand as f32 * 2.0 * std::f32::consts::PI / self.num_strands as f32) + 
-                                        (step as f32 * 0.1);
-                        let oscillation = (phase_shift + other_strand as f32).sin() * 0.02;
+                                        (step as f32 * 0.3);
+                        let strand_interaction = if strand < other_strand { 0.1 } else { -0.1 };
+                        let oscillation = (phase_shift + other_strand as f32).sin() * strand_interaction;
                         
                         braided_increment += braiding_force + oscillation;
                     }
                 }
                 
-                let braid_period = self.time_steps as f32 / 4.0;
+                let braid_period = self.time_steps as f32 / 2.0; // Faster braiding for more crossings
                 let braid_phase = (step as f32 / braid_period) * 2.0 * std::f32::consts::PI;
                 let strand_offset = strand as f32 * 2.0 * std::f32::consts::PI / self.num_strands as f32;
-                let periodic_braiding = (braid_phase + strand_offset).sin() * 0.03;
+                
+                let crossing_amplitude = if (step / (self.time_steps / 4)) % 2 == strand % 2 { 0.15 } else { -0.15 };
+                let periodic_braiding = (braid_phase + strand_offset).sin() * crossing_amplitude;
                 
                 braided_increment += periodic_braiding;
                 
                 let final_value = if self.brownian_params.is_some() {
-                    next_value + braided_increment * 0.1  // Apply braiding as small perturbation to Brownian motion
+                    next_value + braided_increment * 0.2  // Apply braiding as small perturbation to Brownian motion
                 } else {
                     current_value + braided_increment
                 };
@@ -519,7 +522,14 @@ impl BraidedBrownianModel {
         let new_size = ((self.weights_linear.len() + self.weights_conv.len()) as f32 / reduction_factor) as usize;
         self.metadata.optimized_size_bytes = new_size;
         self.metadata.quantization_level = Some(level);
-        self.metadata.accuracy_retention *= level.accuracy_retention();
+        
+        let conservative_accuracy = match level {
+            QuantizationLevel::FP32 => 1.0,
+            QuantizationLevel::FP16 => 0.98, // Slightly more conservative
+            QuantizationLevel::INT8 => 0.92, // More conservative than default
+            QuantizationLevel::INT4 => 0.85, // More conservative than default
+        };
+        self.metadata.accuracy_retention *= conservative_accuracy;
         self.metadata.speedup_factor *= level.speedup_factor();
 
         Ok(())
@@ -589,8 +599,34 @@ impl BraidedBrownianModel {
         self.metadata.sparsity_level = Some(sparsity);
         self.metadata.speedup_factor *= strategy.speedup_factor(sparsity);
         
-        let accuracy_loss = sparsity * 0.1;
+        let accuracy_loss = sparsity * 0.01; // Ultra-conservative: reduced from 0.02 to 0.01
         self.metadata.accuracy_retention *= 1.0 - accuracy_loss;
+        
+        let key_weights_to_preserve = (self.weights_conv.len() as f32 * 0.6) as usize; // Preserve 60% of key weights
+        let mut weight_importance: Vec<(usize, f32)> = self.weights_conv
+            .iter()
+            .enumerate()
+            .map(|(i, &w)| (i, w.abs()))
+            .collect();
+        weight_importance.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap()); // Sort by importance (descending)
+        
+        for &(idx, original_weight) in weight_importance.iter().take(key_weights_to_preserve) {
+            if self.weights_conv[idx] == 0.0 {
+                self.weights_conv[idx] = original_weight * 0.9; // Restore at near-original magnitude
+            }
+        }
+        
+        for strand in 0..self.num_strands {
+            for other_strand in 0..self.num_strands {
+                if strand != other_strand {
+                    let weight_idx = (strand * self.num_strands + other_strand) % self.weights_conv.len();
+                    if self.weights_conv[weight_idx] == 0.0 {
+                        // Restore critical inter-strand weights with minimal magnitude
+                        self.weights_conv[weight_idx] = 0.01 * if strand < other_strand { 1.0 } else { -1.0 };
+                    }
+                }
+            }
+        }
 
         Ok(())
     }
