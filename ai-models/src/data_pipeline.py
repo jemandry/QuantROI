@@ -84,6 +84,19 @@ class DataPipeline:
             'market': self.config.get('market_sources', ['polygon', 'iex'])
         }
         
+        self.source_reliability = {
+            'reuters': 0.95,
+            'bloomberg': 0.93,
+            'ap_news': 0.90,
+            'wsj': 0.88,
+            'cnbc': 0.82,
+            'twitter': 0.65,
+            'reddit': 0.45
+        }
+        
+        self.min_sources_for_validation = 2
+        self.timestamp_tolerance_seconds = 300
+        
         self.processed_events = 0
         self.processing_errors = 0
         
@@ -495,6 +508,45 @@ class DataPipeline:
             self.logger.error(f"Pipeline execution failed: {e}")
             self.processing_errors += 1
             raise
+
+    async def cross_validate_news_event(self, news_events: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Cross-validate news events from multiple sources"""
+        if len(news_events) < self.min_sources_for_validation:
+            return {
+                'validated': False,
+                'reason': 'insufficient_sources',
+                'confidence': 0.3
+            }
+        
+        earliest_timestamp = None
+        earliest_source = None
+        highest_reliability = 0.0
+        
+        for event in news_events:
+            source = event.get('source', 'unknown')
+            timestamp = event.get('timestamp_ns', 0)
+            reliability = self.source_reliability.get(source, 0.5)
+            
+            if earliest_timestamp is None or timestamp < earliest_timestamp:
+                if reliability >= 0.8:
+                    earliest_timestamp = timestamp
+                    earliest_source = source
+                    highest_reliability = reliability
+        
+        source_count = len(set(event.get('source') for event in news_events))
+        avg_reliability = sum(self.source_reliability.get(event.get('source', 'unknown'), 0.5) 
+                             for event in news_events) / len(news_events)
+        
+        confidence = min(0.95, (source_count * 0.2 + avg_reliability * 0.8))
+        
+        return {
+            'validated': True,
+            'first_published_timestamp': earliest_timestamp,
+            'first_published_source': earliest_source,
+            'source_count': source_count,
+            'confidence': confidence,
+            'avg_source_reliability': avg_reliability
+        }
 
     async def integrate_with_braided_cord_engine(self):
         """Integrate data pipeline with braided cord data engine"""

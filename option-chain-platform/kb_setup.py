@@ -104,6 +104,9 @@ def add_pattern(
     confounders: List[str] = None,
     granger_significant: bool = False,
     news_summary: str = "",
+    news_source: str = "unknown",
+    first_published_timestamp: int = None,
+    source_reliability_score: float = 0.5,
     expert_rating: float = 0.0,
     best_practices: List[str] = None
 ) -> bool:
@@ -169,6 +172,9 @@ def add_pattern(
                     summary: summary,
                     ticker: $ticker,
                     timestamp: $timestamp,
+                    source: $news_source,
+                    first_published_timestamp: $first_published_timestamp,
+                    source_reliability_score: $source_reliability_score,
                     relevance_score: $confidence
                 })
                 CREATE (n)-[:INFLUENCES]->(o)
@@ -223,6 +229,9 @@ def add_pattern(
                 granger_significant=granger_significant,
                 confounders=confounders or [],
                 news_summary=news_summary,
+                news_source=news_source,
+                first_published_timestamp=first_published_timestamp,
+                source_reliability_score=source_reliability_score,
                 expert_rating=expert_rating,
                 best_practices=best_practices or [],
                 timestamp=timestamp
