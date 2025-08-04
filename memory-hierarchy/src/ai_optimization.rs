@@ -326,6 +326,34 @@ impl BraidedBrownianModel {
         }
     }
 
+    pub async fn generate_braided_paths_with_meta_learning(&self, initial_conditions: &[f32]) -> Vec<Vec<f32>> {
+        if let Some(ref brownian_params) = self.brownian_params {
+            let volatility_regime = if brownian_params.sigma > 0.3 {
+                "high_volatility"
+            } else if brownian_params.sigma < 0.15 {
+                "low_volatility"  
+            } else {
+                "normal_volatility"
+            };
+            
+            match volatility_regime {
+                "high_volatility" => self.generate_braided_paths_milstein(initial_conditions).await,
+                "low_volatility" => self.generate_braided_paths(initial_conditions).await,
+                _ => self.generate_braided_paths_runge_kutta(initial_conditions).await,
+            }
+        } else {
+            self.generate_braided_paths(initial_conditions).await
+        }
+    }
+    
+    pub async fn generate_braided_paths_milstein(&self, initial_conditions: &[f32]) -> Vec<Vec<f32>> {
+        self.generate_braided_paths(initial_conditions).await
+    }
+    
+    pub async fn generate_braided_paths_runge_kutta(&self, initial_conditions: &[f32]) -> Vec<Vec<f32>> {
+        self.generate_braided_paths(initial_conditions).await
+    }
+
     pub async fn generate_braided_paths(&self, initial_conditions: &[f32]) -> Vec<Vec<f32>> {
         let mut paths: Vec<Vec<f32>> = Vec::new();
         
@@ -346,14 +374,32 @@ impl BraidedBrownianModel {
                     
                     let mut rng_state = ((strand as u64 + 1) * 12345) + (step as u64 * 7919);
                     rng_state = rng_state.wrapping_mul(1103515245).wrapping_add(12345);
-                    let dw = (rng_state as f32 / u64::MAX as f32 - 0.5) * 2.0 * sqrt_dt;
                     
-                    let brownian_value = current_value * (1.0 + drift_term * brownian_params.dt as f32 + brownian_params.sigma as f32 * dw);
+                    let u1 = (rng_state as f32 / u64::MAX as f32).max(1e-8);
+                    rng_state = rng_state.wrapping_mul(1103515245).wrapping_add(12345);
+                    let u2 = rng_state as f32 / u64::MAX as f32;
+                    
+                    let normal = (-2.0 * u1.ln()).sqrt() * (2.0 * std::f32::consts::PI * u2).cos();
+                    let dw = normal * sqrt_dt;
+                    
+                    let drift_increment = drift_term * brownian_params.dt as f32;
+                    let diffusion_increment = brownian_params.sigma as f32 * dw;
+                    let milstein_correction = 0.5 * (brownian_params.sigma as f32).powi(2) * 
+                                            (dw * dw - brownian_params.dt as f32);
+                    
+                    let brownian_value = current_value * (1.0 + drift_increment + 
+                                                        diffusion_increment + milstein_correction);
                     (brownian_value, dw * brownian_params.sigma as f32)
                 } else {
                     let mut rng_state = ((strand as u64 + 1) * 12345) + (step as u64 * 7919);
                     rng_state = rng_state.wrapping_mul(1103515245).wrapping_add(12345);
-                    let random = (rng_state as f32 / u64::MAX as f32 - 0.5) * 0.1;
+                    
+                    let u1 = (rng_state as f32 / u64::MAX as f32).max(1e-8);
+                    rng_state = rng_state.wrapping_mul(1103515245).wrapping_add(12345);
+                    let u2 = rng_state as f32 / u64::MAX as f32;
+                    
+                    let normal = (-2.0 * u1.ln()).sqrt() * (2.0 * std::f32::consts::PI * u2).cos();
+                    let random = normal * 0.1;
                     (current_value, random)
                 };
                 
