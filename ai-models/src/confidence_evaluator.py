@@ -497,5 +497,93 @@ def main():
     print(f"Total Cost Estimate: ${analysis.total_cost_estimate:,.0f}")
     print(f"\nResults exported to: {args.output}")
 
+class RealTimeConfidenceDashboard:
+    """Real-time confidence scoring dashboard for event validation"""
+    
+    def __init__(self):
+        self.logger = logging.getLogger(__name__)
+        self.confidence_history = []
+        self.alert_thresholds = {
+            'low_confidence': 0.5,
+            'suspicious_timestamp': 3600,
+            'source_reliability': 0.7
+        }
+    
+    def calculate_event_confidence(self, event: Dict[str, Any], validation_data: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Calculate real-time confidence score for an event"""
+        confidence_factors = {
+            'source_reliability': 0.0,
+            'timestamp_consistency': 0.0,
+            'content_uniqueness': 0.0,
+            'cross_validation': 0.0,
+            'manual_validation': 0.0
+        }
+        
+        source = event.get('source', 'unknown')
+        source_reliability = self._get_source_reliability(source)
+        confidence_factors['source_reliability'] = source_reliability
+        
+        timestamp_delta = event.get('timestamp_delta_ns', 0) / 1e9
+        timestamp_score = max(0.0, 1.0 - (timestamp_delta / 3600))
+        confidence_factors['timestamp_consistency'] = timestamp_score
+        
+        if event.get('is_first_occurrence', False):
+            confidence_factors['content_uniqueness'] = 0.9
+        else:
+            confidence_factors['content_uniqueness'] = 0.3
+        
+        if validation_data:
+            confidence_factors['cross_validation'] = validation_data.get('confidence', 0.5)
+        
+        if event.get('manual_validation_confidence'):
+            confidence_factors['manual_validation'] = event.get('manual_validation_confidence')
+        
+        weights = {
+            'source_reliability': 0.25,
+            'timestamp_consistency': 0.20,
+            'content_uniqueness': 0.25,
+            'cross_validation': 0.20,
+            'manual_validation': 0.10
+        }
+        
+        overall_confidence = sum(confidence_factors[factor] * weights[factor] 
+                               for factor in confidence_factors)
+        
+        alerts = []
+        if overall_confidence < self.alert_thresholds['low_confidence']:
+            alerts.append(f"Low confidence event: {overall_confidence:.2f}")
+        
+        if timestamp_delta > self.alert_thresholds['suspicious_timestamp']:
+            alerts.append(f"Suspicious timestamp delta: {timestamp_delta:.0f}s")
+        
+        if source_reliability < self.alert_thresholds['source_reliability']:
+            alerts.append(f"Low reliability source: {source} ({source_reliability:.2f})")
+        
+        confidence_result = {
+            'event_id': event.get('event_id'),
+            'overall_confidence': overall_confidence,
+            'confidence_factors': confidence_factors,
+            'alerts': alerts,
+            'timestamp': datetime.now().isoformat(),
+            'requires_manual_review': overall_confidence < 0.6
+        }
+        
+        self.confidence_history.append(confidence_result)
+        return confidence_result
+    
+    def _get_source_reliability(self, source: str) -> float:
+        """Get reliability score for news source"""
+        reliability_scores = {
+            'reuters': 0.95,
+            'bloomberg': 0.93,
+            'ap_news': 0.90,
+            'wsj': 0.88,
+            'cnbc': 0.82,
+            'twitter': 0.65,
+            'reddit': 0.45,
+            'unknown': 0.30
+        }
+        return reliability_scores.get(source.lower(), 0.30)
+
 if __name__ == "__main__":
     main()

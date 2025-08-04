@@ -833,5 +833,84 @@ async def main():
     leaderboard_data = nft_leaderboard.create_leaderboard_data(mock_strategies)
     print(f"NFT leaderboard created: {leaderboard_data['summary_stats']['total_strategies']} strategies")
 
+class EventValidationDashboard:
+    """Manual validation dashboard for event first-occurrence detection"""
+    
+    def __init__(self):
+        self.logger = logging.getLogger(__name__)
+        self.validation_history = []
+    
+    def create_validation_interface(self, events: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Create manual validation interface for events"""
+        validation_data = {
+            'events_for_review': [],
+            'validation_metrics': {},
+            'confidence_scores': {}
+        }
+        
+        for event in events:
+            if event.get('is_first_occurrence') and event.get('confidence', 0) < 0.8:
+                validation_item = {
+                    'event_id': event.get('event_id'),
+                    'content_hash': event.get('content_hash'),
+                    'summary': event.get('summary', '')[:200],
+                    'source': event.get('source'),
+                    'timestamp': event.get('source_timestamp_ns'),
+                    'confidence': event.get('confidence', 0),
+                    'similar_events': self._find_similar_events(event, events),
+                    'validation_status': 'pending'
+                }
+                validation_data['events_for_review'].append(validation_item)
+        
+        return validation_data
+    
+    def _find_similar_events(self, target_event: Dict[str, Any], all_events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Find similar events for manual comparison"""
+        similar = []
+        target_content = target_event.get('summary', '').lower()
+        
+        for event in all_events:
+            if event.get('event_id') != target_event.get('event_id'):
+                event_content = event.get('summary', '').lower()
+                common_words = set(target_content.split()) & set(event_content.split())
+                if len(common_words) >= 3:
+                    similar.append({
+                        'event_id': event.get('event_id'),
+                        'summary': event.get('summary', '')[:100],
+                        'source': event.get('source'),
+                        'timestamp': event.get('source_timestamp_ns'),
+                        'similarity_score': len(common_words) / max(len(target_content.split()), 1)
+                    })
+        
+        return sorted(similar, key=lambda x: x['similarity_score'], reverse=True)[:5]
+    
+    def record_manual_validation(self, event_id: str, validation_result: Dict[str, Any]) -> Dict[str, Any]:
+        """Record manual validation results"""
+        validation_entry = {
+            'event_id': event_id,
+            'validator_id': validation_result.get('validator_id', 'unknown'),
+            'validation_timestamp': datetime.now().isoformat(),
+            'is_first_occurrence': validation_result.get('is_first_occurrence', True),
+            'confidence_override': validation_result.get('confidence_override'),
+            'notes': validation_result.get('notes', ''),
+            'validation_source': 'manual'
+        }
+        
+        self.validation_history.append(validation_entry)
+        
+        audit_entry = {
+            'audit_type': 'manual_validation',
+            'event_id': event_id,
+            'validation_data': validation_entry,
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        import os
+        os.makedirs('audit_logs', exist_ok=True)
+        with open(f'audit_logs/manual_validation_{event_id}.json', 'w') as f:
+            json.dump(audit_entry, f, indent=2)
+        
+        return validation_entry
+
 if __name__ == "__main__":
     asyncio.run(main())

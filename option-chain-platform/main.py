@@ -430,16 +430,24 @@ async def add_to_kb(request: Dict[str, Any] = Body(...)):
         expert_rating = request.get('expert_rating', 0.0)
         best_practices = request.get('best_practices', [])
         
+        news_source = request.get('news_source', 'unknown')
+        first_published_timestamp = request.get('first_published_timestamp')
+        source_reliability_score = request.get('source_reliability_score', 0.5)
+        
         session_data = sessions.get(session_id, {})
-        confidence = session_data.get('confidence', 50)
+        base_confidence = session_data.get('confidence', 50)
         causal_strength = session_data.get('causal_strength', 0.5)
+        
+        source_bonus = source_reliability_score * 0.2
+        enhanced_confidence = min(1.0, base_confidence + source_bonus)
         
         if not NEO4J_AVAILABLE:
             return {
                 "status": "Mock KB storage",
                 "session_id": session_id,
+                "enhanced_confidence": enhanced_confidence,
                 "ticker": ticker,
-                "confidence": confidence,
+                "confidence": enhanced_confidence,
                 "causal_strength": causal_strength,
                 "message": "Neo4j not available - pattern logged locally"
             }
@@ -485,10 +493,10 @@ async def add_to_kb(request: Dict[str, Any] = Body(...)):
                     iv=chain_data.get('iv', 0),
                     delta=price_delta,
                     session_id=session_id,
-                    confidence=confidence,
+                    confidence=enhanced_confidence,
                     causal_strength=causal_strength,
                     hypothesis=session_data.get('causal_hypothesis', ''),
-                    validated=confidence > 70 and causal_strength > 0.3,
+                    validated=enhanced_confidence > 0.7 and causal_strength > 0.3,
                     timestamp=datetime.now().isoformat()
                 )
             
@@ -498,9 +506,10 @@ async def add_to_kb(request: Dict[str, Any] = Body(...)):
                 "status": "Added to KB",
                 "session_id": session_id,
                 "ticker": ticker,
-                "confidence": confidence,
+                "confidence": enhanced_confidence,
                 "causal_strength": causal_strength,
-                "validated": confidence > 70 and causal_strength > 0.3
+                "validated": enhanced_confidence > 0.7 and causal_strength > 0.3,
+                "enhanced_confidence": enhanced_confidence
             }
             
         except Exception as neo_error:

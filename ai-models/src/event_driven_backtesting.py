@@ -518,16 +518,110 @@ class CausalEventEngine:
         event['lamport_timestamp'] = max(self.vector_clock.values())
         
         try:
-            from nanosecond_timing import get_ns_timestamp, ClockType
-            event['timestamp_ns'] = get_ns_timestamp(ClockType.MONOTONIC)
-            event['timestamp_utc_ns'] = get_ns_timestamp(ClockType.REALTIME)
+            from .nanosecond_timing import get_ns_timestamp, ClockType
+            
+            current_time_ns = get_ns_timestamp(ClockType.REALTIME)
+            event['ingestion_timestamp_ns'] = current_time_ns
+            
+            if 'source_timestamp_ns' not in event:
+                event['source_timestamp_ns'] = current_time_ns
+            
+            timestamp_delta = abs(current_time_ns - event['source_timestamp_ns'])
+            event['timestamp_delta_ns'] = timestamp_delta
+            
+            if timestamp_delta > 3_600_000_000_000:
+                event['timestamp_suspicious'] = True
+                self.logger.warning(f"Suspicious timestamp delta: {timestamp_delta/1e9:.2f}s for event {event.get('event_id')}")
+            
+            event['causal_dependencies'] = []
+            for existing_event in self.event_log[-100:]:
+                if self._is_causally_related(event, existing_event):
+                    event['causal_dependencies'].append(existing_event.get('event_id'))
+            
         except ImportError:
             import time
-            event['timestamp_ns'] = int(time.time() * 1_000_000_000)
-            event['timestamp_utc_ns'] = event['timestamp_ns']
+            event['ingestion_timestamp_ns'] = int(time.time() * 1_000_000_000)
+            event['source_timestamp_ns'] = event['ingestion_timestamp_ns']
         
         self.event_log.append(event)
         self._update_causal_chains(event)
+    
+    def _is_causally_related(self, event1: Dict[str, Any], event2: Dict[str, Any]) -> bool:
+        """Determine if two events are causally related"""
+        if (event1.get('symbol') == event2.get('symbol') and 
+            abs(event1.get('source_timestamp_ns', 0) - event2.get('source_timestamp_ns', 0)) < 60_000_000_000):
+            return True
+        
+        if (event2.get('event_type') == 'news' and event1.get('event_type') == 'market_update' and
+            event1.get('source_timestamp_ns', 0) > event2.get('source_timestamp_ns', 0)):
+            return True
+        
+        return False
+    
+    def generate_deterministic_event_id(self, event: Dict[str, Any]) -> str:
+        """Generate deterministic event ID using SHA256 content hashing + metadata"""
+        import hashlib
+        
+        content_fields = [
+            event.get('summary', ''),
+            event.get('title', ''),
+            event.get('symbol', ''),
+            str(event.get('price', 0)),
+            event.get('event_type', '')
+        ]
+        
+        metadata_fields = [
+            event.get('source', 'unknown'),
+            str(event.get('timestamp_ns', 0)),
+            event.get('agent_id', 'unknown')
+        ]
+        
+        content_string = '|'.join(content_fields + metadata_fields)
+        event_hash = hashlib.sha256(content_string.encode('utf-8')).hexdigest()
+        
+        return f"event_{event_hash[:16]}"
+    
+    def detect_first_occurrence(self, event: Dict[str, Any]) -> bool:
+        """Detect if this is the first occurrence of an event based on content similarity"""
+        import hashlib
+        
+        summary = event.get('summary', '').lower().strip()
+        symbol = event.get('symbol', '').upper().strip()
+        
+        content_fields = [summary, symbol]
+        content_string = '|'.join(content_fields)
+        content_hash = hashlib.sha256(content_string.encode('utf-8')).hexdigest()
+        
+        for existing_event in self.event_log:
+            if existing_event.get('content_hash') == content_hash:
+                return False
+        
+        summary_words = set(summary.split())
+        for existing_event in self.event_log:
+            existing_summary = existing_event.get('summary', '').lower().strip()
+            existing_words = set(existing_summary.split())
+            existing_symbol = existing_event.get('symbol', '').upper().strip()
+            
+            if (symbol == existing_symbol and len(summary_words & existing_words) >= 3 and
+                len(summary_words) > 0 and len(existing_words) > 0):
+                overlap_ratio = len(summary_words & existing_words) / min(len(summary_words), len(existing_words))
+                if overlap_ratio > 0.6:  # 60% word overlap threshold
+                    return False
+        
+        event['content_hash'] = content_hash
+        event['first_occurrence'] = True
+        return True
+    
+    def add_event_with_deduplication(self, event: Dict[str, Any], agent_id: str):
+        """Add event with first-occurrence detection and deterministic ID"""
+        event['event_id'] = self.generate_deterministic_event_id(event)
+        
+        is_first = self.detect_first_occurrence(event)
+        event['is_first_occurrence'] = is_first
+        
+        self.add_event(event, agent_id)
+        
+        return event['event_id']
     
     def _update_causal_chains(self, event: Dict[str, Any]):
         event_type = event.get('event_type', 'unknown')
