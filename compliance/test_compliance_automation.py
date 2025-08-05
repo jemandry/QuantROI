@@ -6,7 +6,7 @@ Tests Form ADV/CRS generation and ZKP audit logging
 
 import unittest
 from datetime import datetime
-from automation import SECComplianceAutomation, FormADVData, FormCRSData
+from .automation import SECComplianceAutomation, FormADVData, FormCRSData
 
 class TestSECComplianceAutomation(unittest.TestCase):
     """Test SEC compliance automation functionality"""

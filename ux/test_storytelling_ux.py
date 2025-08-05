@@ -6,7 +6,7 @@ Tests Grok 3 integration, multilingual support, and narrative generation
 
 import asyncio
 import unittest
-from storytelling_dashboard import StorytellingDashboard
+from .storytelling_dashboard import StorytellingDashboard
 import sys
 import os
 

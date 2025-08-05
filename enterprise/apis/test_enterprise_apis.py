@@ -7,7 +7,7 @@ Tests ZKP authentication, custom tiers, and scalability
 import asyncio
 import unittest
 from fastapi.testclient import TestClient
-from endpoints import app
+from .endpoints import app
 
 class TestEnterpriseAPIs(unittest.TestCase):
     """Test enterprise API endpoints functionality"""

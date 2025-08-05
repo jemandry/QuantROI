@@ -9,7 +9,7 @@ import unittest
 import tempfile
 import os
 from datetime import datetime, timedelta
-from user_voting import ZKPVotingSystem
+from .user_voting import ZKPVotingSystem
 
 class TestZKPVotingSystem(unittest.TestCase):
     """Test ZKP voting system functionality"""

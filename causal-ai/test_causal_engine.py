@@ -8,7 +8,7 @@ import asyncio
 import unittest
 import numpy as np
 from datetime import datetime
-from engine import EnhancedCausalAIEngine, MarketEnvironment
+from .engine import EnhancedCausalAIEngine, MarketEnvironment
 
 class TestEnhancedCausalAIEngine(unittest.TestCase):
     """Test enhanced causal AI engine functionality"""
