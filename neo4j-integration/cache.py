@@ -4,7 +4,13 @@ Redis Caching Layer for Neo4j Integration
 Provides caching for frequent Neo4j queries and causal relationship data
 """
 
-import redis
+try:
+    import redis
+    REDIS_AVAILABLE = True
+except ImportError:
+    redis = None
+    REDIS_AVAILABLE = False
+
 import json
 import hashlib
 from typing import Dict, Any, Optional, List, Union

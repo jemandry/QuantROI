@@ -13,17 +13,30 @@ import json
 from neo4j import GraphDatabase
 from neo4j.exceptions import ServiceUnavailable, AuthError
 
-from .nodes import (
-    CausalNode, VoteNode, NewsNode, ExpertRatingNode, 
-    create_node_from_dict
-)
-from .relationships import (
-    CausedByRelationship, VoteRefinesRelationship, RequiresVerificationRelationship,
-    CorrelatesWithRelationship, InfluencesRelationship, TemporalSequenceRelationship,
-    create_relationship_from_dict, get_relationship_cypher_query
-)
-from .indexes import Neo4jIndexManager, create_all_indexes
-from .cache import create_cache_client
+try:
+    from .nodes import (
+        CausalNode, VoteNode, NewsNode, ExpertRatingNode, 
+        create_node_from_dict
+    )
+    from .relationships import (
+        CausedByRelationship, VoteRefinesRelationship, RequiresVerificationRelationship,
+        CorrelatesWithRelationship, InfluencesRelationship, TemporalSequenceRelationship,
+        create_relationship_from_dict, get_relationship_cypher_query
+    )
+    from .indexes import Neo4jIndexManager, create_all_indexes
+    from .cache import create_cache_client
+except ImportError:
+    from nodes import (
+        CausalNode, VoteNode, NewsNode, ExpertRatingNode, 
+        create_node_from_dict
+    )
+    from relationships import (
+        CausedByRelationship, VoteRefinesRelationship, RequiresVerificationRelationship,
+        CorrelatesWithRelationship, InfluencesRelationship, TemporalSequenceRelationship,
+        create_relationship_from_dict, get_relationship_cypher_query
+    )
+    from indexes import Neo4jIndexManager, create_all_indexes
+    from cache import create_cache_client
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
