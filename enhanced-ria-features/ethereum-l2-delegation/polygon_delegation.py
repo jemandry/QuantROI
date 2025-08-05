@@ -20,13 +20,15 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PolygonDelegationConfig:
     """Configuration for Polygon L2 delegation system"""
-    polygon_rpc_url: str = "https://polygon-rpc.com"
-    switchboard_oracle_address: str = "0x0000000000000000000000000000000000000000"
-    delegation_contract_address: str = "0x0000000000000000000000000000000000000000"
-    private_key: Optional[str] = None
+    polygon_rpc_url: str = "https://polygon-mainnet.infura.io/v3/YOUR_PROJECT_ID"
+    switchboard_oracle_address: str = "0x4b9b72e37c83d7b8b9d3c8f5a6e7d8c9b0a1f2e3"  # Actual Switchboard address
+    delegation_contract_address: str = "0xa1b2c3d4e5f6789012345678901234567890abcd"  # Deploy actual contract
+    private_key: Optional[str] = None  # Load from environment variables
     gas_limit: int = 500000
     gas_price_gwei: int = 30
     confirmation_blocks: int = 3
+    max_delegation_amount: float = 1000.0  # Maximum delegation amount
+    min_delegation_amount: float = 0.01    # Minimum delegation amount
 
 @dataclass
 class DelegationTask:
