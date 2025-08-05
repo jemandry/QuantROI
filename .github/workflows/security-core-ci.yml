@@ -51,8 +51,8 @@ jobs:
         # Install Slither for smart contract security analysis
         pip install slither-analyzer
         
-        # Install MythX CLI for additional security checks
-        npm install -g mythxcli
+        # Install Mythril for smart contract security analysis (mythxcli not available in npm registry)
+        pip install mythril
         
         # Install Circom and snarkjs for ZKP circuit testing
         npm install -g circom snarkjs
