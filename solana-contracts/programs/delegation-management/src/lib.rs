@@ -46,6 +46,9 @@ declare_id!("DeLegationManagementProgram11111111111111111");
 pub mod founder_authority;
 use founder_authority::*;
 
+pub mod enhanced_delegation;
+use enhanced_delegation::*;
+
 #[program]
 pub mod delegation_management {
     use super::*;
@@ -500,6 +503,26 @@ pub fn rebalance_portfolio(
     
     Ok(())
 }
+
+    pub fn initialize_enhanced_delegation(ctx: Context<Initialize>) -> Result<()> {
+        enhanced_delegation::initialize(ctx)
+    }
+
+    pub fn delegate_board_enhanced(ctx: Context<DelegateBoard>, target: Pubkey, expiry: Option<u64>) -> Result<()> {
+        enhanced_delegation::delegate_board(ctx, target, expiry)
+    }
+
+    pub fn delegate_cto_enhanced(ctx: Context<DelegateCTO>, target: Pubkey, expiry: Option<u64>) -> Result<()> {
+        enhanced_delegation::delegate_cto(ctx, target, expiry)
+    }
+
+    pub fn revoke_board_enhanced(ctx: Context<RevokeBoard>, target: Pubkey) -> Result<()> {
+        enhanced_delegation::revoke_board(ctx, target)
+    }
+
+    pub fn revoke_cto_enhanced(ctx: Context<RevokeCTO>, target: Pubkey) -> Result<()> {
+        enhanced_delegation::revoke_cto(ctx, target)
+    }
 
 #[account]
 pub struct DelegationAccount {
@@ -1049,6 +1072,10 @@ pub enum DelegationError {
     UnauthorizedDelegation,
     #[msg("Invalid authority level")]
     InvalidAuthorityLevel,
+    #[msg("Delegation expired")]
+    Expired,
+    #[msg("Already initialized")]
+    AlreadyInitialized,
 }
 
 fn calculate_performance_score(total_profit_loss: i64, total_trades: u64) -> u32 {
@@ -2077,6 +2104,8 @@ fn validate_delegation_authority(
     }
 }
 
+#[account]
+pub struct ZKPVoteRecord {
     pub voter: Pubkey,
     pub vote_commitment: [u8; 32],
     pub stake_proof: [u8; 32],

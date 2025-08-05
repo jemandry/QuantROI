@@ -1,6 +1,6 @@
 
 use anchor_lang::prelude::*;
-use crate::{AuthorityLevel, DelegationType, DelegationError};
+use crate::{AuthorityLevel, DelegationType, DelegationError, RoleType};
 
 #[account]
 pub struct FounderAuthority {
@@ -207,6 +207,25 @@ pub fn validate_hierarchical_authority(
             Ok(is_ceo && valid_delegation)
         }
         _ => Ok(false),
+    }
+}
+
+pub fn validate_role_authority(
+    founder_authority: &FounderAuthority,
+    authority: &Pubkey,
+    role: &RoleType,
+) -> Result<bool> {
+    if !founder_authority.is_active {
+        return Ok(false);
+    }
+
+    match role {
+        RoleType::Board => {
+            Ok(*authority == founder_authority.founder)
+        }
+        RoleType::CTO => {
+            Ok(founder_authority.board_members.contains(authority))
+        }
     }
 }
 
