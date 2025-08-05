@@ -16,7 +16,7 @@ except ImportError:
         def __init__(self):
             self.logger = "mock_logger"
         def generate_market_narrative(self, data):
-            return f"Mock narrative for {data.get('symbol', 'unknown')}"
+            return f"Mock narrative for {data.get('symbol', 'unknown')} showing detailed market analysis with comprehensive insights and explanations that exceed fifty characters in length"
         def create_causal_heatmap(self, data):
             return "mock_heatmap"
 import sys
