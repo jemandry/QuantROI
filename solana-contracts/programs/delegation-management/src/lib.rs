@@ -1,10 +1,50 @@
 use anchor_lang::prelude::*;
 use sha3::{Digest, Sha3_256};
-use switchboard_v2::AggregatorAccountData;
+use switchboard_v2::{AggregatorAccountData, SwitchboardDecimal};
+
+    pub fn initialize_founder_authority(
+        ctx: Context<InitializeFounderAuthority>,
+        company_name: String,
+        delegation_guidelines: Option<DelegationGuidelines>,
+    ) -> Result<()> {
+        founder_authority::initialize_founder_authority(ctx, company_name, delegation_guidelines)
+    }
+
+    pub fn add_board_member(
+        ctx: Context<AddBoardMember>,
+        board_member: Pubkey,
+    ) -> Result<()> {
+        founder_authority::add_board_member(ctx, board_member)
+    }
+
+    pub fn set_cto(
+        ctx: Context<SetCTO>,
+        cto: Pubkey,
+    ) -> Result<()> {
+        founder_authority::set_cto(ctx, cto)
+    }
+
+    pub fn set_ceo(
+        ctx: Context<SetCEO>,
+        ceo: Pubkey,
+    ) -> Result<()> {
+        founder_authority::set_ceo(ctx, ceo)
+    }
+
+    pub fn update_delegation_guidelines(
+        ctx: Context<UpdateDelegationGuidelines>,
+        new_guidelines: DelegationGuidelines,
+    ) -> Result<()> {
+        founder_authority::update_delegation_guidelines(ctx, new_guidelines)
+    }
+
 
 pub mod master_strategy;
 
 declare_id!("DeLegationManagementProgram11111111111111111");
+
+pub mod founder_authority;
+use founder_authority::*;
 
 #[program]
 pub mod delegation_management {
@@ -15,9 +55,15 @@ pub mod delegation_management {
         ai_policy_pubkey: Pubkey,
         delegation_amount: u64,
         delegation_type: DelegationType,
+        authority_level: AuthorityLevel,
     ) -> Result<()> {
         let delegation = &mut ctx.accounts.delegation;
         let clock = Clock::get()?;
+        
+        require!(
+            validate_delegation_authority(&ctx.accounts.bank_authority.key(), &authority_level, &delegation_type)?,
+            DelegationError::UnauthorizedAccess
+        );
         
         let mut hasher = Sha3_256::new();
         hasher.update(ctx.accounts.bank_authority.key().as_ref());
@@ -27,9 +73,11 @@ pub mod delegation_management {
         let hash = hasher.finalize();
 
         delegation.bank_authority = ctx.accounts.bank_authority.key();
+        delegation.founder = ctx.accounts.founder.key();
         delegation.ai_policy_pubkey = ai_policy_pubkey;
         delegation.delegation_amount = delegation_amount;
-        delegation.delegation_type = delegation_type;
+        delegation.delegation_type = delegation_type.clone();
+        delegation.authority_level = authority_level.clone();
         delegation.created_at = clock.unix_timestamp;
         delegation.is_active = true;
         delegation.performance_score = 0;
@@ -456,9 +504,11 @@ pub fn rebalance_portfolio(
 #[account]
 pub struct DelegationAccount {
     pub bank_authority: Pubkey,           // 32 bytes
+    pub founder: Pubkey,                  // 32 bytes
     pub ai_policy_pubkey: Pubkey,         // 32 bytes
     pub delegation_amount: u64,           // 8 bytes
     pub delegation_type: DelegationType,  // 1 byte
+    pub authority_level: AuthorityLevel,  // 1 byte
     pub created_at: i64,                  // 8 bytes
     pub is_active: bool,                  // 1 byte
     pub performance_score: u32,           // 4 bytes
@@ -485,10 +535,21 @@ pub enum DelegationType {
     Full,
     CeoToAssistant,
     BoardToCto,
+    FounderToBoard,
     ProjectManagement,
     AiAuditor,
     EmployeeVoting,
     ShareholderVoting,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]
+pub enum AuthorityLevel {
+    Founder,
+    BoardMember,
+    CTO,
+    CEO,
+    Assistant,
+    Employee,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
@@ -552,13 +613,14 @@ pub struct InitializeDelegation<'info> {
     #[account(
         init,
         payer = bank_authority,
-        space = 8 + 32 + 32 + 8 + 1 + 8 + 1 + 4 + 8 + 8 + 64 + 6000, // Account discriminator + data
+        space = 8 + 32 + 32 + 32 + 8 + 1 + 1 + 8 + 1 + 4 + 8 + 8 + 64 + 6000, // Account discriminator + data
         seeds = [b"delegation", bank_authority.key().as_ref()],
         bump
     )]
     pub delegation: Account<'info, DelegationAccount>,
     #[account(mut)]
     pub bank_authority: Signer<'info>,
+    pub founder: AccountInfo<'info>,
     pub system_program: Program<'info, System>,
 }
 
@@ -983,6 +1045,10 @@ pub enum DelegationError {
     OracleVerificationFailed,
     #[msg("Insufficient audit score")]
     InsufficientAuditScore,
+    #[msg("Unauthorized delegation")]
+    UnauthorizedDelegation,
+    #[msg("Invalid authority level")]
+    InvalidAuthorityLevel,
 }
 
 fn calculate_performance_score(total_profit_loss: i64, total_trades: u64) -> u32 {
@@ -1553,8 +1619,8 @@ pub fn verify_delivery_with_oracle(
 
     let delegation_key = delegation.key();
     
-    let oracle_verification_result = if ctx.accounts.oracle_feed.is_some() {
-        true
+    let oracle_verification_result = if let Some(oracle_feed) = &ctx.accounts.oracle_feed {
+        verify_with_oracle(oracle_feed, &verification_criteria)?
     } else {
         true
     };
@@ -1666,10 +1732,43 @@ pub fn submit_zkp_vote(
 }
 
 fn verify_with_oracle(
-    _oracle_account: &AccountInfo,
-    _verification_criteria: &str,
+    oracle_account: &AccountInfo,
+    verification_criteria: &str,
 ) -> Result<bool> {
-    Ok(true)
+    if oracle_account.data_is_empty() {
+        return Ok(true);
+    }
+    
+    match AggregatorAccountData::new(oracle_account) {
+        Ok(feed) => {
+            let val: f64 = feed.get_result()?.try_into()?;
+            
+            let threshold: f64 = verification_criteria
+                .parse()
+                .unwrap_or(0.5);
+            
+            Ok(val >= threshold)
+        }
+        Err(_) => Ok(true)
+    }
+}
+
+fn validate_delegation_authority(
+    authority: &Pubkey,
+    authority_level: &AuthorityLevel,
+    delegation_type: &DelegationType,
+) -> Result<bool> {
+    match (authority_level, delegation_type) {
+        (AuthorityLevel::Founder, _) => Ok(true),
+        (AuthorityLevel::BoardMember, DelegationType::BoardToCTO) => Ok(true),
+        (AuthorityLevel::BoardMember, DelegationType::AITrading) => Ok(true),
+        (AuthorityLevel::BoardMember, DelegationType::RiskManagement) => Ok(true),
+        (AuthorityLevel::CEO, DelegationType::CEOToAssistant) => Ok(true),
+        (AuthorityLevel::CEO, DelegationType::PortfolioRebalancing) => Ok(true),
+        (AuthorityLevel::CTO, DelegationType::ComplianceMonitoring) => Ok(true),
+        (AuthorityLevel::CTO, DelegationType::AITrading) => Ok(true),
+        _ => Ok(false),
+    }
 }
 
 fn generate_vrf_random_seed(
@@ -1959,6 +2058,25 @@ pub struct VoteSubmitted {
 pub struct ZKPVoteSubmitted {
     pub delegation_id: Pubkey,
     pub issue_id: u64,
+}
+
+fn validate_delegation_authority(
+    _authority: &Pubkey,
+    authority_level: &AuthorityLevel,
+    delegation_type: &DelegationType,
+) -> Result<bool> {
+    match (authority_level, delegation_type) {
+        (AuthorityLevel::Founder, _) => Ok(true),
+        (AuthorityLevel::BoardMember, DelegationType::BoardToCto) => Ok(true),
+        (AuthorityLevel::BoardMember, DelegationType::ProjectManagement) => Ok(true),
+        (AuthorityLevel::CEO, DelegationType::CeoToAssistant) => Ok(true),
+        (AuthorityLevel::CEO, DelegationType::ProjectManagement) => Ok(true),
+        (AuthorityLevel::CTO, DelegationType::ProjectManagement) => Ok(true),
+        (AuthorityLevel::CTO, DelegationType::AiAuditor) => Ok(true),
+        _ => Ok(false),
+    }
+}
+
     pub voter: Pubkey,
     pub vote_commitment: [u8; 32],
     pub stake_proof: [u8; 32],

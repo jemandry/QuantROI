@@ -8,7 +8,7 @@ import json
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 
-class LanguageManager:
+class MultilingualLanguageManager:
     """Manages multilingual support and cultural adaptation"""
     
     def __init__(self):
@@ -246,7 +246,7 @@ class LanguageManager:
 
 def main():
     """Example usage of Language Manager"""
-    lang_manager = LanguageManager()
+    lang_manager = MultilingualLanguageManager()
     
     print("Multilingual Support Demo:")
     
