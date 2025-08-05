@@ -133,3 +133,98 @@ class NodeManager:
             except Exception as e:
                 logger.error(f"Failed to get {node_type} node: {e}")
                 raise
+
+    def create_identity_node(self, random_vote_id: str, nullifier: str, stake_amount: float) -> Dict[str, Any]:
+        """Create IdentityNode with anonymous random ID (US20200258338A1 Claim 3)"""
+        query = """
+        CREATE (i:IdentityNode {
+            random_vote_id: $random_vote_id,
+            nullifier: $nullifier,
+            stake_amount: $stake_amount,
+            created_at: datetime(),
+            ipfs_hash: $ipfs_hash
+        })
+        RETURN i
+        """
+        
+        try:
+            identity_data = {
+                "random_vote_id": random_vote_id,
+                "nullifier": nullifier,
+                "stake_amount": stake_amount
+            }
+            
+            ipfs_hash = self.upload_to_ipfs(identity_data)
+            
+            with self.driver.session() as session:
+                result = session.run(query, 
+                    random_vote_id=random_vote_id,
+                    nullifier=nullifier, 
+                    stake_amount=stake_amount,
+                    ipfs_hash=ipfs_hash
+                )
+                record = result.single()
+                if record:
+                    logger.info(f"Created IdentityNode with random vote ID: {random_vote_id}")
+                    return {
+                        "node": dict(record["i"]),
+                        "ipfs_hash": ipfs_hash
+                    }
+                else:
+                    logger.warning("Failed to create IdentityNode")
+                    return None
+        except Exception as e:
+            logger.error(f"Failed to create IdentityNode: {e}")
+            raise
+
+    def create_delegation_node(self, delegation_id: str, authority: str, voting_period: int, 
+                             min_stake_threshold: float, description: str = "") -> Dict[str, Any]:
+        """Create DelegationNode for governance delegation tracking"""
+        query = """
+        CREATE (d:DelegationNode {
+            delegation_id: $delegation_id,
+            authority: $authority,
+            voting_period: $voting_period,
+            min_stake_threshold: $min_stake_threshold,
+            description: $description,
+            created_at: datetime(),
+            is_active: true,
+            total_votes: 0,
+            ipfs_hash: $ipfs_hash
+        })
+        RETURN d
+        """
+        
+        try:
+            delegation_data = {
+                "delegation_id": delegation_id,
+                "authority": authority,
+                "voting_period": voting_period,
+                "min_stake_threshold": min_stake_threshold,
+                "description": description
+            }
+            
+            ipfs_hash = self.upload_to_ipfs(delegation_data)
+            
+            with self.driver.session() as session:
+                result = session.run(query,
+                    delegation_id=delegation_id,
+                    authority=authority,
+                    voting_period=voting_period,
+                    min_stake_threshold=min_stake_threshold,
+                    description=description,
+                    ipfs_hash=ipfs_hash
+                )
+                record = result.single()
+                if record:
+                    logger.info(f"Created DelegationNode: {delegation_id}")
+                    return {
+                        "node": dict(record["d"]),
+                        "ipfs_hash": ipfs_hash
+                    }
+                else:
+                    logger.warning("Failed to create DelegationNode")
+                    return None
+        except Exception as e:
+            logger.error(f"Failed to create DelegationNode: {e}")
+            raise

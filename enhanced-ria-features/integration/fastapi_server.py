@@ -17,6 +17,7 @@ import uvicorn
 
 from .system_orchestrator import EnhancedRIAOrchestrator, SystemConfig
 from .graphql_api import create_graphql_router
+from .vote_submission_api import create_vote_submission_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -51,6 +52,9 @@ app.add_middleware(
 
 graphql_router = create_graphql_router()
 app.include_router(graphql_router, prefix="/api")
+
+vote_router = create_vote_submission_router(app.state.orchestrator)
+app.include_router(vote_router)
 
 @app.get("/")
 async def root():

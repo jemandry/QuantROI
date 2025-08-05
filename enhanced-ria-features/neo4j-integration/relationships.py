@@ -134,3 +134,70 @@ class RelationshipManager:
             except Exception as e:
                 logger.error(f"Failed to get causal chain: {e}")
                 raise
+
+    def create_identity_delegates(self, random_vote_id: str, delegation_id: str, 
+                                weight: float = 1.0) -> Dict[str, Any]:
+        """Create DELEGATES relationship between IdentityNode and DelegationNode"""
+        query = """
+        MATCH (i:IdentityNode {random_vote_id: $random_vote_id}), 
+              (d:DelegationNode {delegation_id: $delegation_id})
+        CREATE (i)-[r:DELEGATES {weight: $weight, created_at: datetime()}]->(d)
+        RETURN r, i, d
+        """
+        
+        try:
+            with self.driver.session() as session:
+                result = session.run(query, 
+                    random_vote_id=random_vote_id, 
+                    delegation_id=delegation_id, 
+                    weight=weight
+                )
+                record = result.single()
+                if record:
+                    logger.info(f"Created DELEGATES relationship: {random_vote_id} -> {delegation_id}")
+                    return {
+                        "relationship": dict(record["r"]),
+                        "identity_node": dict(record["i"]),
+                        "delegation_node": dict(record["d"])
+                    }
+                else:
+                    logger.warning(f"No matching nodes found for identity {random_vote_id} and delegation {delegation_id}")
+                    return None
+        except Exception as e:
+            logger.error(f"Failed to create DELEGATES relationship: {e}")
+            raise
+
+    def create_vote_influences_delegation(self, voter_id: str, delegation_id: str, 
+                                        influence_score: float) -> Dict[str, Any]:
+        """Create INFLUENCES relationship between VoteNode and DelegationNode"""
+        query = """
+        MATCH (v:VoteNode {voter_id: $voter_id}), 
+              (d:DelegationNode {delegation_id: $delegation_id})
+        CREATE (v)-[r:INFLUENCES {
+            influence_score: $influence_score, 
+            created_at: datetime()
+        }]->(d)
+        RETURN r, v, d
+        """
+        
+        try:
+            with self.driver.session() as session:
+                result = session.run(query,
+                    voter_id=voter_id,
+                    delegation_id=delegation_id,
+                    influence_score=influence_score
+                )
+                record = result.single()
+                if record:
+                    logger.info(f"Created INFLUENCES relationship: {voter_id} -> {delegation_id}")
+                    return {
+                        "relationship": dict(record["r"]),
+                        "vote_node": dict(record["v"]),
+                        "delegation_node": dict(record["d"])
+                    }
+                else:
+                    logger.warning(f"No matching nodes found for vote {voter_id} and delegation {delegation_id}")
+                    return None
+        except Exception as e:
+            logger.error(f"Failed to create INFLUENCES relationship: {e}")
+            raise

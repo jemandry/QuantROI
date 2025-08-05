@@ -426,6 +426,84 @@ class SECComplianceEngine:
             "Review and update privacy policies"
         ]
 
+    async def log_voting_tally_disclosure(self, delegation_id: str, total_votes: int, 
+                                        yes_votes: int, no_votes: int) -> str:
+        """Log voting tally disclosure for SEC compliance (US20200258338A1 Claim 5)"""
+        try:
+            tally_data = f"{delegation_id}:{total_votes}:{yes_votes}:{no_votes}"
+            tally_hash = hashlib.sha3_256(tally_data.encode()).hexdigest()
+            
+            await self._record_audit_event(
+                event_type="tally_disclosure",
+                action="disclose_voting_results",
+                data_hash=tally_hash,
+                user_id="system"
+            )
+            
+            disclosure_alert = ComplianceAlert(
+                alert_id=f"TALLY_{datetime.now().timestamp()}",
+                alert_type="info",
+                message=f"Voting tally disclosed for delegation {delegation_id}: {yes_votes}/{total_votes} yes votes",
+                timestamp=datetime.now(),
+                severity=1
+            )
+            
+            self.compliance_alerts.append(disclosure_alert)
+            
+            self.logger.info(f"✅ Voting tally disclosure logged: {delegation_id}")
+            return tally_hash
+            
+        except Exception as e:
+            self.logger.error(f"❌ Tally disclosure logging failed: {e}")
+            raise
+
+    async def generate_zkp_voting_disclosure(self, voting_summary: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate ZKP voting disclosure for Form ADV compliance"""
+        try:
+            disclosure_text = f"""
+            Zero-Knowledge Proof Voting System Disclosure:
+            
+            This firm utilizes a zero-knowledge proof (ZKP) voting system for governance decisions 
+            that implements US Patent 20200258338A1 requirements for anonymous, verifiable voting.
+            
+            Key Features:
+            - Random Vote IDs: Each vote is assigned a cryptographically secure random identifier 
+              to ensure voter anonymity while maintaining verifiability.
+            - Hash Verification: All votes undergo cryptographic hash verification using Groth16 
+              zero-knowledge proofs to ensure integrity without revealing voter identity.
+            - Tally Disclosure: Voting results are automatically disclosed in compliance with 
+              regulatory requirements while preserving individual vote privacy.
+            
+            Voting Statistics (Last 90 Days):
+            - Total Votes Processed: {voting_summary.get('total_votes', 0)}
+            - Average Processing Time: {voting_summary.get('avg_processing_time_ms', 0):.2f}ms
+            - ZKP Verification Rate: {voting_summary.get('zkp_verification_rate', 0):.1%}
+            - Compliance Alerts: {voting_summary.get('compliance_alerts', 0)}
+            
+            All voting data is stored with cryptographic integrity on distributed systems 
+            and backed up to IPFS for immutable audit trails as required by SEC regulations.
+            """
+            
+            disclosure_hash = hashlib.sha3_256(disclosure_text.encode()).hexdigest()
+            
+            await self._record_audit_event(
+                event_type="zkp_voting_disclosure",
+                action="generate_form_adv_disclosure",
+                data_hash=disclosure_hash,
+                user_id="system"
+            )
+            
+            return {
+                "disclosure_text": disclosure_text.strip(),
+                "disclosure_hash": disclosure_hash,
+                "generation_timestamp": datetime.now().isoformat(),
+                "voting_summary": voting_summary
+            }
+            
+        except Exception as e:
+            self.logger.error(f"❌ ZKP voting disclosure generation failed: {e}")
+            raise
+
 async def main():
     """Example usage of SEC Compliance Engine"""
     
