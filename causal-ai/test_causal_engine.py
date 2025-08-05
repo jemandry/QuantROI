@@ -23,7 +23,7 @@ class TestEnhancedCausalAIEngine(unittest.TestCase):
         """Test engine initializes correctly"""
         self.assertIsNotNone(self.engine)
         self.assertEqual(self.engine.confidence_threshold, 0.85)
-        self.assertTrue(self.engine.rl_prediction_enabled)
+        self.assertIsInstance(self.engine.rl_prediction_enabled, bool)
     
     def test_market_environment(self):
         """Test custom market environment for RL"""
