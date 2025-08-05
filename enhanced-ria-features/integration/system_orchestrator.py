@@ -24,6 +24,17 @@ try:
 except ImportError:
     KnowledgeBase = None
 
+try:
+    from ..patent_avoidance.hybrid_system import (
+        PatentAvoidanceOrchestrator, 
+        PatentAvoidanceConfig,
+        ImplementationType
+    )
+except ImportError:
+    PatentAvoidanceOrchestrator = None
+    PatentAvoidanceConfig = None
+    ImplementationType = None
+
 @dataclass
 class SystemConfig:
     max_execution_time_ms: int = 1000  # <1ms for Solana contracts
@@ -50,9 +61,20 @@ class SystemConfig:
     kafka_servers: List[str] = None
     mlflow_tracking_uri: str = "http://localhost:5000"
     
+    enable_patent_avoidance: bool = True
+    patent_avoidance_config: Optional[Dict[str, Any]] = None
+    
     def __post_init__(self):
         if self.kafka_servers is None:
             self.kafka_servers = ["localhost:9092"]
+        
+        if self.patent_avoidance_config is None:
+            self.patent_avoidance_config = {
+                "zkp_implementation": "existing",
+                "causal_implementation": "existing", 
+                "delegation_implementation": "patent_avoiding",
+                "enable_fallback": True
+            }
 
 @dataclass
 class VoteSubmission:
@@ -162,6 +184,17 @@ class EnhancedRIAOrchestrator:
             self.compliance_engine = SECComplianceEngine()
             await self.compliance_engine.initialize()
             self.logger.info("✓ SEC Compliance Engine initialized")
+            
+            if self.config.enable_patent_avoidance and PatentAvoidanceOrchestrator:
+                patent_config = PatentAvoidanceConfig(
+                    zkp_implementation=ImplementationType(self.config.patent_avoidance_config.get("zkp_implementation", "existing")),
+                    causal_implementation=ImplementationType(self.config.patent_avoidance_config.get("causal_implementation", "existing")),
+                    delegation_implementation=ImplementationType(self.config.patent_avoidance_config.get("delegation_implementation", "patent_avoiding"))
+                )
+                self.patent_avoidance_orchestrator = PatentAvoidanceOrchestrator(patent_config)
+                self.logger.info("✓ Patent Avoidance Orchestrator initialized")
+            else:
+                self.patent_avoidance_orchestrator = None
             
             if KnowledgeBase:
                 try:

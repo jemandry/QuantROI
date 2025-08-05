@@ -77,3 +77,14 @@ graphql-core==3.2.3
 
 # Monitoring
 prometheus-client==0.19.0
+
+# Patent Avoidance Dependencies
+torch-geometric==2.4.0
+web3==6.11.3
+eth-account==0.9.0
+eth-utils==2.2.0
+
+# Additional ML Dependencies for GNN
+torch-scatter==2.1.2
+torch-sparse==0.6.18
+torch-cluster==1.6.3
