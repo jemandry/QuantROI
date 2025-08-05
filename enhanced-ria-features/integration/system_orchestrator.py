@@ -16,6 +16,13 @@ from ..ipfs_voting.ipfs_vote_storage import IPFSVoteStorage, VoteRecord as IPFSV
 from ..voting_heatmap.heatmap_visualizer import VotingHeatmapVisualizer, VoteHeatmapData
 from ..delay_alerts.anomaly_detector import DelayAnomalyDetector, VoteEvent, AnomalyAlert
 from ..zkp_stake_proof.stake_proof_generator import StakeProofGenerator
+from ..causal_ai_engine.causal_ai_orchestrator import CausalAIOrchestrator, CausalModelConfig, CausalEvent
+from ..compliance.sec_compliance_engine import SECComplianceEngine
+
+try:
+    from ..neo4j_integration.kb_setup import KnowledgeBase
+except ImportError:
+    KnowledgeBase = None
 
 @dataclass
 class SystemConfig:
@@ -32,11 +39,20 @@ class SystemConfig:
     enable_heatmap_ui: bool = True
     enable_delay_alerts: bool = True
     enable_zkp_proofs: bool = True
+    enable_causal_ai: bool = True
     
     solana_rpc_url: str = "https://api.mainnet-beta.solana.com"
     ipfs_api_url: str = "/ip4/127.0.0.1/tcp/5001"
     neo4j_uri: str = "bolt://localhost:7687"
+    neo4j_user: str = "neo4j"
+    neo4j_password: str = "password"
     redis_url: str = "redis://localhost:6379"
+    kafka_servers: List[str] = None
+    mlflow_tracking_uri: str = "http://localhost:5000"
+    
+    def __post_init__(self):
+        if self.kafka_servers is None:
+            self.kafka_servers = ["localhost:9092"]
 
 @dataclass
 class VoteSubmission:
@@ -73,6 +89,8 @@ class EnhancedRIAOrchestrator:
         self.heatmap_visualizer = None
         self.anomaly_detector = None
         self.zkp_generator = None
+        self.causal_ai_engine = None
+        self.compliance_engine = None
         
         self.is_initialized = False
         self.processing_stats = {
@@ -119,6 +137,49 @@ class EnhancedRIAOrchestrator:
                 self.zkp_generator = StakeProofGenerator()
                 await self.zkp_generator.initialize()
                 self.logger.info("✓ ZKP Stake Proof System initialized")
+            
+            if self.config.enable_causal_ai:
+                causal_config = CausalModelConfig(
+                    model_type="pytorch",
+                    learning_rate=0.001,
+                    batch_size=32,
+                    epochs=50,
+                    causal_threshold=0.05
+                )
+                
+                self.causal_ai_engine = CausalAIOrchestrator(
+                    config=causal_config,
+                    neo4j_uri=self.config.neo4j_uri,
+                    neo4j_user=self.config.neo4j_user,
+                    neo4j_password=self.config.neo4j_password,
+                    kafka_servers=self.config.kafka_servers,
+                    mlflow_tracking_uri=self.config.mlflow_tracking_uri
+                )
+                
+                await self.causal_ai_engine.initialize()
+                self.logger.info("✓ Causal AI Engine initialized")
+            
+            self.compliance_engine = SECComplianceEngine()
+            await self.compliance_engine.initialize()
+            self.logger.info("✓ SEC Compliance Engine initialized")
+            
+            if KnowledgeBase:
+                try:
+                    self.knowledge_base = KnowledgeBase(
+                        neo4j_uri=self.config.neo4j_uri,
+                        neo4j_user=self.config.neo4j_user,
+                        neo4j_password=self.config.neo4j_password,
+                        redis_host=self.config.redis_url.split("://")[1].split(":")[0],
+                        redis_port=int(self.config.redis_url.split(":")[-1])
+                    )
+                    
+                    if self.knowledge_base.setup_schema():
+                        self.logger.info("✓ Neo4j Knowledge Base initialized")
+                    else:
+                        self.logger.warning("⚠️ Neo4j Knowledge Base setup failed")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ Neo4j Knowledge Base initialization failed: {e}")
+                    self.knowledge_base = None
             
             self.is_initialized = True
             self.logger.info("🚀 Enhanced RIA Features System fully initialized!")
@@ -174,6 +235,20 @@ class EnhancedRIAOrchestrator:
             
             if self.config.enable_heatmap_ui:
                 await self._update_heatmap(vote_submission, reliability_score, anomaly_alerts)
+            
+            if self.knowledge_base:
+                try:
+                    kb_result = self.knowledge_base.process_vote_with_caching(
+                        voter_id=vote_submission.voter_id,
+                        suggestion=vote_submission.vote_content.get("suggestion", ""),
+                        event=vote_submission.vote_content.get("event", "unknown_event"),
+                        weight=reliability_score or 0.5
+                    )
+                    processing_result.metadata = processing_result.metadata or {}
+                    processing_result.metadata["knowledge_base"] = kb_result
+                    self.logger.info(f"Vote stored in knowledge base: {vote_submission.vote_id}")
+                except Exception as e:
+                    self.logger.error(f"Knowledge base storage failed: {e}")
             
             await self._record_to_blockchain(vote_submission, processing_result)
             
@@ -388,7 +463,10 @@ class EnhancedRIAOrchestrator:
                 "ipfs_storage": self.ipfs_storage is not None,
                 "heatmap_ui": self.heatmap_visualizer is not None,
                 "delay_alerts": self.anomaly_detector is not None,
-                "zkp_proofs": self.zkp_generator is not None
+                "zkp_proofs": self.zkp_generator is not None,
+                "causal_ai": self.causal_ai_engine is not None,
+                "compliance_engine": self.compliance_engine is not None,
+                "knowledge_base": self.knowledge_base is not None
             },
             "performance_metrics": {
                 "avg_processing_time_ms": self.processing_stats["avg_processing_time_ms"],
@@ -414,6 +492,11 @@ class EnhancedRIAOrchestrator:
         if self.anomaly_detector:
             await self.anomaly_detector.shutdown()
         
+        if self.compliance_engine:
+            await self.compliance_engine.shutdown()
+            
+        if self.knowledge_base:
+            self.knowledge_base.close()
         
         self.is_initialized = False
         self.logger.info("Enhanced RIA Features System shutdown complete")

@@ -107,7 +107,7 @@ jobs:
         cargo clippy -- -D warnings -D clippy::all || true
         
     - name: Upload security audit results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: security-audit-results
         path: |
@@ -368,7 +368,7 @@ jobs:
         echo "✅ Compliance report generated"
         
     - name: Upload compliance artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: compliance-report
         path: enhanced-ria-features/compliance-report.md
@@ -426,7 +426,7 @@ jobs:
         cat deployment-summary.md
         
     - name: Upload deployment artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: deployment-summary
         path: deployment-summary.md

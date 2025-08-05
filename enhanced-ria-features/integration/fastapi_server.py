@@ -121,6 +121,45 @@ async def generate_compliance_report():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/neo4j/causal-insights/{event}")
+async def get_causal_insights(event: str):
+    """Get causal insights for an event"""
+    try:
+        orchestrator = app.state.orchestrator
+        if orchestrator.knowledge_base:
+            insights = orchestrator.knowledge_base.get_causal_insights(event)
+            return insights
+        else:
+            raise HTTPException(status_code=503, detail="Knowledge base not available")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/neo4j/similar-events/{event}")
+async def get_similar_events(event: str, threshold: float = 0.7):
+    """Get similar causal events"""
+    try:
+        orchestrator = app.state.orchestrator
+        if orchestrator.knowledge_base:
+            similar = orchestrator.knowledge_base.search_similar_events(event, threshold)
+            return {"similar_events": similar}
+        else:
+            raise HTTPException(status_code=503, detail="Knowledge base not available")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/neo4j/health")
+async def get_knowledge_base_health():
+    """Get knowledge base system health"""
+    try:
+        orchestrator = app.state.orchestrator
+        if orchestrator.knowledge_base:
+            health = orchestrator.knowledge_base.get_system_health()
+            return health
+        else:
+            raise HTTPException(status_code=503, detail="Knowledge base not available")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     uvicorn.run(
         "fastapi_server:app",
