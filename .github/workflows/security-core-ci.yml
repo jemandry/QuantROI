@@ -83,14 +83,6 @@ jobs:
           grep -n "expect(" *.rs || echo "No expect() calls found"
         fi
         
-    - name: Validate ZKP circuits
-      run: |
-        cd enhanced-ria-features/zkp-stake-proof
-        if [ -f "stake_proof_circuit.circom" ]; then
-          echo "Compiling Circom circuit for security validation..."
-          circom stake_proof_circuit.circom --r1cs --wasm --sym
-          echo "✅ Circuit compilation successful"
-        fi
         
     - name: Run security linting
       run: |
@@ -141,8 +133,11 @@ jobs:
         if [ -f "stake_proof_circuit.circom" ]; then
           echo "Testing ZKP circuit compilation..."
           
-          # Compile circuit
-          circom stake_proof_circuit.circom --r1cs --wasm --sym --c
+          # Set circomlib include path
+          export NODE_PATH="$NODE_PATH:../../circomlib/circuits"
+          
+          # Compile circuit with include path
+          circom stake_proof_circuit.circom --r1cs --wasm --sym --include ../../circomlib/circuits
           
           # Generate witness (mock test)
           echo '{"stake_amount": "5000", "merkle_root": "123", "nullifier": "456"}' > input.json
