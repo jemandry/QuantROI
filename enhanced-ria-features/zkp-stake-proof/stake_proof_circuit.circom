@@ -27,7 +27,7 @@ template StakeProofCircuit(n) {
     signal output nullifier;          // Unique nullifier to prevent double voting
     
     // Components
-    component stakeCheck = GreaterEqualThan(64);
+    component stakeCheck = GreaterEqThan(64);
     component merkleVerifier = MerkleTreeVerifier(n);
     component nullifierHasher = Poseidon(2);
     component stakeHasher = Poseidon(2);
