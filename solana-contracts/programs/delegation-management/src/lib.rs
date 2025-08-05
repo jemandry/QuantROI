@@ -648,6 +648,13 @@ pub struct InitializeDelegation<'info> {
 }
 
 #[derive(Accounts)]
+pub struct VerifyBatchOracleData<'info> {
+    #[account(mut)]
+    pub delegation: Account<'info, DelegationAccount>,
+    pub authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
 pub struct ExecuteAiTrade<'info> {
     #[account(
         mut,
@@ -1070,6 +1077,8 @@ pub enum DelegationError {
     InsufficientAuditScore,
     #[msg("Unauthorized delegation")]
     UnauthorizedDelegation,
+    #[msg("Batch oracle verification failed")]
+    BatchOracleVerificationFailed,
     #[msg("Invalid authority level")]
     InvalidAuthorityLevel,
     #[msg("Delegation expired")]
@@ -1299,6 +1308,14 @@ pub struct AuditRecord {
     pub timestamp: i64,
     pub cryptographic_hash: Vec<u8>,
     pub vrf_proof: Option<Vec<u8>>,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct BatchOracleRequest {
+    pub symbol: String,
+    pub oracle_account: Pubkey,
+    pub verification_required: bool,
+    pub max_price_deviation: f64,
 }
 
 pub fn assign_duty(
@@ -1806,6 +1823,60 @@ pub fn submit_rl_zkp_vote(
     Ok(())
 }
 
+pub fn verify_batch_oracle_data(
+    ctx: Context<VerifyBatchOracleData>,
+    oracle_requests: Vec<BatchOracleRequest>,
+    max_latency_ms: u64,
+) -> Result<()> {
+    let delegation = &mut ctx.accounts.delegation;
+    let clock = Clock::get()?;
+    
+    let mut successful_verifications = 0;
+    let batch_start_time = clock.unix_timestamp;
+    
+    for (i, request) in oracle_requests.iter().enumerate() {
+        if i < ctx.remaining_accounts.len() {
+            let oracle_account = &ctx.remaining_accounts[i];
+            
+            match AggregatorAccountData::new(oracle_account) {
+                Ok(feed) => {
+                    let val: f64 = feed.get_result()?.try_into()?;
+                    
+                    if val > 0.0 && val < 1000000.0 {
+                        successful_verifications += 1;
+                    }
+                }
+                Err(_) => {
+                    continue;
+                }
+            }
+        }
+    }
+    
+    let batch_end_time = clock.unix_timestamp;
+    let batch_latency_ms = ((batch_end_time - batch_start_time) * 1000) as u64;
+    
+    require!(
+        successful_verifications >= (oracle_requests.len() * 4 / 5),
+        DelegationError::BatchOracleVerificationFailed
+    );
+    
+    require!(
+        batch_latency_ms <= max_latency_ms,
+        DelegationError::BatchOracleVerificationFailed
+    );
+    
+    emit!(BatchOracleVerified {
+        delegation_id: delegation.key(),
+        successful_verifications,
+        total_requests: oracle_requests.len() as u32,
+        batch_latency_ms,
+        timestamp: clock.unix_timestamp,
+    });
+    
+    Ok(())
+}
+
 fn verify_with_oracle(
     oracle_account: &AccountInfo,
     verification_criteria: &str,
@@ -2140,6 +2211,15 @@ pub struct ZKPVoteSubmitted {
     pub voter_type: VotingType,
     pub proof_hash: Vec<u8>,
     pub public_vote: bool,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct BatchOracleVerified {
+    pub delegation_id: Pubkey,
+    pub successful_verifications: u32,
+    pub total_requests: u32,
+    pub batch_latency_ms: u64,
     pub timestamp: i64,
 }
 

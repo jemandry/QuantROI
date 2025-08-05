@@ -9,6 +9,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 import json
 import hashlib
+import time
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 import pandas as pd
@@ -606,6 +607,56 @@ async def get_delay_alerts(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Delay alerts query failed: {e}")
+
+@app.post("/api/oracle-voting/submit")
+async def submit_oracle_optimized_vote(
+    vote_data: Dict[str, Any],
+    auth: Dict[str, Any] = Depends(verify_zkp_auth)
+):
+    """Submit vote with oracle optimization for sub-second finality"""
+    try:
+        if 'voting_access' not in auth['permissions']:
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        
+        vote_data['voter_id'] = auth['client_id']
+        
+        result = await orchestrator.orchestrate_delegation_vote_with_oracles(
+            delegation_id=f"api_delegation_{int(time.time())}",
+            vote_data=vote_data
+        )
+        
+        return {
+            "status": "success",
+            "vote_result": result,
+            "sub_second_finality": result.get('sub_second_finality', False),
+            "oracle_verification": result.get('oracle_verification', {}),
+            "timestamp": datetime.now().isoformat(),
+            "sec_disclosure": "AI-supervised oracle-optimized voting - results subject to human oversight and regulatory compliance"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Oracle-optimized vote submission failed: {e}")
+
+@app.get("/api/oracle-voting/performance")
+async def get_oracle_performance_metrics(
+    auth: Dict[str, Any] = Depends(verify_zkp_auth)
+):
+    """Get oracle optimization performance metrics"""
+    try:
+        metrics = {}
+        
+        if hasattr(orchestrator.zkp_pipeline, 'cached_oracle_manager'):
+            metrics = orchestrator.zkp_pipeline.cached_oracle_manager.get_combined_metrics()
+        
+        return {
+            "status": "success",
+            "metrics": metrics,
+            "timestamp": datetime.now().isoformat(),
+            "sec_disclosure": "AI-supervised performance metrics - for monitoring and compliance purposes"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Performance metrics query failed: {e}")
 
 if __name__ == "__main__":
     import uvicorn

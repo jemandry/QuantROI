@@ -16,12 +16,15 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), 'causal-ai'))
 sys.path.append(os.path.join(os.path.dirname(__file__), 'ai-models', 'src'))
 sys.path.append(os.path.join(os.path.dirname(__file__), 'zkp-voting'))
+sys.path.append(os.path.join(os.path.dirname(__file__), 'oracle-optimization'))
 
 try:
     from engine import EnhancedCausalAIEngine
     from graph_manager import CausalGraphManager
     from pipeline import ZKPVotingPipeline
     from delayed_vote_detection import DelayedVoteDetector
+    from redis_cache_integration import create_cached_oracle_system
+    from solana_batch_integration import create_solana_batch_oracle_system
 except ImportError:
     class EnhancedCausalAIEngine:
         def __init__(self, neo4j_uri):
@@ -341,6 +344,58 @@ class SystemOrchestrator:
                 'timestamp': datetime.now().isoformat()
             }
     
+    async def orchestrate_delegation_vote_with_oracles(
+        self,
+        delegation_id: str,
+        vote_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Orchestrate delegation vote with oracle optimization for sub-second finality"""
+        try:
+            if not hasattr(self, 'cached_oracle_manager'):
+                from redis_cache_integration import create_cached_oracle_system
+                self.cached_oracle_manager = create_cached_oracle_system()
+                await self.cached_oracle_manager.redis_cache.initialize()
+            
+            causal_links = await self.query_causal_links_for_vote(vote_data)
+            
+            symbols = vote_data.get('symbols', [])
+            oracle_verification = {}
+            
+            if symbols and self.cached_oracle_manager:
+                oracle_results = await self.cached_oracle_manager.batch_get_prices_with_cache(symbols)
+                oracle_verification = {
+                    'symbols_verified': len([r for r in oracle_results if not r.get('error')]),
+                    'total_symbols': len(symbols),
+                    'average_latency_ms': sum(r.get('latency_ms', 0) for r in oracle_results) / len(oracle_results),
+                    'cache_hit_rate': len([r for r in oracle_results if r.get('source') == 'cache']) / len(oracle_results) * 100
+                }
+            
+            enhanced_causal_analysis = {
+                'relationships': causal_links,
+                'overall_confidence': sum(link.get('confidence', 0.0) for link in causal_links) / len(causal_links) if causal_links else 0.5,
+                'market_impact_score': 0.6,
+                'oracle_verification': oracle_verification
+            }
+            
+            rl_vote_id = self.causal_engine.generate_causal_vote_id(enhanced_causal_analysis, vote_data)
+            
+            zkp_vote_result = await self.zkp_pipeline.verify_vote_with_oracles(rl_vote_id, vote_data)
+            
+            return {
+                'vote_id': rl_vote_id,
+                'delegation_id': delegation_id,
+                'zkp_vote_result': zkp_vote_result,
+                'oracle_verification': oracle_verification,
+                'causal_links': causal_links,
+                'sub_second_finality': zkp_vote_result.get('sub_second_finality', False),
+                'orchestration_timestamp': datetime.now().isoformat(),
+                'sec_disclosure': 'AI-supervised RL vote ID generation with oracle optimization - results subject to human oversight and SEC compliance review'
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Oracle-optimized delegation vote orchestration failed: {e}")
+            raise
+    
     def close(self):
         """Close orchestrator connections"""
         try:
@@ -350,6 +405,8 @@ class SystemOrchestrator:
                 self.graph_manager.close()
             if hasattr(self.knowledge_base, 'close'):
                 self.knowledge_base.close()
+            if hasattr(self, 'cached_oracle_manager'):
+                asyncio.create_task(self.cached_oracle_manager.redis_cache.close())
         except Exception as e:
             self.logger.error(f"Error closing orchestrator: {e}")
 

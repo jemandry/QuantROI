@@ -7,6 +7,7 @@ Integrates RL vote ID generation with ZKP proofs for RIA compliance
 import json
 import hashlib
 import logging
+import time
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timedelta
 import os
@@ -14,15 +15,24 @@ import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'causal-ai'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'neo4j-integration'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'oracle-optimization'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 try:
     from rl_vote_id_generator import RLVoteIDGenerator
     from delayed_vote_detection import DelayedVoteDetector
+    from supra_integration import create_optimized_oracle_system
+    from chainlink_vrf_integration import create_optimized_vrf_system
+    from polygon_miden_integration import create_miden_integration
+    from redis_cache_integration import create_cached_oracle_system
 except ImportError:
-    print("Warning: Could not import RL vote ID generator or delayed vote detector")
+    print("Warning: Could not import RL vote ID generator, delayed vote detector, or oracle optimizations")
     RLVoteIDGenerator = None
     DelayedVoteDetector = None
+    create_optimized_oracle_system = None
+    create_optimized_vrf_system = None
+    create_miden_integration = None
+    create_cached_oracle_system = None
 
 try:
     from nodes import VoteNode
@@ -46,13 +56,25 @@ class ZKPVotingPipeline:
         self.knowledge_base = QuantROIKnowledgeBase() if QuantROIKnowledgeBase else None
         self.delayed_vote_detector = DelayedVoteDetector() if DelayedVoteDetector else None
         
+        self.oracle_manager = create_optimized_oracle_system() if create_optimized_oracle_system else None
+        self.cached_oracle_manager = create_cached_oracle_system() if create_cached_oracle_system else None
+        self.vrf_manager = None
+        self.miden_client = create_miden_integration() if create_miden_integration else None
+        
         self.circuit_config = {
             'circuit_path': '/home/ubuntu/repos/quantroi/zkp-voting/circuit.circom',
             'proving_key_path': '/tmp/zkp_proving_key.json',
             'verification_key_path': '/tmp/zkp_verification_key.json'
         }
         
-        self.logger.info("ZKP Voting Pipeline initialized with RL vote ID generation and delayed vote detection")
+        self.oracle_performance_metrics = {
+            'total_oracle_calls': 0,
+            'sub_second_responses': 0,
+            'average_latency_ms': 0.0,
+            'cache_hits': 0
+        }
+        
+        self.logger.info("ZKP Voting Pipeline initialized with RL vote ID generation, delayed vote detection, and oracle optimization")
     
     def submit_vote(
         self,
@@ -419,11 +441,82 @@ class ZKPVotingPipeline:
             self.logger.error(f"Failed to retrieve vote {vote_id}: {e}")
             return None
     
+    async def verify_vote_with_oracles(self, vote_id: str, vote_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Verify vote using optimized oracles for sub-second finality"""
+        start_time = time.time()
+        
+        try:
+            symbols = vote_data.get('symbols', [])
+            if not symbols and 'suggestion' in vote_data:
+                suggestion = vote_data['suggestion'].upper()
+                common_symbols = ['AAPL', 'MSFT', 'GOOGL', 'TSLA', 'SPY']
+                symbols = [s for s in common_symbols if s in suggestion]
+            
+            verification_results = []
+            
+            if self.cached_oracle_manager and symbols:
+                oracle_results = await self.cached_oracle_manager.batch_get_prices_with_cache(symbols[:3])
+                
+                for result in oracle_results:
+                    if isinstance(result, dict) and not result.get('error'):
+                        verification_results.append({
+                            'symbol': result['symbol'],
+                            'price_verified': True,
+                            'confidence': result.get('confidence', 0.95),
+                            'latency_ms': result.get('latency_ms', 0),
+                            'source': result.get('source', 'oracle')
+                        })
+            
+            miden_verification = None
+            if self.miden_client and vote_data.get('zkp_proof_hash'):
+                zkp_proof = bytes.fromhex(vote_data['zkp_proof_hash'].replace('0x', ''))
+                public_inputs = [hash(vote_id) % (2**32), hash(vote_data.get('voter_id', '')) % (2**32)]
+                
+                miden_result = await self.miden_client.execute_zkp_vote_verification(
+                    vote_id=vote_id,
+                    zkp_proof=zkp_proof,
+                    public_inputs=public_inputs
+                )
+                
+                miden_verification = {
+                    'zkp_verified': miden_result.success,
+                    'execution_time_ms': miden_result.latency_ms,
+                    'finality_achieved': miden_result.finality_achieved
+                }
+            
+            total_latency_ms = (time.time() - start_time) * 1000
+            
+            self.oracle_performance_metrics['total_oracle_calls'] += len(symbols)
+            if total_latency_ms < 1000:
+                self.oracle_performance_metrics['sub_second_responses'] += 1
+            
+            return {
+                'vote_id': vote_id,
+                'oracle_verification': verification_results,
+                'miden_verification': miden_verification,
+                'total_latency_ms': total_latency_ms,
+                'sub_second_finality': total_latency_ms < 1000,
+                'verification_timestamp': datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Oracle vote verification failed: {e}")
+            return {
+                'vote_id': vote_id,
+                'error': str(e),
+                'total_latency_ms': (time.time() - start_time) * 1000,
+                'verification_timestamp': datetime.now().isoformat()
+            }
+    
     def get_pipeline_stats(self) -> Dict[str, Any]:
         """Get pipeline statistics"""
         stats = {
             'rl_generator_available': self.rl_generator is not None,
             'neo4j_available': self.knowledge_base is not None,
+            'oracle_manager_available': self.oracle_manager is not None,
+            'cached_oracle_manager_available': self.cached_oracle_manager is not None,
+            'miden_client_available': self.miden_client is not None,
+            'oracle_performance_metrics': self.oracle_performance_metrics,
             'zkp_circuit_configured': os.path.exists(self.circuit_config['circuit_path']),
             'pipeline_timestamp': datetime.now().isoformat()
         }
