@@ -1758,6 +1758,54 @@ pub fn submit_zkp_vote(
     Ok(())
 }
 
+pub fn submit_rl_zkp_vote(
+    ctx: Context<SubmitZKPVote>,
+    issue_id: u64,
+    rl_vote_id: String,
+    vote_commitment: [u8; 32],
+    stake_proof: [u8; 32],
+    eligibility_proof: [u8; 32],
+    zkp_proof: Vec<u8>,
+    voter_type: VotingType,
+) -> Result<()> {
+    let delegation = &mut ctx.accounts.delegation;
+    let clock = Clock::get()?;
+
+    let voting_config = delegation.voting_configuration.as_ref()
+        .ok_or(DelegationError::VotingNotConfigured)?;
+
+    require!(
+        rl_vote_id.starts_with("rl_vote_") || rl_vote_id.starts_with("fallback_rl_vote_"),
+        DelegationError::InvalidVoteId
+    );
+
+    let proof_hash = {
+        let mut hasher = Sha3_256::new();
+        hasher.update(rl_vote_id.as_bytes());
+        hasher.update(&vote_commitment);
+        hasher.update(&stake_proof);
+        hasher.update(&eligibility_proof);
+        hasher.update(&zkp_proof);
+        hasher.finalize()
+    };
+
+    emit!(RLZKPVoteSubmitted {
+        delegation_id: delegation.key(),
+        issue_id,
+        rl_vote_id,
+        voter: ctx.accounts.voter.key(),
+        vote_commitment,
+        stake_proof,
+        eligibility_proof,
+        voter_type,
+        proof_hash: proof_hash.to_vec(),
+        public_vote: voting_config.public_voting,
+        timestamp: clock.unix_timestamp,
+    });
+
+    Ok(())
+}
+
 fn verify_with_oracle(
     oracle_account: &AccountInfo,
     verification_criteria: &str,
@@ -2085,6 +2133,29 @@ pub struct VoteSubmitted {
 pub struct ZKPVoteSubmitted {
     pub delegation_id: Pubkey,
     pub issue_id: u64,
+    pub voter: Pubkey,
+    pub vote_commitment: [u8; 32],
+    pub stake_proof: [u8; 32],
+    pub eligibility_proof: [u8; 32],
+    pub voter_type: VotingType,
+    pub proof_hash: Vec<u8>,
+    pub public_vote: bool,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct RLZKPVoteSubmitted {
+    pub delegation_id: Pubkey,
+    pub issue_id: u64,
+    pub rl_vote_id: String,
+    pub voter: Pubkey,
+    pub vote_commitment: [u8; 32],
+    pub stake_proof: [u8; 32],
+    pub eligibility_proof: [u8; 32],
+    pub voter_type: VotingType,
+    pub proof_hash: Vec<u8>,
+    pub public_vote: bool,
+    pub timestamp: i64,
 }
 
 fn validate_delegation_authority(

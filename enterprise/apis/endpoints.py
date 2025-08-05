@@ -545,6 +545,68 @@ async def get_orchestrator_health():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Health check failed: {e}")
 
+@app.post("/api/rl-voting/submit")
+async def submit_rl_vote(
+    vote_data: Dict[str, Any],
+    auth: Dict[str, Any] = Depends(verify_zkp_auth)
+):
+    """Submit vote with RL-generated ID and delayed vote detection"""
+    try:
+        if 'voting_access' not in auth['permissions']:
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        
+        vote_data['voter_id'] = auth['client_id']
+        
+        causal_context = {
+            'confidence_scores': vote_data.get('confidence_scores', [0.8]),
+            'market_impact': vote_data.get('market_impact', 0.6),
+            'causal_strength': vote_data.get('causal_strength', 0.7)
+        }
+        
+        result = orchestrator.zkp_pipeline.submit_vote(
+            voter_context={'voter_id': auth['client_id']},
+            vote_data=vote_data,
+            causal_context=causal_context
+        )
+        
+        return {
+            "status": "success",
+            "vote_result": result,
+            "timestamp": datetime.now().isoformat(),
+            "sec_disclosure": "AI-supervised RL vote ID generation - results subject to human oversight and regulatory compliance"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"RL vote submission failed: {e}")
+
+@app.get("/api/rl-voting/delay-alerts")
+async def get_delay_alerts(
+    min_risk_score: float = Query(0.6, description="Minimum risk score for alerts"),
+    auth: Dict[str, Any] = Depends(verify_zkp_auth)
+):
+    """Get delayed vote alerts for review"""
+    try:
+        alerts = orchestrator.delay_detector.get_alerts_for_review(min_risk_score)
+        
+        return {
+            "status": "success",
+            "alerts": [
+                {
+                    "vote_id": alert.vote_id,
+                    "delay_type": alert.delay_type.value,
+                    "risk_score": alert.risk_score,
+                    "recommended_action": alert.recommended_action,
+                    "delay_seconds": alert.delay_seconds
+                }
+                for alert in alerts
+            ],
+            "total_alerts": len(alerts),
+            "sec_disclosure": "AI-supervised delay detection - alerts require human review for compliance"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Delay alerts query failed: {e}")
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)

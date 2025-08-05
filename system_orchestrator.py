@@ -15,10 +15,13 @@ import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), 'causal-ai'))
 sys.path.append(os.path.join(os.path.dirname(__file__), 'ai-models', 'src'))
+sys.path.append(os.path.join(os.path.dirname(__file__), 'zkp-voting'))
 
 try:
     from engine import EnhancedCausalAIEngine
     from graph_manager import CausalGraphManager
+    from pipeline import ZKPVotingPipeline
+    from delayed_vote_detection import DelayedVoteDetector
 except ImportError:
     class EnhancedCausalAIEngine:
         def __init__(self, neo4j_uri):
@@ -26,6 +29,8 @@ except ImportError:
             self.neo4j_driver = None
         async def query_market_relationships(self, symbol, max_depth=2):
             return []
+        def generate_causal_vote_id(self, causal_analysis, voter_context=None):
+            return f"fallback_vote_{datetime.now().timestamp()}"
         def close(self):
             pass
     
@@ -36,6 +41,18 @@ except ImportError:
             return []
         def close(self):
             pass
+    
+    class ZKPVotingPipeline:
+        def __init__(self):
+            pass
+        def submit_vote(self, voter_context, vote_data, causal_context):
+            return {'status': 'mock', 'vote_id': 'mock_vote_id'}
+    
+    class DelayedVoteDetector:
+        def __init__(self):
+            pass
+        def get_alerts_for_review(self, min_risk_score=0.6):
+            return []
 
 sys.path.append(os.path.join(os.path.dirname(__file__), 'neo4j-integration'))
 
@@ -61,6 +78,8 @@ class SystemOrchestrator:
         self.graph_manager = CausalGraphManager()
         self.knowledge_base = QuantROIKnowledgeBase()
         self.cache = create_cache_client(use_mock=True)
+        self.zkp_pipeline = ZKPVotingPipeline()
+        self.delay_detector = DelayedVoteDetector()
         
         try:
             self.backtesting_orchestrator = EventDrivenBacktestingOrchestrator()
@@ -75,31 +94,50 @@ class SystemOrchestrator:
         delegation_id: str,
         vote_data: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Orchestrate delegation vote with Neo4j causal link queries"""
+        """Orchestrate delegation vote with RL-generated IDs and delayed vote detection"""
         try:
             causal_links = await self.query_causal_links_for_vote(vote_data)
             
-            vote_node = VoteNode(
-                node_id=f"vote_{datetime.now().timestamp()}",
-                vote_id=vote_data.get('vote_id'),
-                voter_id=vote_data.get('voter_id'),
-                suggestion=vote_data.get('suggestion'),
-                zkp_proof_hash=vote_data.get('zkp_proof_hash'),
-                status='pending'
+            causal_analysis = {
+                'relationships': causal_links,
+                'overall_confidence': sum(link.get('confidence', 0.0) for link in causal_links) / len(causal_links) if causal_links else 0.5,
+                'market_impact_score': 0.6
+            }
+            
+            rl_vote_id = self.causal_engine.generate_causal_vote_id(causal_analysis, vote_data)
+            
+            causal_context = {
+                'confidence_scores': [link.get('confidence', 0.0) for link in causal_links],
+                'market_impact': causal_analysis['market_impact_score'],
+                'causal_strength': causal_analysis['overall_confidence'],
+                'causal_links': causal_links
+            }
+            
+            voter_context = {
+                'voter_id': vote_data.get('voter_id', 'anonymous'),
+                'authentication_hash': vote_data.get('auth_hash', ''),
+                'stake_amount': vote_data.get('stake_amount', 0.0)
+            }
+            
+            zkp_vote_result = self.zkp_pipeline.submit_vote(
+                voter_context=voter_context,
+                vote_data=vote_data,
+                causal_context=causal_context
             )
             
-            causal_impact = await self.analyze_vote_causal_impact(vote_node, causal_links)
+            causal_impact = await self.analyze_vote_causal_impact(zkp_vote_result, causal_links)
             
-            delegation_result = await self.update_delegation_network(delegation_id, vote_node)
+            delegation_result = await self.update_delegation_network(delegation_id, zkp_vote_result)
             
             return {
-                'vote_id': vote_node.vote_id,
+                'vote_id': rl_vote_id,
                 'delegation_id': delegation_id,
+                'zkp_vote_result': zkp_vote_result,
                 'causal_links': causal_links,
                 'causal_impact': causal_impact,
                 'delegation_result': delegation_result,
                 'orchestration_timestamp': datetime.now().isoformat(),
-                'sec_disclosure': 'AI-supervised output - results subject to human oversight and SEC compliance review'
+                'sec_disclosure': 'AI-supervised RL vote ID generation with ZKP privacy - results subject to human oversight and SEC compliance review'
             }
             
         except Exception as e:

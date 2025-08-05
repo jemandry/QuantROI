@@ -40,8 +40,10 @@ Channel visionary perspectives to create the ultimate RIA roboadvisor platform:
 ### Q1 2025: Foundation
 - Enhanced smart contract delegation system with oracle integration
 - Causal AI engine with Neo4j market relationship mapping
-- ZKP voting circuits for privacy-preserving governance
+- RL-generated vote IDs using stable-baselines3 (patent-safe implementation)
+- ZKP voting circuits for privacy-preserving governance with delayed vote detection
 - Basic storytelling UX with voice interface
+- Performance: <5s latency for 1K votes, <1ms Solana execution
 
 ### Q2 2025: Enterprise Features
 - Enterprise API endpoints with ZKP authentication
