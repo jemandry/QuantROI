@@ -130,6 +130,9 @@ jobs:
     - name: Install ZKP tools
       run: |
         npm install -g circom snarkjs
+        git clone https://github.com/iden3/circomlib.git
+        cd circomlib
+        npm install
         
     - name: Test ZKP circuit compilation
       run: |
