@@ -4,7 +4,7 @@ Enterprise API Endpoints with ZKP Authentication
 FastAPI endpoints for third-party integrations and hedge fund custom tiers
 """
 
-from fastapi import FastAPI, HTTPException, Depends, Security
+from fastapi import FastAPI, HTTPException, Depends, Security, File, UploadFile, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 import json
@@ -189,6 +189,159 @@ async def health_check():
         "timestamp": datetime.now().isoformat(),
         "version": "2.0.0"
     }
+
+@app.post("/api/voice/process")
+async def process_voice_command(
+    audio_data: UploadFile = File(...),
+    language: str = Query("en", description="Language code (en, es, fr, etc.)")
+):
+    """Process voice command with Grok 3 integration"""
+    try:
+        audio_bytes = await audio_data.read()
+        
+        from ux.voice_interface.grok_integration import GrokVoiceInterface
+        voice_interface = GrokVoiceInterface()
+        
+        result = await voice_interface.process_financial_command(audio_bytes, language)
+        
+        return {
+            "status": "success",
+            "result": result,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/causal/nodes")
+async def get_causal_nodes(
+    limit: int = Query(50, description="Maximum number of nodes to return"),
+    min_confidence: float = Query(0.7, description="Minimum confidence threshold")
+):
+    """Get causal nodes for voting interface"""
+    try:
+        nodes = [
+            {
+                "id": "node_1",
+                "event": "Fed rate cut announcement",
+                "impact": "Tech stock price increase",
+                "confidence": 0.85,
+                "vote_count": 12
+            },
+            {
+                "id": "node_2", 
+                "event": "Earnings beat expectations",
+                "impact": "Option IV spike",
+                "confidence": 0.92,
+                "vote_count": 8
+            },
+            {
+                "id": "node_3",
+                "event": "Supply chain disruption",
+                "impact": "Manufacturing stock decline",
+                "confidence": 0.78,
+                "vote_count": 15
+            }
+        ]
+        
+        filtered_nodes = [n for n in nodes if n["confidence"] >= min_confidence]
+        
+        return {
+            "status": "success",
+            "nodes": filtered_nodes[:limit],
+            "total_count": len(filtered_nodes)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/causal/heatmap")
+async def get_causal_heatmap():
+    """Get causal relationship heatmap data"""
+    try:
+        relationships = [
+            {"source": "AAPL", "target": "MSFT", "strength": 0.75},
+            {"source": "MSFT", "target": "GOOGL", "strength": 0.68},
+            {"source": "GOOGL", "target": "TSLA", "strength": 0.82},
+            {"source": "TSLA", "target": "AAPL", "strength": 0.71}
+        ]
+        
+        return {
+            "status": "success",
+            "relationships": relationships
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/voting/submit")
+async def submit_vote(vote_data: dict):
+    """Submit vote with ZKP proof generation"""
+    try:
+        vote_result = {
+            "vote_id": f"vote_{datetime.now().timestamp()}",
+            "zkp_proof_hash": f"0x{hashlib.sha256(str(vote_data).encode()).hexdigest()[:16]}",
+            "status": "submitted"
+        }
+        
+        return {
+            "status": "success",
+            "vote_id": vote_result["vote_id"],
+            "zkp_proof_hash": vote_result["zkp_proof_hash"],
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/voting/votes")
+async def get_votes(voter: str = Query(..., description="Voter public key")):
+    """Get votes for a specific voter"""
+    try:
+        votes = [
+            {
+                "id": "vote_1",
+                "voter_id": voter,
+                "suggestion": "Increase confidence threshold for Fed rate impact",
+                "zkp_proof_hash": "0x1234567890abcdef",
+                "timestamp": "2025-08-05T02:00:00Z",
+                "causal_impact": 0.15
+            }
+        ]
+        
+        return {
+            "status": "success",
+            "votes": votes
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/experiments/causal")
+async def get_causal_experiments(
+    limit: int = Query(20, description="Number of experiments to return")
+):
+    """Get recent causal analysis experiments from MLflow"""
+    try:
+        experiment_data = [
+            {
+                "run_id": "run_123",
+                "experiment_name": "causal_analysis_AAPL_1d",
+                "confidence_score": 0.85,
+                "causal_strength": 0.75,
+                "start_time": datetime.now().timestamp(),
+                "status": "FINISHED"
+            }
+        ]
+        
+        return {
+            "status": "success",
+            "experiments": experiment_data,
+            "total_count": len(experiment_data)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn

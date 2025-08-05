@@ -1,0 +1,50 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: quantroi-platform
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jemandry/QuantROI
+    targetRevision: HEAD
+    path: k8s
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: quantroi
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    - ApplyOutOfSyncOnly=true
+  revisionHistoryLimit: 10
+  ignoreDifferences:
+  - group: apps
+    kind: Deployment
+    jsonPointers:
+    - /spec/replicas
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: quantroi
+  namespace: argocd
+spec:
+  description: QuantROI RIA Platform
+  sourceRepos:
+  - https://github.com/jemandry/QuantROI
+  destinations:
+  - namespace: quantroi
+    server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+  - group: ''
+    kind: Namespace
+  namespaceResourceWhitelist:
+  - group: ''
+    kind: '*'
+  - group: apps
+    kind: '*'
+  - group: networking.k8s.io
+    kind: '*'

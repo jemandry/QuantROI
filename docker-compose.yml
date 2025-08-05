@@ -41,6 +41,68 @@ services:
     volumes:
       - redis_data:/data
 
+  mlflow-server:
+    image: python:3.11-slim
+    container_name: mlflow_server
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlflow_data:/mlflow
+    environment:
+      - MLFLOW_BACKEND_STORE_URI=sqlite:///mlflow/mlflow.db
+      - MLFLOW_DEFAULT_ARTIFACT_ROOT=/mlflow/artifacts
+    command: >
+      bash -c "pip install mlflow==2.8.1 && 
+               mlflow server 
+               --backend-store-uri sqlite:///mlflow/mlflow.db 
+               --default-artifact-root /mlflow/artifacts 
+               --host 0.0.0.0 
+               --port 5000"
+    networks:
+      - quantroi-network
+    restart: unless-stopped
+
+  voice-interface:
+    build:
+      context: ./ux/voice-interface
+      dockerfile: Dockerfile
+    container_name: voice_interface
+    ports:
+      - "8001:8000"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - GROK_API_KEY=${GROK_API_KEY}
+      - CAUSAL_AI_URL=http://causal-ai-engine:8000
+    depends_on:
+      - redis
+    networks:
+      - quantroi-network
+    restart: unless-stopped
+
+  react-voting-ui:
+    build: 
+      context: ./ux/react-voting-ui
+      dockerfile: Dockerfile
+    container_name: react_voting_ui
+    ports:
+      - "3001:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+      - REACT_APP_VOICE_API_URL=http://localhost:8001
+      - REACT_APP_SOLANA_RPC_URL=${SOLANA_RPC_URL}
+    depends_on:
+      - voice-interface
+    networks:
+      - quantroi-network
+    restart: unless-stopped
+
 volumes:
   timescale_data:
   redis_data:
+  mlflow_data:
+  voice_data:
+
+networks:
+  quantroi-network:
+    driver: bridge
