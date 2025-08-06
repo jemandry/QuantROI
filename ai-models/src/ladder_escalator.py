@@ -160,8 +160,14 @@ class LadderEscalator:
             if not hasattr(self, 'causal_engine'):
                 return self._create_mock_result(CausalRung.INTERVENTION, start_time)
             
+            request_context = {
+                'treatment': treatment,
+                'outcome': outcome,
+                'confounders': confounders,
+                'analysis_type': 'intervention'
+            }
             causal_result = await self.causal_engine.perform_causal_analysis(
-                data, treatment, outcome, confounders
+                data, request_context
             )
             
             effect_estimate = causal_result.get('effect_size', 0.0)
@@ -206,8 +212,14 @@ class LadderEscalator:
             if not hasattr(self, 'causal_engine'):
                 return self._create_mock_result(CausalRung.COUNTERFACTUAL, start_time)
             
-            counterfactual_result = await self.causal_engine.perform_counterfactual_analysis(
-                data, treatment, outcome, confounders
+            request_context = {
+                'treatment': treatment,
+                'outcome': outcome,
+                'confounders': confounders,
+                'analysis_type': 'counterfactual'
+            }
+            counterfactual_result = await self.causal_engine.perform_causal_analysis(
+                data, request_context
             )
             
             effect_estimate = counterfactual_result.get('counterfactual_effect', 0.0)

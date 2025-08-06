@@ -67,7 +67,10 @@ class CausalAnalysisEngine:
                 results['analysis_metadata']['methods_used'].append('CausalNex')
             
             if DOWHY_AVAILABLE and len(data.columns) >= 3:
-                dowhy_results = await self._perform_dowhy_analysis(data, request_context)
+                if request_context.get('analysis_type') == 'counterfactual':
+                    dowhy_results = await self._perform_counterfactual_analysis(data, request_context)
+                else:
+                    dowhy_results = await self._perform_dowhy_analysis(data, request_context)
                 results['dowhy_analysis'] = dowhy_results
                 results['analysis_metadata']['methods_used'].append('DoWhy')
             
@@ -336,3 +339,71 @@ class CausalAnalysisEngine:
         )
         
         return assessment
+
+    async def _perform_counterfactual_analysis(self, data: pd.DataFrame, 
+                                             context: Dict[str, Any]) -> Dict[str, Any]:
+        """Perform counterfactual analysis using DoWhy"""
+        try:
+            if len(data.columns) < 3:
+                return {'error': 'Insufficient columns for counterfactual analysis', 'method': 'Counterfactual_Insufficient'}
+            
+            treatment = context.get('treatment', data.columns[0])
+            outcome = context.get('outcome', data.columns[1])
+            confounders = context.get('confounders', data.columns[2:])
+            
+            causal_graph = f"""
+            digraph {{
+                {treatment} -> {outcome};
+                {' -> '.join([f"{conf} -> {outcome}" for conf in confounders])};
+                {' -> '.join([f"{conf} -> {treatment}" for conf in confounders])};
+            }}
+            """
+            
+            model = CausalModel(
+                data=data,
+                treatment=treatment,
+                outcome=outcome,
+                graph=causal_graph
+            )
+            
+            identified_estimand = model.identify_effect()
+            
+            causal_estimate = model.estimate_effect(
+                identified_estimand,
+                method_name="backdoor.linear_regression"
+            )
+            
+            counterfactual_data = data.copy()
+            original_treatment_mean = data[treatment].mean()
+            
+            counterfactual_data[treatment] = 0
+            no_treatment_outcome = counterfactual_data[outcome].mean()
+            
+            counterfactual_data[treatment] = data[treatment].max()
+            max_treatment_outcome = counterfactual_data[outcome].mean()
+            
+            return {
+                'treatment': treatment,
+                'outcome': outcome,
+                'confounders': confounders,
+                'causal_effect': float(causal_estimate.value),
+                'confidence_interval': [
+                    float(causal_estimate.value - 1.96 * causal_estimate.stderr),
+                    float(causal_estimate.value + 1.96 * causal_estimate.stderr)
+                ],
+                'counterfactual_scenarios': {
+                    'no_treatment': {
+                        'outcome_mean': float(no_treatment_outcome),
+                        'effect_vs_observed': float(no_treatment_outcome - data[outcome].mean())
+                    },
+                    'max_treatment': {
+                        'outcome_mean': float(max_treatment_outcome),
+                        'effect_vs_observed': float(max_treatment_outcome - data[outcome].mean())
+                    }
+                },
+                'method': 'DoWhy_Counterfactual'
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Counterfactual analysis failed: {e}")
+            return {'error': str(e), 'method': 'Counterfactual_Failed'}
