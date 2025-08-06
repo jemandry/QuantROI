@@ -10,6 +10,8 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import logging
+import pandas as pd
+import numpy as np
 
 from ..source_reliability.reliability_engine import ReliabilityEngine, VoteRecord as ReliabilityVoteRecord
 from ..ipfs_voting.ipfs_vote_storage import IPFSVoteStorage, VoteRecord as IPFSVoteRecord
@@ -642,6 +644,98 @@ class EnhancedRIAOrchestrator:
                 "error": str(e),
                 "patent_avoidance": True
             }
+
+    async def run_enhanced_causal_discovery(self, data: pd.DataFrame, method: str = "pc") -> Dict[str, Any]:
+        """Run enhanced causal discovery with constraint-based algorithms"""
+        try:
+            if not self.causal_ai_engine:
+                return {"success": False, "error": "Causal AI engine not initialized"}
+            
+            if method == "pc":
+                result = await self.causal_ai_engine.discover_causal_structure_pc_algorithm(data)
+            elif method == "fci":
+                result = await self.causal_ai_engine.discover_causal_structure_fci_algorithm(data)
+            elif method == "ges":
+                result = await self.causal_ai_engine.discover_causal_structure_ges_algorithm(data)
+            else: 
+                return {"success": False, "error": f"Unknown method: {method}"}
+            
+            return {
+                "success": True,
+                "causal_discovery_result": result,
+                "enhanced_capabilities": True
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Enhanced causal discovery failed: {e}")
+            return {"success": False, "error": str(e)}
+    
+    async def perform_advanced_intervention(self, data: pd.DataFrame, treatment: str, outcome: str) -> Dict[str, Any]:
+        """Perform advanced interventional reasoning with performance validation"""
+        try:
+            if not self.causal_ai_engine:
+                return {"success": False, "error": "Causal AI engine not initialized"}
+            
+            result = await self.causal_ai_engine.advanced_interventional_reasoning(
+                data, treatment, outcome, intervention_value=1.0
+            )
+            
+            return {
+                "success": True,
+                "intervention_result": result,
+                "performance_validated": result.get("meets_latency_target", False)
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Advanced intervention failed: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def detect_market_regime(self, vix_data: pd.Series, price_data: pd.Series) -> Dict[str, Any]:
+        """Detect market regime using VIX-based analysis"""
+        try:
+            if not self.causal_ai_engine:
+                return {"success": False, "error": "Causal AI engine not initialized"}
+            
+            result = await self.causal_ai_engine.detect_market_regime_vix_based(
+                vix_data, price_data
+            )
+            
+            return {
+                "success": True,
+                "regime_detection_result": result,
+                "current_regime": result.get("current_regime", "unknown")
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Market regime detection failed: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def generate_causal_explanations(self, model_prediction, input_features, feature_names, method: str = "shap") -> Dict[str, Any]:
+        """Generate SHAP or LIME explanations for regulatory compliance"""
+        try:
+            if not self.causal_ai_engine:
+                return {"success": False, "error": "Causal AI engine not initialized"}
+            
+            if method == "shap":
+                result = await self.causal_ai_engine.generate_shap_explanations(
+                    model_prediction, input_features, feature_names
+                )
+            elif method == "lime":
+                result = await self.causal_ai_engine.generate_lime_explanations(
+                    model_prediction, input_features, feature_names
+                )
+            else:
+                return {"success": False, "error": f"Unknown explanation method: {method}"}
+            
+            return {
+                "success": True,
+                "explanation_result": result,
+                "compliance_ready": result.get("compliance_ready", False)
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Causal explanation generation failed: {e}")
+            return {"success": False, "error": str(e)}
 
 async def main():
     """Example usage of the Enhanced RIA Features System"""
