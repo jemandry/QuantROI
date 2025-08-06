@@ -12,6 +12,9 @@ from elasticsearch_integration import KnowledgeBaseManager
 from mbd_processor import MBDProcessor
 from regtech_monitor import RegTechMonitor
 from performance_optimizer import PerformanceOptimizer
+from ladder_escalator import LadderEscalator
+from benchmark_validator import BenchmarkValidator
+from kafka_causal_router import KafkaCausalRouter
 
 @dataclass
 class SystemHealthMetrics:
@@ -56,6 +59,19 @@ class SystemOrchestrator:
             redis_client=redis_client
         )
         self.performance_optimizer = PerformanceOptimizer()
+        self.ladder_escalator = LadderEscalator(
+            redis_client=redis_client,
+            neo4j_client=neo4j_client,
+            solana_client=solana_client
+        )
+        self.benchmark_validator = BenchmarkValidator(
+            redis_client=redis_client
+        )
+        self.kafka_router = KafkaCausalRouter(
+            redis_client=redis_client,
+            neo4j_client=neo4j_client,
+            solana_client=solana_client
+        )
         
         self.system_metrics = {
             'total_requests': 0,
@@ -93,6 +109,10 @@ class SystemOrchestrator:
             
             perf_result = self.performance_optimizer.initialize()
             initialization_results['performance_optimizer'] = perf_result
+            
+            initialization_results['ladder_escalator'] = 'initialized'
+            initialization_results['benchmark_validator'] = 'initialized'
+            initialization_results['kafka_router'] = 'initialized'
             
             latency_ns = time.time_ns() - start_time
             
@@ -148,9 +168,19 @@ class SystemOrchestrator:
             
             if 'causal_data' in workflow_data:
                 causal_start = time.time_ns()
+                
+                ladder_result = await self.ladder_escalator.process_causal_signal(
+                    workflow_data['causal_data'].get('data'),
+                    workflow_data['causal_data'].get('treatment', 'treatment'),
+                    workflow_data['causal_data'].get('outcome', 'outcome'),
+                    workflow_data['causal_data'].get('confounders', [])
+                )
+                
                 causal_result = await self.causal_orchestrator.orchestrate_causal_workflow(
                     workflow_data['causal_data']
                 )
+                causal_result['ladder_result'] = ladder_result
+                
                 causal_latency = time.time_ns() - causal_start
                 
                 results['stages']['causal_analysis'] = {
@@ -252,6 +282,9 @@ class SystemOrchestrator:
             compliance_stats = self.compliance_engine.get_performance_stats()
             kb_stats = self.knowledge_base.get_performance_summary()
             dag_stats = self.dag_tester.get_performance_stats()
+            ladder_stats = self.ladder_escalator.get_performance_stats()
+            validator_stats = self.benchmark_validator.get_performance_stats()
+            router_stats = self.kafka_router.get_performance_stats()
             
             total_requests = self.system_metrics['total_requests']
             avg_latency_us = (
@@ -378,7 +411,10 @@ class SystemOrchestrator:
                 'knowledge_base': 'active',
                 'mbd_processor': 'active',
                 'regtech_monitor': 'active',
-                'performance_optimizer': 'active'
+                'performance_optimizer': 'active',
+                'ladder_escalator': 'active',
+                'benchmark_validator': 'active',
+                'kafka_router': 'active'
             }
         }
 

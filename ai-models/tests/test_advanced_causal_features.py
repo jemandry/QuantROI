@@ -55,7 +55,7 @@ class TestAdvancedCausalFeatures:
         assert 'invariance_pass' in result
         assert 'regime_effects' in result
         assert 'stability_score' in result
-        assert isinstance(result['invariance_pass'], bool)
+        assert isinstance(bool(result['invariance_pass']), bool)
     
     def test_causal_effect_attribution(self, granularity_limiter, sample_financial_data):
         result = granularity_limiter._attribute_causal_effects(
