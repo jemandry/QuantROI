@@ -11,7 +11,11 @@ import pytest
 import asyncio
 from typing import Dict, Any
 
-from ..integration_with_noir import DualZKPTester, DualZKPSystemOrchestrator
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from integration_with_noir import DualZKPTester, DualZKPSystemOrchestrator
 
 
 class TestDualZKPIntegration:

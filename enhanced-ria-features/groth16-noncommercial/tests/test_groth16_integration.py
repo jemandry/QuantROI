@@ -11,8 +11,12 @@ import pytest
 import asyncio
 from typing import Dict, Any
 
-from ..groth16_integration import Groth16VotingSystem, Groth16NonCommercialTester
-from ..circuit_compiler import Groth16Compiler
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from groth16_integration import Groth16VotingSystem, Groth16NonCommercialTester
+from circuit_compiler import Groth16Compiler
 
 
 class TestGroth16NonCommercialIntegration:
