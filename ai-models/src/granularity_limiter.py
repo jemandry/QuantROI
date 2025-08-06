@@ -125,20 +125,22 @@ class GranularityLimiter:
         if data_df.isnull().any().any():
             data_df = data_df.ffill()
         
-        if len(data_df) > 1000:
-            sample_df = data_df.sample(n=min(500, len(data_df)))
+        if len(data_df) > 2000:
+            sample_df = data_df.iloc[::len(data_df)//100]
             kurtosis = sample_df.kurtosis()
-            correlation_matrix = sample_df.corr()
-        else:
+        elif len(data_df) > 100:
             kurtosis = data_df.kurtosis()
-            correlation_matrix = data_df.corr()
+        else:
+            kurtosis = pd.Series()
         
-        if any(kurtosis > 3):
+        if len(kurtosis) > 0 and any(kurtosis > 3):
             self.log_audit_event('warning', 'causal_study', "High kurtosis detected")
         
-        high_corr = (correlation_matrix.abs() > 0.9) & (correlation_matrix != 1.0)
-        if high_corr.any().any():
-            self.log_audit_event('warning', 'causal_study', "High correlation detected")
+        if causal_context.get('check_correlation', False) and len(data_df.columns) > 1:
+            correlation_matrix = data_df.corr()
+            high_corr = (correlation_matrix.abs() > 0.9) & (correlation_matrix != 1.0)
+            if high_corr.any().any():
+                self.log_audit_event('warning', 'causal_study', "High correlation detected")
         
         valid_metrics = [m for m in metric_types if m in data_df.columns]
         if not valid_metrics:

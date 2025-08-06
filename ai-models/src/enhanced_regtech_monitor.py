@@ -87,7 +87,7 @@ class AIComplianceAnalyzer:
         
         price_volume_correlation = price_changes.corr(volume_changes)
         
-        if abs(price_volume_correlation) > 0.8:  # Highly correlated - suspicious
+        if abs(price_volume_correlation) > 0.6:  # Lowered threshold for better detection
             violations.append({
                 'type': 'price_volume_manipulation',
                 'severity': 'high',
@@ -101,7 +101,7 @@ class AIComplianceAnalyzer:
             })
         
         layering_score = self._detect_layering_pattern(trading_data)
-        if layering_score > 0.7:
+        if layering_score > 0.5:  # Lowered threshold for better detection
             violations.append({
                 'type': 'layering_spoofing',
                 'severity': 'critical',
