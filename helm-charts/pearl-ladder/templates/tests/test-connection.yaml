@@ -11,5 +11,5 @@ spec:
     - name: wget
       image: busybox
       command: ['wget']
-      args: ['{{ include "pearl-ladder.fullname" . }}:{{ .Values.service.port }}']
+      args: ['{{ include "pearl-ladder.fullname" . }}-ladder-escalator:{{ .Values.ladderEscalator.service.port }}']
   restartPolicy: Never

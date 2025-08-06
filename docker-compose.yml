@@ -34,7 +34,7 @@ services:
       dockerfile: docker/Dockerfile.benchmark-validator
     ports:
       - "8002:8002"
-      - "9092:9090"  # Prometheus metrics
+      - "9094:9090"  # Prometheus metrics
     environment:
       - GDPR_COMPLIANCE=true
       - EXTERNAL_API_TIMEOUT=30
@@ -60,7 +60,7 @@ services:
       dockerfile: docker/Dockerfile.kafka-router
     ports:
       - "8003:8003"
-      - "9093:9090"  # Prometheus metrics
+      - "9095:9090"  # Prometheus metrics
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - KAFKA_CONSUMER_GROUP=causal-router
