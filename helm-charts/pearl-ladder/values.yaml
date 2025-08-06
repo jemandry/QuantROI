@@ -87,6 +87,82 @@ kafkaRouter:
     - name: KAFKA_CONSUMER_GROUP
       value: "causal-router"
 
+nlpVoiceInterface:
+  replicaCount: 2
+  image:
+    repository: quantroi/nlp-voice-interface
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8004
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+  routing:
+    enabled: true
+    defaultMethod: "local_nlp"
+    enableUserPreferences: true
+    enableStorylines: true
+  grok:
+    enabled: false
+    endpoint: "https://api.grok.example.com/v1"
+    timeout: 30
+    maxRetries: 3
+
+autoAgent:
+  replicaCount: 2
+  image:
+    repository: quantroi/auto-agent
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8005
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+
+simulationEngine:
+  replicaCount: 1
+  image:
+    repository: quantroi/simulation-engine
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8006
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+    requests:
+      cpu: 1000m
+      memory: 1Gi
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 80
+
 global:
   imageRegistry: ""
   imagePullSecrets: []

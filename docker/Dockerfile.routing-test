@@ -1,0 +1,16 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements-light.txt .
+RUN pip install --no-cache-dir -r requirements-light.txt
+
+COPY ai-models/src/ ./ai-models/src/
+COPY ai-models/tests/ ./ai-models/tests/
+COPY examples/ ./examples/
+COPY test_routing_system.py .
+COPY run_routing_tests.py .
+
+ENV PYTHONPATH=/app
+
+CMD ["python", "test_routing_system.py"]
