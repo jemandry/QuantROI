@@ -1,9 +1,15 @@
 pragma circom 2.0.0;
 
 /*
-Zero-Knowledge Stake Proof Circuit
+Zero-Knowledge Stake Proof Circuit - NON-COMMERCIAL USE ONLY
 Proves stake/token rights to vote without revealing wallet identity
 Implements Groth16 via snarkjs for anonymous yet verifiable voting
+
+IMPORTANT: This implementation is for educational, research, and testing purposes only.
+For commercial applications, use the Noir ZKP implementation in /noir-voting/
+
+This Groth16 implementation works in tandem with the production Noir ZKP system
+to provide comparison and validation capabilities for research and development.
 */
 
 include "circomlib/circuits/comparators.circom";
