@@ -613,6 +613,35 @@ class EnhancedRIAOrchestrator:
         except Exception as e:
             self.logger.error(f"Patent-avoiding vote submission failed: {e}")
             return {"success": False, "error": str(e)}
+    
+    async def analyze_options_with_patent_avoidance(self, symbol: str, 
+                                                   timeframe_hours: int = 24) -> Dict[str, Any]:
+        """Analyze options using patent-avoiding methodology"""
+        
+        try:
+            from ..patent_avoidance.options_analysis_alternatives import OptionsAnalysisIntegrator
+            
+            if not hasattr(self, 'options_integrator'):
+                self.options_integrator = OptionsAnalysisIntegrator(self)
+            
+            result = await self.options_integrator.analyze_options_trend_prediction(
+                symbol, timeframe_hours
+            )
+            
+            return {
+                "success": True,
+                "analysis_result": result,
+                "patent_avoidance": True,
+                "methodology": "brownian_motion_causal_inference"
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Patent-avoiding options analysis failed: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "patent_avoidance": True
+            }
 
 async def main():
     """Example usage of the Enhanced RIA Features System"""
