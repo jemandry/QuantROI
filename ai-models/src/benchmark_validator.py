@@ -432,3 +432,80 @@ class GDPRCompliantValidator(BenchmarkValidator):
                 anonymized[col] = anonymized[col] + noise
         
         return anonymized
+
+
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+import uvicorn
+
+app = FastAPI(title="Benchmark Validator", version="1.0.0")
+
+validator = None
+
+class ValidationRequest(BaseModel):
+    data: Dict[str, Any]
+    sources: Optional[List[str]] = None
+    context: Optional[Dict[str, Any]] = None
+
+class ValidationResponse(BaseModel):
+    internal_effect: float
+    external_effect: float
+    validation_passed: bool
+    confidence_score: float
+    data_source: str
+    latency_ns: int
+    audit_hash: str
+
+@app.on_event("startup")
+async def startup_event():
+    global validator
+    validator = BenchmarkValidator()
+    logging.info("BenchmarkValidator service started")
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "service": "benchmark-validator", "timestamp": time.time()}
+
+@app.post("/validate", response_model=ValidationResponse)
+async def validate_data(request: ValidationRequest):
+    if not validator:
+        raise HTTPException(status_code=500, detail="Validator not initialized")
+    
+    try:
+        context = request.context or {}
+        treatment = context.get('treatment', 'volume')
+        outcome = context.get('outcome', 'price')
+        external_source = (request.sources or ['alpha_vantage'])[0]
+        
+        import pandas as pd
+        internal_data = pd.DataFrame(request.data)
+        
+        result = await validator.validate_causal_effect(
+            internal_data,
+            treatment,
+            outcome,
+            external_source
+        )
+        
+        return ValidationResponse(
+            internal_effect=result.internal_effect,
+            external_effect=result.external_effect,
+            validation_passed=result.validation_passed,
+            confidence_score=result.confidence_score,
+            data_source=result.data_source,
+            latency_ns=result.latency_ns,
+            audit_hash=result.audit_hash
+        )
+    except Exception as e:
+        logging.error(f"Validation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/metrics")
+async def get_metrics():
+    if not validator:
+        raise HTTPException(status_code=500, detail="Validator not initialized")
+    
+    return validator.get_performance_stats()
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8002)
