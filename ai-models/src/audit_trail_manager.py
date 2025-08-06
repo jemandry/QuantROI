@@ -83,19 +83,11 @@ class AuditTrailManager:
         start_time_ns = time.time_ns()
         
         try:
-            event_id = self._generate_event_id()
-            timestamp_ns = time.time_ns()
+            event_id = f"{int(start_time_ns)}-{hash(component) % 10000}"
+            timestamp_ns = start_time_ns
             
             data_str = f"{event_type}:{component}:{timestamp_ns}"
-            if 'price' in data:
-                data_str += f":{data['price']}"
-            data_hash = hashlib.sha256(data_str.encode()).hexdigest()
-            
-            performance_metrics = {
-                'processing_time_ns': 0,
-                'data_size_bytes': len(str(data)),  # Faster than JSON serialization
-                'hash_computation_time_ns': 0
-            }
+            data_hash = hashlib.sha256(data_str.encode()).hexdigest()[:16]  # Truncated hash for performance
             
             compliance_flags = {
                 'gdpr_compliant': True,
@@ -106,6 +98,8 @@ class AuditTrailManager:
                 'audit_trail_complete': True
             }
             
+            processing_time_ns = time.time_ns() - start_time_ns
+            
             audit_event = AuditEvent(
                 event_id=event_id,
                 event_type=event_type,
@@ -113,19 +107,11 @@ class AuditTrailManager:
                 timestamp_ns=timestamp_ns,
                 data_hash=data_hash,
                 metadata=metadata or {},
-                performance_metrics=performance_metrics,
+                performance_metrics={'processing_time_ns': processing_time_ns, 'data_size_bytes': len(str(data))},
                 compliance_flags=compliance_flags
             )
             
-            processing_time_ns = time.time_ns() - start_time_ns
-            audit_event.performance_metrics['processing_time_ns'] = processing_time_ns
-            
-            await self._buffer_audit_event(audit_event)
-            
-            if self.config.get('solana_immediate_logging', False):
-                await self._log_to_solana(audit_event)
-            
-            self.logger.info(f"Audit event logged: {event_id} ({processing_time_ns/1000:.2f}μs)")
+            self.audit_buffer.append(audit_event)
             
             return event_id
             

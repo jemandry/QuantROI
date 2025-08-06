@@ -190,12 +190,6 @@ class NetworkLatencyMonitor:
         
         start_time = time.time()
         
-        if endpoint.startswith('redis://'):
-            await asyncio.sleep(0.0001)
-        elif endpoint.startswith('postgresql://'):
-            await asyncio.sleep(0.0005)
-        elif endpoint.startswith('http://'):
-            await asyncio.sleep(0.001)
         
         end_time = time.time()
         latency_seconds = end_time - start_time

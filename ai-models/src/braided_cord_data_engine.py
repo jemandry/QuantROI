@@ -268,7 +268,6 @@ class BraidedCordDataEngine:
                                  symbol: Optional[str] = None) -> Dict[str, Any]:
         """Store data in warm tier (PostgreSQL) with 100μs-10ms target"""
         try:
-            await asyncio.sleep(0.001)
             return {'status': 'success', 'backend': 'postgresql', 'table': f"warm_{rule.data_type}"}
         except Exception as e:
             return {'status': 'error', 'error': str(e)}
@@ -277,7 +276,6 @@ class BraidedCordDataEngine:
                                  symbol: Optional[str] = None) -> Dict[str, Any]:
         """Store data in cold tier (TimescaleDB) with >10ms acceptable latency"""
         try:
-            await asyncio.sleep(0.01)
             return {'status': 'success', 'backend': 'timescaledb', 'table': f"cold_{rule.data_type}"}
         except Exception as e:
             return {'status': 'error', 'error': str(e)}
@@ -319,19 +317,19 @@ class BraidedCordDataEngine:
     async def _extract_from_warm_tier(self, data_type: str, symbols: List[str], 
                                      time_range: Tuple[datetime, datetime]) -> Dict[str, Any]:
         """Extract data from warm tier (PostgreSQL)"""
-        await asyncio.sleep(0.005)
+        # Optimized extraction without artificial delays
         return {f"warm_{data_type}": f"simulated_data_for_{symbols}"}
 
     async def _extract_from_cold_tier(self, data_type: str, symbols: List[str], 
                                      time_range: Tuple[datetime, datetime]) -> Dict[str, Any]:
         """Extract data from cold tier (TimescaleDB)"""
-        await asyncio.sleep(0.02)
+        # Optimized extraction without artificial delays
         return {f"cold_{data_type}": f"simulated_historical_data_for_{symbols}"}
 
     def _combine_extracted_data(self, extracted_data: Dict[str, Any], symbols: List[str]) -> pd.DataFrame:
         """Combine extracted data into a single DataFrame"""
         try:
-            dates = pd.date_range(start=datetime.now() - timedelta(days=30), periods=100, freq='H')
+            dates = pd.date_range(start=datetime.now() - timedelta(days=30), periods=100, freq='h')
             combined_df = pd.DataFrame(index=dates)
             
             for data_type, data in extracted_data.items():

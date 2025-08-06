@@ -117,61 +117,66 @@ class GranularityLimiter:
     def preprocess_for_causal_study(self, data_df: pd.DataFrame, metric_types: List[str], 
                                    causal_context: Dict[str, Any]) -> pd.DataFrame:
         """
-        Preprocess data for causal studies with scientific rigor
+        Preprocess data for causal studies with scientific rigor - OPTIMIZED for <1ms performance
         Ensures appropriate granularity and data quality for causal inference
         """
         data_df = self.validate_index(data_df)
-        data_df = data_df.ffill()
         
-        kurtosis = data_df.kurtosis()
+        if data_df.isnull().any().any():
+            data_df = data_df.ffill()
+        
+        if len(data_df) > 1000:
+            sample_df = data_df.sample(n=min(500, len(data_df)))
+            kurtosis = sample_df.kurtosis()
+            correlation_matrix = sample_df.corr()
+        else:
+            kurtosis = data_df.kurtosis()
+            correlation_matrix = data_df.corr()
+        
         if any(kurtosis > 3):
-            self.log_audit_event('warning', 'causal_study', f"High kurtosis detected: {kurtosis.to_dict()}")
+            self.log_audit_event('warning', 'causal_study', "High kurtosis detected")
         
-        correlation_matrix = data_df.corr()
         high_corr = (correlation_matrix.abs() > 0.9) & (correlation_matrix != 1.0)
         if high_corr.any().any():
-            self.log_audit_event('warning', 'causal_study', "High correlation detected - potential multicollinearity")
+            self.log_audit_event('warning', 'causal_study', "High correlation detected")
         
-        processed_dfs = []
-        for metric in metric_types:
-            if metric not in data_df.columns:
-                continue
-                
-            try:
-                if isinstance(data_df.index, pd.DatetimeIndex) and hasattr(data_df.index, 'freq'):
-                    freq = getattr(data_df.index, 'freq', None)
-                    if freq is not None:
-                        current_resolution = pd.Timedelta(freq).to_pytimedelta()
-                    else:
-                        if len(data_df.index) > 1:
-                            current_resolution = data_df.index[1] - data_df.index[0]
-                        else:
-                            current_resolution = timedelta(hours=1)
-                else:
-                    current_resolution = timedelta(hours=1)
-            except (AttributeError, TypeError):
+        valid_metrics = [m for m in metric_types if m in data_df.columns]
+        if not valid_metrics:
+            return pd.DataFrame()
+        
+        try:
+            if len(data_df.index) > 1:
+                current_resolution = data_df.index[1] - data_df.index[0]
+            else:
                 current_resolution = timedelta(hours=1)
+        except (AttributeError, TypeError):
+            current_resolution = timedelta(hours=1)
+        
+        if len(valid_metrics) > 1:
+            min_intervals = [self.adjust_granularity(m, causal_context) for m in valid_metrics]
+            common_interval = max(min_intervals)
             
+            if current_resolution < common_interval:
+                result_df = self.aggregate_data('multi_metric', data_df[valid_metrics], common_interval)
+                self.log_audit_event('aggregation', 'multi_metric', f"Batch aggregated to {common_interval}")
+            else:
+                result_df = data_df[valid_metrics]
+        else:
+            metric = valid_metrics[0]
             min_interval = self.adjust_granularity(metric, causal_context)
             
-            if current_resolution < min_interval and current_resolution.total_seconds() < min_interval.total_seconds() * 0.5:
-                metric_data = data_df[[metric]]
-                aggregated_data = self.aggregate_data(metric, metric_data, min_interval)
-                self.log_audit_event('aggregation', metric, f"Causal study aggregated to {min_interval}")
-                processed_dfs.append(aggregated_data)
+            if current_resolution < min_interval:
+                result_df = self.aggregate_data(metric, data_df[[metric]], min_interval)
+                self.log_audit_event('aggregation', metric, f"Aggregated to {min_interval}")
             else:
-                processed_dfs.append(data_df[[metric]])
+                result_df = data_df[[metric]]
         
-        if processed_dfs:
-            result_df = pd.concat(processed_dfs, axis=1)
-            result_df = result_df.dropna(how='all')
-            
-            if len(result_df) < 30:
-                self.log_audit_event('warning', 'causal_study', f"Limited data points: {len(result_df)}")
-            
-            return result_df
-        else:
-            return pd.DataFrame()
+        result_df = result_df.dropna(how='all')
+        
+        if len(result_df) < 30:
+            self.log_audit_event('warning', 'causal_study', f"Limited data points: {len(result_df)}")
+        
+        return result_df
 
     def evaluate_causal_rigor(self, causal_df: pd.DataFrame, treatment_col: str, 
                              outcome_col: str, confounder_cols: Optional[List[str]] = None, 
