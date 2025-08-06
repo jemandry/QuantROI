@@ -206,7 +206,7 @@ class PerformanceBenchmark:
         evaluation_times = []
         
         for i in range(iterations):
-            dates = pd.date_range(start=datetime.now() - timedelta(days=30), periods=1000, freq='H')
+            dates = pd.date_range(start=datetime.now() - timedelta(days=30), periods=1000, freq='h')
             test_data = pd.DataFrame({
                 'treatment': np.random.normal(0, 1, 1000),
                 'outcome': np.random.normal(0, 1, 1000),
