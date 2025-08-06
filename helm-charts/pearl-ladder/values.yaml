@@ -1,0 +1,190 @@
+
+ladderEscalator:
+  enabled: true
+  replicaCount: 3
+  image:
+    repository: pearl-ladder/ladder-escalator
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8001
+    targetPort: 8001
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+
+benchmarkValidator:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: pearl-ladder/benchmark-validator
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8002
+    targetPort: 8002
+  resources:
+    limits:
+      cpu: 300m
+      memory: 384Mi
+    requests:
+      cpu: 150m
+      memory: 192Mi
+  env:
+    - name: GDPR_COMPLIANCE
+      value: "true"
+    - name: EXTERNAL_API_TIMEOUT
+      value: "30"
+
+kafkaRouter:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: pearl-ladder/kafka-router
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8003
+    targetPort: 8003
+  resources:
+    limits:
+      cpu: 400m
+      memory: 512Mi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+  env:
+    - name: KAFKA_BOOTSTRAP_SERVERS
+      value: "kafka:9092"
+    - name: KAFKA_CONSUMER_GROUP
+      value: "causal-router"
+
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+  storageClass: ""
+
+serviceAccount:
+  create: true
+  automount: true
+  annotations: {}
+  name: "pearl-ladder-sa"
+
+podSecurityContext:
+  fsGroup: 2000
+  runAsNonRoot: true
+  runAsUser: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: pearl-ladder.local
+      paths:
+        - path: /ladder
+          pathType: Prefix
+          service: ladder-escalator
+        - path: /validator
+          pathType: Prefix
+          service: benchmark-validator
+        - path: /router
+          pathType: Prefix
+          service: kafka-router
+  tls:
+    - secretName: pearl-ladder-tls
+      hosts:
+        - pearl-ladder.local
+
+monitoring:
+  enabled: true
+  prometheus:
+    enabled: true
+    port: 9090
+  grafana:
+    enabled: true
+    port: 3000
+
+performance:
+  hotPath:
+    enabled: true
+    targetLatency: "50μs"
+    maxConcurrency: 1000
+  warmPath:
+    enabled: true
+    targetLatency: "500ms"
+    maxConcurrency: 500
+  coldPath:
+    enabled: true
+    targetLatency: "10s"
+    maxConcurrency: 100
+
+dependencies:
+  redis:
+    enabled: true
+    host: "redis-master"
+    port: 6379
+  postgresql:
+    enabled: true
+    host: "postgresql"
+    port: 5432
+    database: "pearl_ladder"
+  kafka:
+    enabled: true
+    brokers: "kafka:9092"
+  neo4j:
+    enabled: true
+    host: "neo4j"
+    port: 7687
+  ipfs:
+    enabled: true
+    host: "ipfs"
+    port: 5001
+  solana:
+    enabled: true
+    rpcUrl: "https://api.mainnet-beta.solana.com"
+
+nodeSelector:
+  workload-type: "hft"
+
+tolerations:
+  - key: "hft-workload"
+    operator: "Equal"
+    value: "true"
+    effect: "NoSchedule"
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchExpressions:
+          - key: app.kubernetes.io/name
+            operator: In
+            values:
+            - pearl-ladder
+        topologyKey: kubernetes.io/hostname

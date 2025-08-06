@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "pearl-ladder.fullname" . }}-ladder-escalator
+  labels:
+    {{- include "pearl-ladder.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ladder-escalator
+spec:
+  type: {{ .Values.ladderEscalator.service.type }}
+  ports:
+    - port: {{ .Values.ladderEscalator.service.port }}
+      targetPort: {{ .Values.ladderEscalator.service.targetPort }}
+      protocol: TCP
+      name: http
+    - port: 9090
+      targetPort: 9090
+      protocol: TCP
+      name: metrics
+  selector:
+    {{- include "pearl-ladder.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: ladder-escalator
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "pearl-ladder.fullname" . }}-benchmark-validator
+  labels:
+    {{- include "pearl-ladder.labels" . | nindent 4 }}
+    app.kubernetes.io/component: benchmark-validator
+spec:
+  type: {{ .Values.benchmarkValidator.service.type }}
+  ports:
+    - port: {{ .Values.benchmarkValidator.service.port }}
+      targetPort: {{ .Values.benchmarkValidator.service.targetPort }}
+      protocol: TCP
+      name: http
+    - port: 9090
+      targetPort: 9090
+      protocol: TCP
+      name: metrics
+  selector:
+    {{- include "pearl-ladder.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: benchmark-validator
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "pearl-ladder.fullname" . }}-kafka-router
+  labels:
+    {{- include "pearl-ladder.labels" . | nindent 4 }}
+    app.kubernetes.io/component: kafka-router
+spec:
+  type: {{ .Values.kafkaRouter.service.type }}
+  ports:
+    - port: {{ .Values.kafkaRouter.service.port }}
+      targetPort: {{ .Values.kafkaRouter.service.targetPort }}
+      protocol: TCP
+      name: http
+    - port: 9090
+      targetPort: 9090
+      protocol: TCP
+      name: metrics
+  selector:
+    {{- include "pearl-ladder.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: kafka-router

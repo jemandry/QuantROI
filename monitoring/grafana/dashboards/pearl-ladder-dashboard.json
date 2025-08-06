@@ -1,0 +1,224 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Pearl's Ladder Performance Dashboard",
+    "tags": ["pearl-ladder", "causal-ai", "hft"],
+    "style": "dark",
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Rung 1 Association Latency",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, ladder_escalator_rung_processing_seconds_bucket{rung=\"1\"})",
+            "legendFormat": "P95 Latency"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 0.00005},
+                {"color": "red", "value": 0.0001}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Rung 2 Intervention Latency",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, ladder_escalator_rung_processing_seconds_bucket{rung=\"2\"})",
+            "legendFormat": "P95 Latency"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 0.5},
+                {"color": "red", "value": 1.0}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 6, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "Rung 3 Counterfactual Latency",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, ladder_escalator_rung_processing_seconds_bucket{rung=\"3\"})",
+            "legendFormat": "P95 Latency"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 10},
+                {"color": "red", "value": 20}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0}
+      },
+      {
+        "id": 4,
+        "title": "Benchmark Validation Success Rate",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "benchmark_validator_success_rate",
+            "legendFormat": "Success Rate"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": null},
+                {"color": "yellow", "value": 0.8},
+                {"color": "green", "value": 0.9}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0}
+      },
+      {
+        "id": 5,
+        "title": "Causal Signal Processing Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(ladder_escalator_requests_total[5m])",
+            "legendFormat": "Requests/sec"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Requests per second",
+            "min": 0
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+      },
+      {
+        "id": 6,
+        "title": "Kafka Message Routing",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(kafka_router_messages_processed_total[5m])",
+            "legendFormat": "{{path}} path"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Messages per second",
+            "min": 0
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+      },
+      {
+        "id": 7,
+        "title": "Escalation Patterns",
+        "type": "heatmap",
+        "targets": [
+          {
+            "expr": "increase(ladder_escalator_escalations_total[1h])",
+            "legendFormat": "{{from_rung}} -> {{to_rung}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+      },
+      {
+        "id": 8,
+        "title": "External API Response Times",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, benchmark_validator_request_duration_seconds_bucket)",
+            "legendFormat": "P95 Response Time"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Response time (seconds)",
+            "min": 0
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+      },
+      {
+        "id": 9,
+        "title": "System Throughput",
+        "type": "singlestat",
+        "targets": [
+          {
+            "expr": "sum(rate(ladder_escalator_requests_total[5m]) + rate(benchmark_validator_requests_total[5m]) + rate(kafka_router_requests_total[5m]))",
+            "legendFormat": "Total Events/sec"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps",
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": null},
+                {"color": "yellow", "value": 15000},
+                {"color": "green", "value": 20000}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 4, "w": 6, "x": 0, "y": 24}
+      },
+      {
+        "id": 10,
+        "title": "Error Rates",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(kafka_router_routing_errors_total[5m])",
+            "legendFormat": "Routing Errors"
+          },
+          {
+            "expr": "rate(benchmark_validator_requests_total{code!~\"2..\"}[5m])",
+            "legendFormat": "Validation Errors"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Errors per second",
+            "min": 0
+          }
+        ],
+        "gridPos": {"h": 4, "w": 18, "x": 6, "y": 24}
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "refresh": "5s"
+  }
+}

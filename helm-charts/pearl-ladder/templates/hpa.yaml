@@ -1,0 +1,103 @@
+{{- if .Values.ladderEscalator.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "pearl-ladder.fullname" . }}-ladder-escalator
+  labels:
+    {{- include "pearl-ladder.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ladder-escalator
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "pearl-ladder.fullname" . }}-ladder-escalator
+  minReplicas: {{ .Values.ladderEscalator.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.ladderEscalator.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.ladderEscalator.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.ladderEscalator.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    - type: Pods
+      pods:
+        metric:
+          name: causal_signals_per_second
+        target:
+          type: AverageValue
+          averageValue: "1000"
+    - type: Pods
+      pods:
+        metric:
+          name: rung1_latency_microseconds
+        target:
+          type: AverageValue
+          averageValue: "50"
+{{- end }}
+
+---
+{{- if .Values.benchmarkValidator.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "pearl-ladder.fullname" . }}-benchmark-validator
+  labels:
+    {{- include "pearl-ladder.labels" . | nindent 4 }}
+    app.kubernetes.io/component: benchmark-validator
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "pearl-ladder.fullname" . }}-benchmark-validator
+  minReplicas: {{ .Values.benchmarkValidator.autoscaling.minReplicas | default 1 }}
+  maxReplicas: {{ .Values.benchmarkValidator.autoscaling.maxReplicas | default 5 }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Pods
+      pods:
+        metric:
+          name: validation_requests_per_second
+        target:
+          type: AverageValue
+          averageValue: "100"
+{{- end }}
+
+---
+{{- if .Values.kafkaRouter.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "pearl-ladder.fullname" . }}-kafka-router
+  labels:
+    {{- include "pearl-ladder.labels" . | nindent 4 }}
+    app.kubernetes.io/component: kafka-router
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "pearl-ladder.fullname" . }}-kafka-router
+  minReplicas: {{ .Values.kafkaRouter.autoscaling.minReplicas | default 1 }}
+  maxReplicas: {{ .Values.kafkaRouter.autoscaling.maxReplicas | default 8 }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Pods
+      pods:
+        metric:
+          name: kafka_messages_per_second
+        target:
+          type: AverageValue
+          averageValue: "5000"
+{{- end }}
