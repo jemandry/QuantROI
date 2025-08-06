@@ -228,3 +228,104 @@ class NodeManager:
         except Exception as e:
             logger.error(f"Failed to create DelegationNode: {e}")
             raise
+
+    def create_discovery_node(self, discovery_id: str, source: str, title: str, 
+                            content: str, relevance_score: float, confidence_rating: int,
+                            causal_explanation: str, category: str) -> Dict[str, Any]:
+        """Create DiscoveryNode for news discovery tracking"""
+        query = """
+        CREATE (d:DiscoveryNode {
+            discovery_id: $discovery_id,
+            source: $source,
+            title: $title,
+            content: $content,
+            relevance_score: $relevance_score,
+            confidence_rating: $confidence_rating,
+            causal_explanation: $causal_explanation,
+            category: $category,
+            created_at: datetime(),
+            lawyer_query_sent: false,
+            ipfs_hash: $ipfs_hash
+        })
+        RETURN d
+        """
+        
+        try:
+            discovery_data = {
+                "discovery_id": discovery_id,
+                "source": source,
+                "title": title,
+                "content": content,
+                "relevance_score": relevance_score,
+                "confidence_rating": confidence_rating,
+                "causal_explanation": causal_explanation,
+                "category": category
+            }
+            
+            ipfs_hash = self.upload_to_ipfs(discovery_data)
+            
+            with self.driver.session() as session:
+                result = session.run(query, **discovery_data, ipfs_hash=ipfs_hash)
+                record = result.single()
+                if record:
+                    logger.info(f"Created DiscoveryNode: {discovery_id}")
+                    return {
+                        "node": dict(record["d"]),
+                        "ipfs_hash": ipfs_hash
+                    }
+                else:
+                    logger.warning("Failed to create DiscoveryNode")
+                    return None
+        except Exception as e:
+            logger.error(f"Failed to create DiscoveryNode: {e}")
+            raise
+
+    def create_lawyer_query_node(self, query_id: str, discovery_id: str, 
+                               question: str, explanation: str, confidence_rating: int,
+                               bias_assessment: str) -> Dict[str, Any]:
+        """Create LawyerQueryNode for legal interpretation tracking"""
+        query = """
+        MATCH (d:DiscoveryNode {discovery_id: $discovery_id})
+        CREATE (l:LawyerQueryNode {
+            query_id: $query_id,
+            discovery_id: $discovery_id,
+            question: $question,
+            explanation: $explanation,
+            confidence_rating: $confidence_rating,
+            bias_assessment: $bias_assessment,
+            created_at: datetime(),
+            approved: null,
+            response_timestamp: null,
+            ipfs_hash: $ipfs_hash
+        })
+        CREATE (l)-[:QUERIES]->(d)
+        RETURN l
+        """
+        
+        try:
+            query_data = {
+                "query_id": query_id,
+                "discovery_id": discovery_id,
+                "question": question,
+                "explanation": explanation,
+                "confidence_rating": confidence_rating,
+                "bias_assessment": bias_assessment
+            }
+            
+            ipfs_hash = self.upload_to_ipfs(query_data)
+            
+            with self.driver.session() as session:
+                result = session.run(query, **query_data, ipfs_hash=ipfs_hash)
+                record = result.single()
+                if record:
+                    logger.info(f"Created LawyerQueryNode: {query_id}")
+                    return {
+                        "node": dict(record["l"]),
+                        "ipfs_hash": ipfs_hash
+                    }
+                else:
+                    logger.warning("Failed to create LawyerQueryNode")
+                    return None
+        except Exception as e:
+            logger.error(f"Failed to create LawyerQueryNode: {e}")
+            raise

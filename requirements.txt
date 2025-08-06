@@ -99,3 +99,20 @@ python-dotenv==1.0.0
 # Testing Dependencies
 pytest==8.4.1
 pytest-asyncio==0.23.0
+
+# News Discovery Dependencies
+feedparser==6.0.10
+transformers==4.35.0
+sentence-transformers==2.2.2
+fairlearn==0.9.0
+aiohttp==3.9.1
+
+# Additional ML Dependencies
+scikit-learn==1.3.2
+torch==2.1.0
+numpy==1.24.3
+stable-baselines3==2.2.0
+
+# Patent Avoidance Dependencies
+ed25519==2.0.0
+secrets==1.0.0

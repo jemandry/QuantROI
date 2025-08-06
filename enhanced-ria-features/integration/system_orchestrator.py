@@ -50,6 +50,7 @@ class SystemConfig:
     enable_heatmap_ui: bool = True
     enable_delay_alerts: bool = True
     enable_zkp_proofs: bool = True
+    enable_news_discovery: bool = True
     enable_causal_ai: bool = True
     
     solana_rpc_url: str = "https://api.mainnet-beta.solana.com"
@@ -533,6 +534,85 @@ class EnhancedRIAOrchestrator:
         
         self.is_initialized = False
         self.logger.info("Enhanced RIA Features System shutdown complete")
+    
+    async def run_discovery_cycle(self) -> Dict[str, Any]:
+        """Run news discovery and compliance reminder cycle"""
+        try:
+            if not self.config.enable_news_discovery:
+                return {"success": False, "message": "News discovery disabled"}
+            
+            from ..compliance.self_reminding_agent import SelfRemindingAgent
+            
+            discovery_agent = SelfRemindingAgent()
+            await discovery_agent.initialize()
+            
+            cycle_results = await discovery_agent.run_discovery_cycle()
+            
+            self.logger.info(f"Discovery cycle completed: {cycle_results.cycle_id}")
+            
+            return {
+                "success": cycle_results.success,
+                "cycle_id": cycle_results.cycle_id,
+                "discoveries_found": cycle_results.discoveries_found,
+                "lawyer_queries_generated": cycle_results.lawyer_queries_generated,
+                "high_confidence_alerts": cycle_results.high_confidence_alerts
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Discovery cycle failed: {e}")
+            return {"success": False, "error": str(e)}
+    
+    async def get_compliance_dashboard_data(self) -> Dict[str, Any]:
+        """Get comprehensive compliance dashboard data"""
+        try:
+            compliance_data = await self.sec_compliance_engine.generate_compliance_report()
+            
+            from ..compliance.self_reminding_agent import SelfRemindingAgent
+            discovery_agent = SelfRemindingAgent()
+            await discovery_agent.initialize()
+            
+            discovery_data = await discovery_agent.generate_compliance_dashboard_data()
+            compliance_data.update(discovery_data)
+            
+            return compliance_data
+            
+        except Exception as e:
+            self.logger.error(f"Dashboard data generation failed: {e}")
+            return {"error": str(e)}
+    
+    async def submit_patent_avoiding_vote(self, vote_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Submit vote using patent-avoiding methods"""
+        try:
+            from ..patent_avoidance.ephemeral_identity_system import PatentAvoidingVotingSystem
+            from cryptography.hazmat.primitives.asymmetric import ed25519
+            from cryptography.hazmat.primitives import serialization
+            
+            voting_system = PatentAvoidingVotingSystem()
+            
+            private_key = ed25519.Ed25519PrivateKey.generate()
+            public_key = private_key.public_key().public_bytes(
+                encoding=serialization.Encoding.Raw,
+                format=serialization.PublicFormat.Raw
+            )
+            
+            vote = await voting_system.submit_patent_avoiding_vote(
+                private_key=private_key,
+                public_key=public_key,
+                vote_choice=vote_data["vote_choice"],
+                causal_context_id=vote_data["causal_context_id"],
+                user_nonce=vote_data["user_nonce"]
+            )
+            
+            return {
+                "success": True,
+                "vote_id": vote.vote_id,
+                "causal_context_id": vote.causal_context_id,
+                "timestamp": vote.timestamp.isoformat()
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Patent-avoiding vote submission failed: {e}")
+            return {"success": False, "error": str(e)}
 
 async def main():
     """Example usage of the Enhanced RIA Features System"""

@@ -170,13 +170,22 @@ class ZKPVotingPipeline:
         merkle_root: str,
         merkle_proof: List[str],
         merkle_indices: List[int],
-        random_seed: str
+        random_seed: str,
+        use_patent_avoiding: bool = False,
+        session_id: Optional[str] = None,
+        user_nonce: Optional[str] = None
     ) -> Optional[VoteProof]:
         """
-        Generate ZKP proof for vote (Claim 3: random IDs, Claim 9: verification)
+        Generate ZKP proof for vote with optional patent-avoiding methods
         """
         try:
-            nonce = os.urandom(32).hex()
+            if use_patent_avoiding and session_id and user_nonce:
+                from ..patent_avoidance.ephemeral_identity_system import EphemeralIdentityGraph
+                identity_graph = EphemeralIdentityGraph()
+                vote_id = identity_graph.generate_hmac_vote_id(session_id, user_nonce)
+                nonce = vote_id  # Use deterministic ID as nonce
+            else:
+                nonce = os.urandom(32).hex()
             
             vote_commitment = self._hash_commitment(vote_choice, nonce)
             

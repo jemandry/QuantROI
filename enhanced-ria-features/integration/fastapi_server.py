@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 import uvicorn
+from dataclasses import asdict
 
 from .system_orchestrator import EnhancedRIAOrchestrator, SystemConfig
 from .graphql_api import create_graphql_router
@@ -187,6 +188,81 @@ async def get_knowledge_base_health():
             return health
         else:
             raise HTTPException(status_code=503, detail="Knowledge base not available")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/lawyer/queries")
+async def get_pending_lawyer_queries():
+    """Get pending lawyer queries for review"""
+    try:
+        from ..compliance.news_relevance_engine import NewsRelevanceEngine
+        news_engine = NewsRelevanceEngine()
+        await news_engine.initialize()
+        
+        pending_queries = [q for q in news_engine.lawyer_queries if q.approved is None]
+        
+        return {
+            "success": True,
+            "queries": [asdict(q) for q in pending_queries],
+            "total_pending": len(pending_queries)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/lawyer/respond")
+async def process_lawyer_response(response: dict):
+    """Process lawyer response to query"""
+    try:
+        query_id = response.get("query_id")
+        approved = response.get("approved")
+        notes = response.get("notes", "")
+        
+        from ..compliance.news_relevance_engine import NewsRelevanceEngine
+        news_engine = NewsRelevanceEngine()
+        await news_engine.initialize()
+        
+        success = await news_engine.process_lawyer_response(query_id, approved, notes)
+        
+        return {
+            "success": success,
+            "message": f"Query {query_id} {'approved' if approved else 'rejected'}"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/lawyer/dashboard")
+async def get_lawyer_dashboard_data():
+    """Get lawyer dashboard data"""
+    try:
+        from ..compliance.self_reminding_agent import SelfRemindingAgent
+        
+        agent = SelfRemindingAgent()
+        await agent.initialize()
+        
+        dashboard_data = await agent.generate_compliance_dashboard_data()
+        
+        return {
+            "success": True,
+            "data": dashboard_data
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/discovery/report")
+async def get_discovery_report():
+    """Get comprehensive discovery report"""
+    try:
+        from ..compliance.news_relevance_engine import NewsRelevanceEngine
+        
+        news_engine = NewsRelevanceEngine()
+        await news_engine.initialize()
+        
+        report = await news_engine.generate_discovery_report()
+        
+        return {
+            "success": True,
+            "report": report
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
