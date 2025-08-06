@@ -89,20 +89,15 @@ class TestAIComplianceAnalyzer:
                 'timestamp': datetime.now(),
                 'consent_verified': False  # Missing consent
             },
-            {
+            *[{
                 'user_id': 'user_002',
                 'data_type': f'data_type_{i}',
                 'timestamp': datetime.now(),
                 'consent_verified': True
-            } for i in range(15)  # Too many data types
+            } for i in range(15)]  # Too many data types
         ]
         
-        flat_logs = []
-        for item in data_access_logs:
-            if isinstance(item, list):
-                flat_logs.extend(item)
-            else:
-                flat_logs.append(item)
+        flat_logs = data_access_logs
         
         violations = analyzer.detect_gdpr_violations(flat_logs)
         

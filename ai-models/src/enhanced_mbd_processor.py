@@ -212,8 +212,8 @@ class EnhancedMBDProcessor:
             if self.redis_client and processing_time < self.latency_thresholds['hot_processing']:
                 await self._cache_order_book_snapshot(event.symbol, order_book)
             
-            result['processing_latency_ns'] = int(processing_time)
-            result['processing_latency_us'] = float(processing_time / 1000)
+            result['processing_latency_ns'] = processing_time
+            result['processing_latency_us'] = processing_time / 1000
             
             return result
             
