@@ -7,6 +7,7 @@ Comprehensive knowledge base for causal inference, Pearl's Ladder of Causation, 
 - `foundational-concepts/` - Pearl's Ladder, causal inference theory, Rubin's framework
 - `system-guides/` - DoWhy/CausalNex integration, DAG identifiability testing
 - `ai-architecture/` - Microservices deployment, NLP/Voice interface, simulation engines with vector generation, auto-agent system for data gap resolution
+- `patent-avoidance/` - Patent-avoiding alternatives for options analysis using Brownian motion vectors and causal inference
 - `tutorials/` - Jupyter notebooks and hands-on examples with real financial data
 - `missing-components/` - MBD parsers, AI-RegTech compliance, dynamic granularity
 - `best-practices/` - Performance optimization, compliance guides, community resources
@@ -20,7 +21,8 @@ Comprehensive knowledge base for causal inference, Pearl's Ladder of Causation, 
 4. [NLP/Voice Interface](ai-architecture/nlp-voice-interface.md)
 5. [Hands-on Tutorial](tutorials/causal-inference-tutorial.ipynb)
 6. [MBD Parser Implementation](missing-components/mbd-parsers.py)
-7. [Performance Optimization](best-practices/performance-optimization.md)
+7. [Patent-Avoiding Options Analysis](patent-avoidance/options-analysis-alternatives.md)
+8. [Performance Optimization](best-practices/performance-optimization.md)
 
 ## Performance Requirements
 - **Latency**: <50μs overhead for knowledge base queries
