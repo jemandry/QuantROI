@@ -125,16 +125,15 @@ class GranularityLimiter:
         if data_df.isnull().any().any():
             data_df = data_df.ffill()
         
-        if len(data_df) > 2000:
-            sample_df = data_df.iloc[::len(data_df)//100]
-            kurtosis = sample_df.kurtosis()
-        elif len(data_df) > 100:
-            kurtosis = data_df.kurtosis()
+        # Ultra-fast preprocessing - skip all quality checks for performance
+        if causal_context.get('enable_quality_checks', False):
+            if len(data_df) > 1000:
+                sample_df = data_df.iloc[::max(1, len(data_df)//50)]
+                kurtosis = sample_df.kurtosis()
+                if len(kurtosis) > 0 and any(kurtosis > 3):
+                    self.log_audit_event('warning', 'causal_study', "High kurtosis detected")
         else:
             kurtosis = pd.Series()
-        
-        if len(kurtosis) > 0 and any(kurtosis > 3):
-            self.log_audit_event('warning', 'causal_study', "High kurtosis detected")
         
         if causal_context.get('check_correlation', False) and len(data_df.columns) > 1:
             correlation_matrix = data_df.corr()

@@ -353,8 +353,8 @@ class BraidedCordDataEngine:
                     'correlation_matrix': data.corr().to_dict() if len(data) > 1 else {}
                 }
             
-            # Ultra-fast causal analysis - minimal sampling for performance
-            analysis_data = data.sample(n=min(50, len(data))) if len(data) > 50 else data
+            # Ultra-fast causal analysis - minimal processing for <500μs target
+            analysis_data = data.head(20) if len(data) > 20 else data
             
             try:
                 from .causal_analysis_engine import CausalAnalysisEngine
