@@ -93,6 +93,8 @@ torch-cluster==1.6.3
 redis==6.3.0
 cryptography==45.0.6
 cffi==1.17.1
+neo4j==5.15.0
+python-dotenv==1.0.0
 
 # Testing Dependencies
 pytest==8.4.1
