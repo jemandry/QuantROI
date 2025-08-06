@@ -1,11 +1,12 @@
 # Braided Cord Data Engine Knowledge Base
 
 ## Overview
-Comprehensive knowledge base for causal inference, Pearl's Ladder of Causation, and financial data analysis with HFT performance optimization.
+Comprehensive knowledge base for causal inference, Pearl's Ladder of Causation, and financial data analysis with HFT performance optimization and AI architecture components.
 
 ## Structure
 - `foundational-concepts/` - Pearl's Ladder, causal inference theory, Rubin's framework
 - `system-guides/` - DoWhy/CausalNex integration, DAG identifiability testing
+- `ai-architecture/` - Microservices deployment, NLP/Voice interface, simulation engines with vector generation, auto-agent system for data gap resolution
 - `tutorials/` - Jupyter notebooks and hands-on examples with real financial data
 - `missing-components/` - MBD parsers, AI-RegTech compliance, dynamic granularity
 - `best-practices/` - Performance optimization, compliance guides, community resources
@@ -15,9 +16,11 @@ Comprehensive knowledge base for causal inference, Pearl's Ladder of Causation, 
 ## Quick Start
 1. [Pearl's Ladder of Causation](foundational-concepts/pearls-ladder.md)
 2. [DoWhy Integration Guide](system-guides/dowhy-integration.md)
-3. [Hands-on Tutorial](tutorials/causal-inference-tutorial.ipynb)
-4. [MBD Parser Implementation](missing-components/mbd-parsers.py)
-5. [Performance Optimization](best-practices/performance-optimization.md)
+3. [Microservices Architecture](ai-architecture/microservices-deployment.md)
+4. [NLP/Voice Interface](ai-architecture/nlp-voice-interface.md)
+5. [Hands-on Tutorial](tutorials/causal-inference-tutorial.ipynb)
+6. [MBD Parser Implementation](missing-components/mbd-parsers.py)
+7. [Performance Optimization](best-practices/performance-optimization.md)
 
 ## Performance Requirements
 - **Latency**: <50μs overhead for knowledge base queries

@@ -711,6 +711,106 @@ class CausalAIOrchestrator:
             "Retrain model with recent data for improved accuracy"
         ]
     
+    async def automated_ladder_progression(self, data: pd.DataFrame, 
+                                         treatment: str, outcome: str) -> Dict[str, Any]:
+        """Automated Pearl's Ladder progression with threshold-based escalation"""
+        results = {"ladder_progression": []}
+        
+        correlation = data[treatment].corr(data[outcome])
+        results["ladder_progression"].append({
+            "rung": 1,
+            "method": "correlation",
+            "result": correlation,
+            "significant": abs(correlation) > 0.3
+        })
+        
+        if abs(correlation) > 0.3:
+            try:
+                from dowhy import CausalModel
+                causal_model = CausalModel(
+                    data=data,
+                    treatment=treatment,
+                    outcome=outcome,
+                    graph="digraph { " + treatment + " -> " + outcome + "; }"
+                )
+                
+                identified_estimand = causal_model.identify_effect()
+                causal_estimate = causal_model.estimate_effect(
+                    identified_estimand,
+                    method_name="backdoor.propensity_score_matching"
+                )
+                
+                results["ladder_progression"].append({
+                    "rung": 2,
+                    "method": "do_calculus",
+                    "result": causal_estimate.value,
+                    "confidence_interval": causal_estimate.get_confidence_intervals(),
+                    "significant": causal_estimate.value != 0
+                })
+                
+                if causal_estimate.value != 0:
+                    counterfactual_result = await self._generate_counterfactuals(
+                        data, treatment, outcome, causal_model
+                    )
+                    results["ladder_progression"].append(counterfactual_result)
+            
+            except Exception as e:
+                results["ladder_progression"].append({
+                    "rung": 2,
+                    "method": "do_calculus",
+                    "error": str(e),
+                    "significant": False
+                })
+        
+        results["sensitivity_analysis"] = await self._calculate_e_values(results)
+        
+        return results
+    
+    async def _calculate_e_values(self, causal_results: Dict[str, Any]) -> Dict[str, float]:
+        """Calculate E-values for sensitivity analysis"""
+        e_values = {}
+        
+        for rung_result in causal_results["ladder_progression"]:
+            if rung_result["rung"] == 2 and "result" in rung_result:
+                effect_size = abs(rung_result["result"])
+                if effect_size > 1:
+                    e_value = effect_size + (effect_size * (effect_size - 1)) ** 0.5
+                else:
+                    e_value = 1.0
+                
+                e_values[f"rung_{rung_result['rung']}_e_value"] = e_value
+        
+        return e_values
+    
+    async def _generate_counterfactuals(self, data: pd.DataFrame, treatment: str, 
+                                      outcome: str, causal_model) -> Dict[str, Any]:
+        """Generate counterfactual analysis"""
+        try:
+            counterfactual_data = data.copy()
+            counterfactual_data[treatment] = 1 - counterfactual_data[treatment]
+            
+            counterfactual_estimate = causal_model.estimate_effect(
+                causal_model.identify_effect(),
+                method_name="backdoor.linear_regression",
+                target_units=counterfactual_data
+            )
+            
+            return {
+                "rung": 3,
+                "method": "counterfactuals",
+                "result": counterfactual_estimate.value,
+                "interpretation": f"Counterfactual effect: {counterfactual_estimate.value:.4f}",
+                "significant": abs(counterfactual_estimate.value) > 0.1
+            }
+        
+        except Exception as e:
+            return {
+                "rung": 3,
+                "method": "counterfactuals",
+                "error": str(e),
+                "significant": False
+            }
+    
     async def shutdown(self):
         """Shutdown the Causal AI Engine"""
         try:
