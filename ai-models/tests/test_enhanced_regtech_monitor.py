@@ -39,22 +39,34 @@ class TestAIComplianceAnalyzer:
     def test_detect_market_manipulation_suspicious(self, analyzer):
         """Test market manipulation detection with suspicious patterns"""
         dates = pd.date_range(start='2024-01-01', periods=100, freq='min')
-        base_prices = np.random.normal(100, 1, 100)
-        price_changes = np.diff(base_prices, prepend=base_prices[0])
-        volumes = 1000 + price_changes * 500  # High correlation
+        
+        base_prices = [100]
+        volumes = [1000]
+        
+        for i in range(99):
+            price_change_pct = np.random.normal(0, 0.02)  # 2% volatility
+            volume_change_pct = price_change_pct * 0.8 + np.random.normal(0, 0.01)  # High correlation
+            
+            new_price = base_prices[-1] * (1 + price_change_pct)
+            new_volume = volumes[-1] * (1 + volume_change_pct)
+            
+            base_prices.append(max(new_price, 50.0))
+            volumes.append(max(new_volume, 100.0))
         
         trading_data = pd.DataFrame({
             'price': base_prices,
             'volume': volumes,
-            'order_type': ['add'] * 80 + ['cancel'] * 20,  # High cancellation rate
-            'quantity': np.random.normal(100, 50, 100)
+            'order_type': ['add'] * 50 + ['cancel'] * 50,  # 50% cancellation rate
+            'quantity': [500] * 20 + [50] * 80  # 20% large orders (>90th percentile)
         }, index=dates)
         
         violations = analyzer.detect_market_manipulation(trading_data)
         
         assert isinstance(violations, list)
         violation_types = [v['type'] for v in violations]
+        
         assert len(violation_types) > 0
+        assert any('price_volume_manipulation' in vt or 'layering_spoofing' in vt for vt in violation_types)
     
     def test_detect_insider_trading(self, analyzer):
         """Test insider trading detection"""
