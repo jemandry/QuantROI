@@ -273,7 +273,10 @@ class KafkaCausalRouter:
                     'kafka_routing', 'signal_routing', audit_data
                 )
                 
-                return result.get('hash', 'no_hash')
+                if isinstance(result, dict):
+                    return result.get('hash', 'no_hash')
+                else:
+                    return str(result)
             
             return f"kafka_routing_hash_{signal.signal_id}"
             

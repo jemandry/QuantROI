@@ -298,7 +298,10 @@ class LadderEscalator:
                     'ladder_escalation', f'rung_{rung.value}_processing', audit_data
                 )
                 
-                return audit_result.get('hash', 'no_hash')
+                if isinstance(audit_result, dict):
+                    return audit_result.get('hash', 'no_hash')
+                else:
+                    return str(audit_result)
             
             return f"mock_hash_{int(time.time())}"
             
