@@ -1,0 +1,42 @@
+{
+  "name": "noir-enhanced-voting",
+  "version": "1.0.0",
+  "description": "Enhanced Noir ZKP integration for RIA voting system",
+  "main": "src/enhanced-noir-integration.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest --config jest.config.js",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "compile-circuits": "nargo build",
+    "check-circuits": "nargo check",
+    "lint": "eslint src tests --ext .ts",
+    "format": "prettier --write src tests"
+  },
+  "dependencies": {
+    "@noir-lang/backend_barretenberg": "^0.17.0",
+    "@noir-lang/noir_js": "^0.17.0",
+    "circomlib": "^2.0.5"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "eslint": "^8.57.1",
+    "jest": "^29.7.0",
+    "prettier": "^3.6.2",
+    "ts-jest": "^29.4.1",
+    "typescript": "^5.0.0"
+  },
+  "keywords": [
+    "noir",
+    "zkp",
+    "voting",
+    "plume",
+    "homomorphic",
+    "fintech"
+  ],
+  "author": "Enhanced RIA Team",
+  "license": "MIT"
+}
