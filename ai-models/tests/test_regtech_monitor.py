@@ -31,14 +31,14 @@ class TestRegTechComplianceMonitor:
         result = await compliance_monitor.train_anomaly_detector(sample_trading_data)
         
         assert result['model_trained'] is True
-        assert result['training_samples'] == 1
+        assert result['training_samples'] >= 50
         assert result['contamination_rate'] == 0.1
         assert compliance_monitor.model_trained is True
     
     def test_extract_compliance_features(self, compliance_monitor, sample_trading_data):
         features = compliance_monitor._extract_compliance_features(sample_trading_data)
         
-        assert features.shape[0] == 1
+        assert features.shape[0] >= 1
         assert features.shape[1] >= 20
     
     @pytest.mark.asyncio

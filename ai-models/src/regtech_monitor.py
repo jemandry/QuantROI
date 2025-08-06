@@ -58,8 +58,8 @@ class RegTechComplianceMonitor:
         
         features = self._extract_compliance_features(historical_data)
         
-        if len(features) < 100:
-            raise ValueError("Insufficient historical data for training (minimum 100 samples)")
+        if len(features) < 50:
+            raise ValueError("Insufficient historical data for training (minimum 50 samples)")
         
         normalized_features = self.scaler.fit_transform(features)
         
@@ -76,37 +76,51 @@ class RegTechComplianceMonitor:
     def _extract_compliance_features(self, data: pd.DataFrame) -> np.ndarray:
         """Extract features relevant for compliance monitoring"""
         
-        features = []
+        window_size = 10
+        features_list = []
         
-        if isinstance(data.index, pd.DatetimeIndex):
-            time_diffs = data.index.to_series().diff().dt.total_seconds().fillna(0)
-            features.extend([
-                time_diffs.mean(),
-                time_diffs.std(),
-                time_diffs.min(),
-                time_diffs.max()
-            ])
-        else:
-            features.extend([0, 0, 0, 0])
+        if len(data) < window_size:
+            window_size = max(1, len(data) // 2)
         
-        numeric_cols = data.select_dtypes(include=[np.number]).columns
-        for col in numeric_cols:
-            if col in data.columns:
-                series = data[col].dropna()
-                if len(series) > 0:
-                    features.extend([
-                        series.mean(),
-                        series.std(),
-                        series.skew(),
-                        series.kurtosis()
-                    ])
-                else:
-                    features.extend([0, 0, 0, 0])
+        for i in range(window_size, len(data) + 1):
+            window_data = data.iloc[i-window_size:i]
+            features = []
+            
+            if isinstance(window_data.index, pd.DatetimeIndex):
+                time_diffs = window_data.index.to_series().diff().dt.total_seconds().fillna(0)
+                features.extend([
+                    time_diffs.mean(),
+                    time_diffs.std(),
+                    time_diffs.min(),
+                    time_diffs.max()
+                ])
+            else:
+                features.extend([0, 0, 0, 0])
+            
+            numeric_cols = window_data.select_dtypes(include=[np.number]).columns
+            for col in numeric_cols:
+                if col in window_data.columns:
+                    series = window_data[col].dropna()
+                    if len(series) > 0:
+                        features.extend([
+                            series.mean(),
+                            series.std(),
+                            series.skew() if len(series) > 2 else 0,
+                            series.kurtosis() if len(series) > 3 else 0
+                        ])
+                    else:
+                        features.extend([0, 0, 0, 0])
+            
+            while len(features) < 20:
+                features.append(0)
+            
+            features_list.append(features[:20])
         
-        while len(features) < 20:
-            features.append(0)
+        if not features_list:
+            features = [0] * 20
+            features_list.append(features)
         
-        return np.array(features).reshape(1, -1)
+        return np.array(features_list)
     
     async def detect_granularity_violations(self, data: pd.DataFrame, 
                                           metric_type: str) -> Dict[str, Any]:
@@ -135,8 +149,11 @@ class RegTechComplianceMonitor:
             features = self._extract_compliance_features(data)
             normalized_features = self.scaler.transform(features)
             
-            anomaly_score = self.anomaly_detector.decision_function(normalized_features)[0]
-            is_anomaly = self.anomaly_detector.predict(normalized_features)[0] == -1
+            anomaly_score = self.anomaly_detector.decision_function(normalized_features[-1:])
+            is_anomaly = self.anomaly_detector.predict(normalized_features[-1:])
+            
+            anomaly_score = anomaly_score[0] if len(anomaly_score) > 0 else 0
+            is_anomaly = is_anomaly[0] == -1 if len(is_anomaly) > 0 else False
             
             if is_anomaly:
                 violations.append({

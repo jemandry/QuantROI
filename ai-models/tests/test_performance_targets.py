@@ -147,7 +147,7 @@ class TestPerformanceTargets:
                     'timestamp': time.time_ns()
                 }
                 
-                result = await engine.route_data('market_data', event_data, 'hot')
+                result = await engine.route_data_to_cord('market_data', event_data)
                 events_processed += 1
         
         end_time = time.time()
