@@ -99,7 +99,12 @@ class OptionPerformanceMonitor:
         
         speed_improvement = self._calculate_speed_improvement(processing_time, symbol_count)
         memory_savings = self._calculate_memory_savings(memory_used, symbol_count)
-        target_met = (speed_improvement >= 20 and memory_savings >= 60 and avg_accuracy >= 0.65)
+        
+        latency_target_met = processing_time * 1000 < 50  # Sub-50ms requirement
+        speed_target_met = speed_improvement >= 10  # 10x speed improvement from pitch
+        accuracy_target_met = avg_accuracy >= 0.95  # >95% accuracy requirement
+        
+        target_met = (speed_target_met and memory_savings >= 60 and accuracy_target_met and latency_target_met)
         
         benchmark = PerformanceBenchmark(
             operation=operation,
@@ -121,11 +126,16 @@ class OptionPerformanceMonitor:
             accuracy_score.labels(model='uoa_detector').set(avg_accuracy)
         
         self.logger.info(f"Benchmark completed: {operation}")
-        self.logger.info(f"  Processing time: {processing_time:.3f}s")
+        self.logger.info(f"  Processing time: {processing_time:.3f}s ({processing_time*1000:.1f}ms)")
         self.logger.info(f"  Memory used: {memory_used:.2f}MB")
         self.logger.info(f"  Throughput: {throughput:.2f} ops/sec")
         self.logger.info(f"  Accuracy: {avg_accuracy*100:.1f}%")
-        self.logger.info(f"  Target met: {target_met}")
+        self.logger.info(f"  Speed improvement: {speed_improvement:.1f}x")
+        self.logger.info(f"  Memory savings: {memory_savings:.1f}%")
+        self.logger.info(f"  Sub-50ms latency: {'✓ PASS' if latency_target_met else '✗ FAIL'}")
+        self.logger.info(f"  10x speed target: {'✓ PASS' if speed_target_met else '✗ FAIL'}")
+        self.logger.info(f"  >95% accuracy: {'✓ PASS' if accuracy_target_met else '✗ FAIL'}")
+        self.logger.info(f"  Overall target met: {target_met}")
         
         return benchmark
     
@@ -177,9 +187,10 @@ class OptionPerformanceMonitor:
                 for b in latest_benchmarks
             ],
             'targets': {
-                'speed_improvement': '20-30x',
+                'speed_improvement': '10x (pitch requirement)',
                 'memory_savings': '60-80%',
-                'accuracy': '>65%',
-                'sharpe_ratio': '>2.0'
+                'accuracy': '>95% (pitch requirement)',
+                'latency': '<50ms (pitch requirement)',
+                'sharpe_ratio': '>2.0 (40% boost target)'
             }
         }
