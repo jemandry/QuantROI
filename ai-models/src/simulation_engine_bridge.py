@@ -39,6 +39,19 @@ class SimulationResult:
     simulation_id: str
     latency_ms: float
     audit_trail: List[str]
+    volatilities: Optional[List[float]] = None
+
+@dataclass
+class HestonRequest:
+    s0: float      # Initial stock price
+    v0: float      # Initial volatility
+    mu: float      # Drift rate
+    kappa: float   # Mean reversion speed
+    theta: float   # Long-term volatility
+    sigma_v: float # Volatility of volatility
+    rho: float     # Correlation between price and volatility
+    dt: float      # Time step
+    t: float       # Total time
 
 class SimulationEngineBridge:
     """
@@ -452,3 +465,103 @@ class SimulationEngineBridge:
         except Exception as e:
             logger.error(f"Rust module build error: {e}")
             return {'error': str(e)}
+    
+    async def simulate_heston_model(self, request: HestonRequest) -> SimulationResult:
+        """Simulate Heston stochastic volatility model"""
+        start_time = time.time()
+        simulation_id = f"heston_{int(time.time() * 1000)}"
+        
+        try:
+            if self.rust_module and self.performance_metrics['rust_bridge_active']:
+                result = await self._rust_simulate_heston(request, simulation_id)
+            else:
+                result = await self._python_simulate_heston(request, simulation_id)
+            
+            result.latency_ms = (time.time() - start_time) * 1000
+            self._update_performance_metrics(result)
+            
+            await self.audit_manager.log_audit_event(
+                'heston_simulation',
+                'simulation_bridge',
+                f"Heston simulation completed: {len(result.prices)} steps, {result.latency_ms:.2f}ms"
+            )
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Heston simulation error: {e}")
+            return SimulationResult(
+                prices=[request.s0],
+                times=[0.0],
+                velocities=[0.0],
+                accelerations=[0.0],
+                volatilities=[request.v0],
+                simulation_id=simulation_id,
+                latency_ms=(time.time() - start_time) * 1000,
+                audit_trail=[f"Error: {str(e)}"]
+            )
+    
+    async def _python_simulate_heston(self, request: HestonRequest, simulation_id: str) -> SimulationResult:
+        """Python implementation of Heston stochastic volatility model"""
+        try:
+            n_steps = int(request.t / request.dt)
+            dt = request.dt
+            
+            prices = [request.s0]
+            volatilities = [request.v0]
+            times = [0.0]
+            velocities = [0.0]
+            accelerations = [0.0]
+            
+            current_price = request.s0
+            current_vol = request.v0
+            previous_velocity = 0.0
+            
+            np.random.seed(int(time.time() * 1000) % 2**32)
+            
+            for i in range(1, n_steps + 1):
+                dw1 = np.random.normal(0, np.sqrt(dt))
+                dw2_independent = np.random.normal(0, np.sqrt(dt))
+                dw2 = request.rho * dw1 + np.sqrt(1 - request.rho**2) * dw2_independent
+                
+                vol_drift = request.kappa * (request.theta - current_vol) * dt
+                vol_diffusion = request.sigma_v * np.sqrt(max(current_vol, 0)) * dw2
+                current_vol = max(current_vol + vol_drift + vol_diffusion, 0.001)  # Floor at 0.1%
+                
+                price_drift = request.mu * current_price * dt
+                price_diffusion = np.sqrt(max(current_vol, 0)) * current_price * dw1
+                current_price = current_price + price_drift + price_diffusion
+                
+                current_time = i * dt
+                
+                velocity = (current_price - prices[-1]) / dt if i > 1 else 0.0
+                acceleration = (velocity - previous_velocity) / dt if i > 1 else 0.0
+                
+                prices.append(current_price)
+                volatilities.append(current_vol)
+                times.append(current_time)
+                velocities.append(velocity)
+                accelerations.append(acceleration)
+                
+                previous_velocity = velocity
+            
+            audit_trail = [f"Python Heston simulation: {n_steps} steps, dt={dt}, kappa={request.kappa}"]
+            
+            return SimulationResult(
+                prices=prices,
+                times=times,
+                velocities=velocities,
+                accelerations=accelerations,
+                volatilities=volatilities,
+                simulation_id=simulation_id,
+                latency_ms=0.0,
+                audit_trail=audit_trail
+            )
+            
+        except Exception as e:
+            logger.error(f"Python Heston simulation error: {e}")
+            raise
+    
+    async def _rust_simulate_heston(self, request: HestonRequest, simulation_id: str) -> SimulationResult:
+        """Use Rust module for Heston simulation (placeholder for future implementation)"""
+        return await self._python_simulate_heston(request, simulation_id)

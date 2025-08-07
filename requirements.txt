@@ -85,3 +85,13 @@ pmdarima>=2.0.0
 
 # Note: pyo3 and maturin removed due to Python 3.12 compatibility issues
 # Rust simulation bridge will use Python fallback implementation
+
+# ETF and Market Data
+yfinance>=0.2.0
+
+# High-performance storage
+pyarrow>=21.0.0
+polars>=0.20.0
+
+# Additional technical analysis
+ta-lib>=0.4.0
