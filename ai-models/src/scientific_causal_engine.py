@@ -423,10 +423,17 @@ class ScientificCausalEngine:
     
     def _record_hallucination(self, 
                             causal_claim: str,
-                            hallucination_type: HallucinationType,
-                            validation_failed: Dict[str, Any],
-                            market_context: Dict[str, Any]):
+                            hallucination_type: HallucinationType = None,
+                            validation_failed: Dict[str, Any] = None,
+                            market_context: Dict[str, Any] = None):
         """Record detected hallucination for outlier study"""
+        
+        if hallucination_type is None:
+            hallucination_type = HallucinationType.STATISTICAL_VIOLATION
+        if validation_failed is None:
+            validation_failed = {"reason": "statistical_violation"}
+        if market_context is None:
+            market_context = {}
         
         hallucination_id = hashlib.sha256(
             f"{causal_claim}_{datetime.now().isoformat()}".encode()
@@ -453,8 +460,8 @@ class ScientificCausalEngine:
         self._log_audit_event(
             event_type="hallucination_detected",
             causal_claim=causal_claim,
-            validation_result=json.dumps(validation_failed),
-            market_context=json.dumps(anonymized_context)
+            validation_result=json.dumps(validation_failed, default=str),
+            market_context=json.dumps(anonymized_context, default=str)
         )
         
         self.logger.warning(f"Recorded hallucination {hallucination_id}: {hallucination_type.value}")
@@ -826,11 +833,11 @@ class ScientificCausalEngine:
                 hallucination.hallucination_type.value,
                 hallucination.detected_at.isoformat(),
                 hallucination.causal_claim,
-                json.dumps(hallucination.evidence_provided),
-                json.dumps(hallucination.validation_failed),
+                json.dumps(hallucination.evidence_provided, default=str),
+                json.dumps(hallucination.validation_failed, default=str),
                 hallucination.market_regime,
-                hallucination.vix_level,
-                json.dumps(hallucination.anonymized_context),
+                float(hallucination.vix_level) if hallucination.vix_level is not None else 0.0,
+                json.dumps(hallucination.anonymized_context, default=str),
                 hallucination.error_cause
             ))
             
@@ -866,8 +873,8 @@ class ScientificCausalEngine:
                 kwargs.get('agent_id'),
                 kwargs.get('action'),
                 kwargs.get('causal_claim'),
-                kwargs.get('validation_result'),
-                kwargs.get('market_context'),
+                json.dumps(kwargs.get('validation_result', '{}'), default=str) if not isinstance(kwargs.get('validation_result'), str) else kwargs.get('validation_result', '{}'),
+                json.dumps(kwargs.get('market_context', '{}'), default=str) if not isinstance(kwargs.get('market_context'), str) else kwargs.get('market_context', '{}'),
                 kwargs.get('authorization_hash')
             ))
             
