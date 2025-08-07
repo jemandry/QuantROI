@@ -9,9 +9,10 @@ import hashlib
 class MBDProcessor:
     """Specialized processor for Message Book Data (MBD) order book reconstruction"""
     
-    def __init__(self, max_depth: int = 10, granularity_limiter=None):
+    def __init__(self, max_depth: int = 10, granularity_limiter=None, redis_client=None):
         self.max_depth = max_depth
         self.granularity_limiter = granularity_limiter
+        self.redis_client = redis_client
         self.order_books = {}
         self.event_processors = {
             'A': self._process_add_order,

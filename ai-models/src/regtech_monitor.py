@@ -14,11 +14,13 @@ except ImportError:
     from mock_sklearn import MockStandardScaler as StandardScaler
     SKLEARN_AVAILABLE = False
 
-class RegTechComplianceMonitor:
+class RegTechMonitor:
     """AI-driven compliance monitoring for granularity and trading violations"""
     
-    def __init__(self, anomaly_threshold: float = 0.1):
+    def __init__(self, anomaly_threshold: float = 0.1, compliance_engine=None, redis_client=None):
         self.anomaly_threshold = anomaly_threshold
+        self.compliance_engine = compliance_engine
+        self.redis_client = redis_client
         self.anomaly_detector = IsolationForest(contamination=anomaly_threshold, random_state=42)
         self.scaler = StandardScaler()
         self.compliance_rules = {}

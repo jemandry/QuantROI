@@ -65,3 +65,60 @@ spec:
   selector:
     {{- include "pearl-ladder.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: kafka-router
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "pearl-ladder.fullname" . }}-nlp-voice-interface
+  labels:
+    {{- include "pearl-ladder.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nlp-voice-interface
+spec:
+  type: {{ .Values.nlpVoiceInterface.service.type }}
+  ports:
+    - port: {{ .Values.nlpVoiceInterface.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "pearl-ladder.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: nlp-voice-interface
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "pearl-ladder.fullname" . }}-auto-agent
+  labels:
+    {{- include "pearl-ladder.labels" . | nindent 4 }}
+    app.kubernetes.io/component: auto-agent
+spec:
+  type: {{ .Values.autoAgent.service.type }}
+  ports:
+    - port: {{ .Values.autoAgent.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "pearl-ladder.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: auto-agent
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "pearl-ladder.fullname" . }}-simulation-engine
+  labels:
+    {{- include "pearl-ladder.labels" . | nindent 4 }}
+    app.kubernetes.io/component: simulation-engine
+spec:
+  type: {{ .Values.simulationEngine.service.type }}
+  ports:
+    - port: {{ .Values.simulationEngine.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "pearl-ladder.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: simulation-engine
