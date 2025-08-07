@@ -1,0 +1,101 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "QuantROI GPU Performance Dashboard",
+    "tags": ["quantroi", "gpu", "vix", "regime-detection"],
+    "style": "dark",
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "GPU Utilization",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "nvidia_gpu_utilization_gpu",
+            "legendFormat": "GPU {{gpu}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "min": 0,
+            "max": 100
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "GPU Memory Usage",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "nvidia_gpu_memory_used_bytes / nvidia_gpu_memory_total_bytes * 100",
+            "legendFormat": "GPU {{gpu}} Memory"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "min": 0,
+            "max": 100
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "VIX Regime Detection Performance",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(quantroi_regime_detections_total[5m])",
+            "legendFormat": "Detections/sec"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8}
+      },
+      {
+        "id": 4,
+        "title": "SABR Calibration Speedup",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "quantroi_sabr_gpu_speedup_factor",
+            "legendFormat": "Speedup Factor"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "min": 1
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+      },
+      {
+        "id": 5,
+        "title": "Monte Carlo Simulation Performance",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "quantroi_monte_carlo_paths_per_second",
+            "legendFormat": "Paths/sec"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short"
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "refresh": "10s"
+  }
+}

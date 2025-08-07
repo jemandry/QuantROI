@@ -1,0 +1,226 @@
+version: '3.8'
+
+services:
+  # Infrastructure Services
+  neo4j:
+    image: neo4j:5.13
+    environment:
+      NEO4J_AUTH: neo4j/password
+      NEO4J_PLUGINS: '["apoc"]'
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+    networks:
+      - quantroi-network
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - quantroi-network
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+    networks:
+      - quantroi-network
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - quantroi-network
+
+  mlflow:
+    image: python:3.12-slim
+    command: >
+      bash -c "pip install mlflow psycopg2-binary &&
+               mlflow server --host 0.0.0.0 --port 5000 
+               --backend-store-uri postgresql://mlflow:password@postgres:5432/mlflow
+               --default-artifact-root s3://mlflow-artifacts/"
+    ports:
+      - "5000:5000"
+    depends_on:
+      - postgres
+    environment:
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+    networks:
+      - quantroi-network
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: mlflow
+      POSTGRES_USER: mlflow
+      POSTGRES_PASSWORD: password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - quantroi-network
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    volumes:
+      - minio_data:/data
+    networks:
+      - quantroi-network
+
+  ipfs:
+    image: ipfs/kubo:latest
+    ports:
+      - "4001:4001"
+      - "5001:5001"
+      - "8080:8080"
+    volumes:
+      - ipfs_data:/data/ipfs
+    networks:
+      - quantroi-network
+
+  # Application Services
+  main-orchestrator:
+    build:
+      context: .
+      target: main-orchestrator
+    ports:
+      - "8000:8000"
+    environment:
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: password
+      REDIS_URL: redis://redis:6379
+      KAFKA_SERVERS: kafka:9092
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      IPFS_API_URL: /ip4/ipfs/tcp/5001
+    depends_on:
+      - neo4j
+      - redis
+      - kafka
+      - mlflow
+      - ipfs
+    networks:
+      - quantroi-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  causal-ai-engine:
+    build:
+      context: .
+      target: causal-ai
+    ports:
+      - "8001:8001"
+    environment:
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: password
+      KAFKA_SERVERS: kafka:9092
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+    depends_on:
+      - neo4j
+      - kafka
+      - mlflow
+    networks:
+      - quantroi-network
+
+  compliance-engine:
+    build:
+      context: .
+      target: compliance-engine
+    ports:
+      - "8002:8002"
+    environment:
+      SEC_SUBMISSION_URL: https://www.sec.gov/edgar/submit
+      AUDIT_RETENTION_YEARS: 7
+    volumes:
+      - compliance_reports:/app/reports
+    networks:
+      - quantroi-network
+
+  solana-contracts:
+    build:
+      context: .
+      target: solana-contracts
+    ports:
+      - "8003:8003"
+    environment:
+      ANCHOR_PROVIDER_URL: http://localhost:8899
+    networks:
+      - quantroi-network
+
+  # Frontend Service
+  frontend:
+    build:
+      context: .
+      target: frontend-builder
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://main-orchestrator:8000
+      NEXT_PUBLIC_GRAPHQL_URL: http://main-orchestrator:8000/graphql
+    depends_on:
+      - main-orchestrator
+    networks:
+      - quantroi-network
+
+  # Monitoring Services
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    networks:
+      - quantroi-network
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - quantroi-network
+
+volumes:
+  neo4j_data:
+  redis_data:
+  postgres_data:
+  minio_data:
+  ipfs_data:
+  compliance_reports:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  quantroi-network:
+    driver: bridge
