@@ -169,10 +169,31 @@ global:
   storageClass: ""
 
 autoscaling:
-  enabled: false
-  minReplicas: 1
-  maxReplicas: 100
-  targetCPUUtilizationPercentage: 80
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 50
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+  customMetrics:
+    enabled: true
+    executionTimeThreshold: "100m"  # 100ms execution time triggers scale up
+    tradesPerSecondThreshold: "1000m"  # Scale up when trades/sec drops below 1000
+  scaleUp:
+    stabilizationWindowSeconds: 60
+    percentIncrease: 100
+    maxPodsIncrease: 3
+    periodSeconds: 60
+  scaleDown:
+    stabilizationWindowSeconds: 300
+    percentDecrease: 10
+    periodSeconds: 60
+  gpuAutoscaling:
+    enabled: true
+    nodeSelector:
+      accelerator: nvidia-tesla-v100
+    minNodes: 1
+    maxNodes: 10
+    targetGPUUtilization: 80
 
 image:
   repository: nginx

@@ -125,6 +125,10 @@ class SystemHealthMonitor:
         self.alert_history = []
         self.last_alert_times: Dict[str, datetime] = {}
         
+        self.analytics_engine = AnalyticsEngine()
+        
+        self.scaling_history = []
+        
     async def start_trade_timing(self, trade_id: str, symbol: str, order_type: str, 
                                 quantity: float, expected_price: float) -> ExecutionTiming:
         """Start timing a new trade execution"""
@@ -236,6 +240,7 @@ class SystemHealthMonitor:
             )
     
     async def get_system_health_metrics(self) -> SystemHealthMetrics:
+        """Get comprehensive system health metrics including auto-scaling triggers"""
         """Generate current system health metrics"""
         current_time = datetime.now()
         
@@ -311,6 +316,9 @@ class SystemHealthMonitor:
         )
         
         self.system_metrics_history.append(metrics)
+        
+        await self._evaluate_autoscaling_triggers(metrics)
+        
         return metrics
     
     async def _analyze_edge_optimization(self, timing: ExecutionTiming, phase: ExecutionPhase) -> None:
@@ -564,6 +572,147 @@ class SystemHealthMonitor:
         self.last_alert_times.clear()
         
         logger.info("System health metrics reset")
+    
+    async def _evaluate_autoscaling_triggers(self, metrics: SystemHealthMetrics):
+        """Evaluate if auto-scaling should be triggered based on performance metrics"""
+        try:
+            scaling_decision = {
+                'timestamp': time.time(),
+                'metrics': {
+                    'avg_execution_time_ms': metrics.avg_execution_time_ms,
+                    'trades_per_second': metrics.trades_per_second,
+                    'system_utilization_percent': metrics.system_utilization_percent,
+                    'p95_execution_time_ms': metrics.p95_execution_time_ms
+                },
+                'scaling_actions': []
+            }
+            
+            if metrics.avg_execution_time_ms > 100:  # >100ms execution time
+                scaling_decision['scaling_actions'].append({
+                    'action': 'scale_up_cpu',
+                    'reason': f'High execution time: {metrics.avg_execution_time_ms:.1f}ms',
+                    'urgency': 'high' if metrics.avg_execution_time_ms > 200 else 'medium'
+                })
+            
+            if metrics.trades_per_second < 1000:  # <1000 trades/sec
+                scaling_decision['scaling_actions'].append({
+                    'action': 'scale_up_replicas',
+                    'reason': f'Low throughput: {metrics.trades_per_second:.0f} trades/sec',
+                    'urgency': 'high' if metrics.trades_per_second < 500 else 'medium'
+                })
+            
+            if metrics.system_utilization_percent > 85:  # >85% system utilization
+                scaling_decision['scaling_actions'].append({
+                    'action': 'scale_up_nodes',
+                    'reason': f'High system utilization: {metrics.system_utilization_percent:.1f}%',
+                    'urgency': 'high' if metrics.system_utilization_percent > 95 else 'medium'
+                })
+            
+            if hasattr(self, 'analytics_engine') and self.analytics_engine.is_trained:
+                ml_workload_high = len(self.execution_timings) > 100  # High ML processing load
+                if ml_workload_high and metrics.avg_execution_time_ms > 2:
+                    scaling_decision['scaling_actions'].append({
+                        'action': 'scale_up_gpu',
+                        'reason': 'High ML workload with performance degradation',
+                        'urgency': 'medium'
+                    })
+            
+            if (metrics.avg_execution_time_ms < 30 and 
+                metrics.trades_per_second > 5000 and 
+                metrics.system_utilization_percent < 40):
+                scaling_decision['scaling_actions'].append({
+                    'action': 'scale_down_replicas',
+                    'reason': 'Low resource utilization with good performance',
+                    'urgency': 'low'
+                })
+            
+            if scaling_decision['scaling_actions']:
+                if hasattr(self, 'audit_manager') and self.audit_manager:
+                    await self.audit_manager.log_audit_event(
+                        component="system_health_monitor",
+                        event_type="autoscaling_decision",
+                        data=scaling_decision,
+                        source_id="health_monitor_autoscaler"
+                    )
+                
+                await self._emit_scaling_metrics(scaling_decision)
+                
+        except Exception as e:
+            logger.error(f"Error evaluating auto-scaling triggers: {e}")
+    
+    async def _emit_scaling_metrics(self, scaling_decision: Dict[str, Any]):
+        """Emit custom metrics for Kubernetes HPA consumption"""
+        try:
+            metrics_data = {
+                'system_health_execution_time_ms': scaling_decision['metrics']['avg_execution_time_ms'],
+                'system_health_trades_per_second': scaling_decision['metrics']['trades_per_second'],
+                'system_health_utilization_percent': scaling_decision['metrics']['system_utilization_percent'],
+                'system_health_scaling_urgency': len([a for a in scaling_decision['scaling_actions'] if a['urgency'] == 'high'])
+            }
+            
+            logger.info(f"AUTOSCALING_METRICS: {json.dumps(metrics_data)}")
+            
+            if not hasattr(self, 'scaling_history'):
+                self.scaling_history = []
+            
+            self.scaling_history.append(scaling_decision)
+            
+            if len(self.scaling_history) > 100:
+                self.scaling_history = self.scaling_history[-100:]
+                
+        except Exception as e:
+            logger.error(f"Error emitting scaling metrics: {e}")
+    
+    def get_scaling_recommendations(self) -> Dict[str, Any]:
+        """Get current auto-scaling recommendations"""
+        if not hasattr(self, 'scaling_history') or not self.scaling_history:
+            return {'status': 'no_scaling_history', 'recommendations': []}
+        
+        recent_decisions = self.scaling_history[-10:]  # Last 10 decisions
+        
+        scale_up_frequency = sum(1 for d in recent_decisions 
+                               if any(a['action'].startswith('scale_up') for a in d['scaling_actions']))
+        
+        scale_down_frequency = sum(1 for d in recent_decisions 
+                                 if any(a['action'].startswith('scale_down') for a in d['scaling_actions']))
+        
+        recommendations = []
+        
+        if scale_up_frequency > 7:  # Frequent scale-ups
+            recommendations.append({
+                'type': 'infrastructure',
+                'priority': 'high',
+                'recommendation': 'Consider increasing baseline capacity - frequent scale-ups detected',
+                'evidence': f'{scale_up_frequency}/10 recent decisions triggered scale-up'
+            })
+        
+        if scale_down_frequency > 5:  # Frequent scale-downs
+            recommendations.append({
+                'type': 'cost_optimization',
+                'priority': 'medium', 
+                'recommendation': 'Consider reducing baseline capacity - frequent scale-downs detected',
+                'evidence': f'{scale_down_frequency}/10 recent decisions triggered scale-down'
+            })
+        
+        # GPU-specific recommendations
+        gpu_scaling = sum(1 for d in recent_decisions 
+                         if any(a['action'] == 'scale_up_gpu' for a in d['scaling_actions']))
+        
+        if gpu_scaling > 3:
+            recommendations.append({
+                'type': 'ml_optimization',
+                'priority': 'high',
+                'recommendation': 'Consider dedicated GPU nodes for ML workloads',
+                'evidence': f'{gpu_scaling}/10 recent decisions required GPU scaling'
+            })
+        
+        return {
+            'status': 'analysis_complete',
+            'recent_decisions_analyzed': len(recent_decisions),
+            'scale_up_frequency': scale_up_frequency,
+            'scale_down_frequency': scale_down_frequency,
+            'recommendations': recommendations
+        }
 
 class AnalyticsEngine:
     """ML-based analytics engine for system health optimization"""

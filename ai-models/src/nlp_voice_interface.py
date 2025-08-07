@@ -1086,5 +1086,110 @@ async def get_weekly_analytics_report():
         logger.error(f"Weekly report generation error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/system-health/scaling-recommendations")
+async def get_scaling_recommendations():
+    """Get auto-scaling recommendations based on system health patterns"""
+    if not nlp_interface or not hasattr(nlp_interface, 'health_monitor'):
+        raise HTTPException(status_code=500, detail="Health monitor not initialized")
+    
+    try:
+        recommendations = nlp_interface.health_monitor.get_scaling_recommendations()
+        return recommendations
+    except Exception as e:
+        logger.error(f"Scaling recommendations error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/system-health/trigger-scaling")
+async def trigger_manual_scaling(scaling_request: dict):
+    """Manually trigger scaling action for testing or emergency situations"""
+    if not nlp_interface or not hasattr(nlp_interface, 'health_monitor'):
+        raise HTTPException(status_code=500, detail="Health monitor not initialized")
+    
+    try:
+        action = scaling_request.get('action')
+        target = scaling_request.get('target', 'default')
+        reason = scaling_request.get('reason', 'Manual trigger')
+        
+        if action not in ['scale_up_cpu', 'scale_up_replicas', 'scale_up_nodes', 'scale_up_gpu', 'scale_down_replicas']:
+            raise HTTPException(status_code=400, detail="Invalid scaling action")
+        
+        manual_decision = {
+            'timestamp': time.time(),
+            'metrics': {},
+            'scaling_actions': [{
+                'action': action,
+                'reason': reason,
+                'urgency': 'manual'
+            }]
+        }
+        
+        await nlp_interface.health_monitor._emit_scaling_metrics(manual_decision)
+        
+        return {
+            'status': 'scaling_triggered',
+            'action': action,
+            'target': target,
+            'reason': reason,
+            'timestamp': manual_decision['timestamp']
+        }
+        
+    except Exception as e:
+        logger.error(f"Manual scaling trigger error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/system-health/scaling-recommendations")
+async def get_scaling_recommendations():
+    """Get auto-scaling recommendations based on system health analysis"""
+    if not nlp_interface or not hasattr(nlp_interface, 'health_monitor'):
+        raise HTTPException(status_code=500, detail="Health monitor not initialized")
+    
+    try:
+        recommendations = nlp_interface.health_monitor.get_scaling_recommendations()
+        return {
+            "status": "success",
+            "timestamp": time.time(),
+            "scaling_analysis": recommendations
+        }
+    except Exception as e:
+        logger.error(f"Scaling recommendations error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/system-health/trigger-scaling")
+async def trigger_manual_scaling(scaling_action: dict):
+    """Manually trigger scaling action for testing/emergency situations"""
+    if not nlp_interface or not hasattr(nlp_interface, 'health_monitor'):
+        raise HTTPException(status_code=500, detail="Health monitor not initialized")
+    
+    try:
+        valid_actions = ['scale_up_cpu', 'scale_up_replicas', 'scale_up_nodes', 'scale_up_gpu', 'scale_down_replicas']
+        if scaling_action.get('action') not in valid_actions:
+            raise HTTPException(status_code=400, detail=f"Invalid scaling action. Valid actions: {valid_actions}")
+        
+        manual_decision = {
+            'timestamp': time.time(),
+            'source': 'manual_trigger',
+            'action': scaling_action.get('action'),
+            'reason': scaling_action.get('reason', 'Manual scaling trigger'),
+            'urgency': scaling_action.get('urgency', 'medium')
+        }
+        
+        if hasattr(nlp_interface.health_monitor, 'audit_manager') and nlp_interface.health_monitor.audit_manager:
+            await nlp_interface.health_monitor.audit_manager.log_audit_event(
+                component="system_health_monitor",
+                event_type="manual_scaling_trigger",
+                data=manual_decision,
+                source_id="manual_scaling_api"
+            )
+        
+        return {
+            "status": "scaling_triggered",
+            "timestamp": time.time(),
+            "scaling_decision": manual_decision
+        }
+        
+    except Exception as e:
+        logger.error(f"Manual scaling trigger error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8004)
