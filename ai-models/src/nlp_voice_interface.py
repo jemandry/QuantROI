@@ -917,6 +917,46 @@ async def websocket_endpoint(websocket: WebSocket):
                     'type': 'preference_updated',
                     'data': {'status': 'success', 'preferences': preferences}
                 })
+            
+            elif data.get('type') == 'health_monitoring_subscribe':
+                user_id = data.get('user_id', 'websocket_user')
+                
+                if not hasattr(nlp_interface, 'health_monitor'):
+                    from system_health_monitor import SystemHealthMonitor
+                    nlp_interface.health_monitor = SystemHealthMonitor()
+                
+                health_metrics = await nlp_interface.health_monitor.get_system_health_metrics()
+                
+                await websocket.send_json({
+                    'type': 'health_status_update',
+                    'data': {
+                        'avg_execution_time_ms': health_metrics.avg_execution_time_ms,
+                        'active_alerts': health_metrics.active_alerts,
+                        'optimization_suggestions': health_metrics.optimization_suggestions,
+                        'system_utilization_percent': health_metrics.system_utilization_percent,
+                        'timestamp': time.time()
+                    }
+                })
+            
+            elif data.get('type') == 'trade_execution_start':
+                trade_data = data.get('trade_data', {})
+                
+                if hasattr(nlp_interface, 'health_monitor'):
+                    timing = await nlp_interface.health_monitor.start_trade_timing(
+                        trade_data.get('trade_id'),
+                        trade_data.get('symbol'),
+                        trade_data.get('order_type'),
+                        trade_data.get('quantity'),
+                        trade_data.get('expected_price')
+                    )
+                    
+                    await websocket.send_json({
+                        'type': 'trade_timing_started',
+                        'data': {
+                            'trade_id': timing.trade_id,
+                            'timestamp': time.time()
+                        }
+                    })
                 
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
@@ -998,6 +1038,53 @@ async def get_metrics():
         raise HTTPException(status_code=500, detail="Interface not initialized")
     
     return nlp_interface.get_performance_stats()
+
+@app.get("/system-health/dashboard")
+async def get_system_health_dashboard():
+    """Get comprehensive system health dashboard data"""
+    if not nlp_interface:
+        raise HTTPException(status_code=500, detail="Interface not initialized")
+    
+    if not hasattr(nlp_interface, 'health_monitor'):
+        from system_health_monitor import SystemHealthMonitor
+        nlp_interface.health_monitor = SystemHealthMonitor()
+    
+    try:
+        health_metrics = await nlp_interface.health_monitor.get_system_health_metrics()
+        edge_report = nlp_interface.health_monitor.get_edge_optimization_report()
+        
+        return {
+            "status": "healthy",
+            "timestamp": time.time(),
+            "health_metrics": {
+                "avg_execution_time_ms": health_metrics.avg_execution_time_ms,
+                "p95_execution_time_ms": health_metrics.p95_execution_time_ms,
+                "avg_slippage_bps": health_metrics.avg_slippage_bps,
+                "trades_per_second": health_metrics.trades_per_second,
+                "api_response_time_ms": health_metrics.api_response_time_ms,
+                "system_utilization_percent": health_metrics.system_utilization_percent,
+                "active_alerts": len(health_metrics.active_alerts) if hasattr(health_metrics, 'active_alerts') else 0,
+                "optimization_suggestions": len(health_metrics.optimization_suggestions) if hasattr(health_metrics, 'optimization_suggestions') else 0
+            },
+            "edge_optimization": edge_report,
+            "routing_stats": nlp_interface.routing_engine.get_routing_stats() if hasattr(nlp_interface, 'routing_engine') and nlp_interface.routing_engine else {}
+        }
+    except Exception as e:
+        logger.error(f"System health dashboard error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/system-health/weekly-report")
+async def get_weekly_analytics_report():
+    """Get weekly analytics report with visualizations"""
+    if not nlp_interface or not hasattr(nlp_interface, 'health_monitor'):
+        raise HTTPException(status_code=500, detail="Health monitor not initialized")
+    
+    try:
+        report = await nlp_interface.health_monitor.generate_weekly_report()
+        return report
+    except Exception as e:
+        logger.error(f"Weekly report generation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8004)

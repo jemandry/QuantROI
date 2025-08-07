@@ -29,6 +29,7 @@ ESCALATION_COUNT = Counter('ladder_escalator_escalations_total', 'Total escalati
 escalator = None
 hft_escalator = None
 audit_manager = None
+health_monitor = None
 
 class CausalSignalRequest(BaseModel):
     signal_id: str
