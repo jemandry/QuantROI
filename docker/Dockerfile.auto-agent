@@ -1,0 +1,37 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# Upgrade pip and install build tools
+RUN pip install --upgrade pip setuptools wheel
+
+# Copy lightweight requirements and install Python dependencies
+COPY requirements-light.txt .
+RUN pip install --no-cache-dir -r requirements-light.txt
+
+# Copy source code
+COPY ai-models/src/auto_agent_system.py .
+COPY ai-models/src/microservices/auto_agent_service.py .
+COPY ai-models/src/system_orchestrator.py .
+COPY ai-models/src/granularity_limiter.py .
+COPY ai-models/src/audit_trail_manager.py .
+
+# Set environment variables
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8005/health || exit 1
+
+# Expose port
+EXPOSE 8005
+
+# Run the service
+CMD ["python", "auto_agent_service.py"]
