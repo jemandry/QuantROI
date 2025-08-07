@@ -6,7 +6,10 @@ import logging
 import json
 import os
 
-from .confidence_evaluator import ConfidenceEvaluator, RealTimeConfidenceDashboard
+try:
+    from .confidence_evaluator import ConfidenceEvaluator, RealTimeConfidenceDashboard
+except ImportError:
+    from confidence_evaluator import ConfidenceEvaluator, RealTimeConfidenceDashboard
 
 class EnhancedConfidenceEngine:
     """Enhanced confidence scoring engine for event quality assessment"""
