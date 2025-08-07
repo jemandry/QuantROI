@@ -1102,7 +1102,15 @@ class ScientificCausalEngine:
                 error_cause=f"simulation_computation_error: {str(e)}"
             )
             
-            self._record_hallucination(hallucination)
+            self._record_hallucination(
+                causal_claim=hallucination.causal_claim,
+                hallucination_type=hallucination.hallucination_type,
+                validation_failed=hallucination.validation_failed,
+                market_context={
+                    "market_regime": hallucination.market_regime,
+                    "vix_level": hallucination.vix_level
+                }
+            )
             
             raise Exception(f"Financial goal simulation failed: {e}")
     
@@ -1164,10 +1172,10 @@ class ScientificCausalEngine:
                 action="analyze_causality",
                 causal_claim=causal_claim,
                 validation_result=json.dumps({
-                    "is_valid": validation_result.is_valid,
-                    "p_value": validation_result.p_value,
-                    "confidence_interval": validation_result.confidence_interval
-                }),
+                    "is_valid": bool(validation_result.is_valid),
+                    "p_value": float(validation_result.p_value),
+                    "confidence_interval": [float(x) for x in validation_result.confidence_interval]
+                }, default=str),
                 market_context=json.dumps(market_context),
                 authorization_hash="investor_specific_analysis"
             )
@@ -1190,7 +1198,15 @@ class ScientificCausalEngine:
                 error_cause=f"causal_analysis_error: {str(e)}"
             )
             
-            self._record_hallucination(hallucination)
+            self._record_hallucination(
+                causal_claim=hallucination.causal_claim,
+                hallucination_type=hallucination.hallucination_type,
+                validation_failed=hallucination.validation_failed,
+                market_context={
+                    "market_regime": hallucination.market_regime,
+                    "vix_level": hallucination.vix_level
+                }
+            )
             
             return CausalValidationResult(
                 is_valid=False,
