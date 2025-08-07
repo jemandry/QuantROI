@@ -3,6 +3,7 @@ import numpy as np
 from typing import Dict, List, Any, Optional, Tuple
 import logging
 from datetime import datetime
+import statsmodels.api as sm
 
 try:
     from causalnex.structure import StructureModel
@@ -407,3 +408,68 @@ class CausalAnalysisEngine:
         except Exception as e:
             self.logger.error(f"Counterfactual analysis failed: {e}")
             return {'error': str(e), 'method': 'Counterfactual_Failed'}
+    
+    def _generate_rubin_counterfactuals(self, data: pd.DataFrame, 
+                                      treatment: str, 
+                                      outcome: str, 
+                                      confounders: List[str],
+                                      causal_estimate) -> Dict[str, Any]:
+        """
+        Generate counterfactuals using Rubin's potential outcomes framework
+        Implements propensity score matching for treatment effect estimation
+        """
+        cf_data = data.copy()
+        
+        X = cf_data[confounders]
+        T = cf_data[treatment]
+        
+        propensity_model = sm.Logit(T, sm.add_constant(X)).fit(disp=0)
+        cf_data['propensity_score'] = propensity_model.predict()
+        
+        potential_outcomes = {
+            'Y0': [],  # Outcome if not treated
+            'Y1': []   # Outcome if treated
+        }
+        
+        for i, row in cf_data.iterrows():
+            observed_outcome = row[outcome]
+            observed_treatment = row[treatment]
+            
+            if observed_treatment == 1:
+                potential_outcomes['Y1'].append(observed_outcome)
+                potential_outcomes['Y0'].append(observed_outcome - causal_estimate.value)
+            else:
+                potential_outcomes['Y0'].append(observed_outcome)
+                potential_outcomes['Y1'].append(observed_outcome + causal_estimate.value)
+        
+        cf_data['ITE'] = [y1 - y0 for y1, y0 in zip(potential_outcomes['Y1'], potential_outcomes['Y0'])]
+        
+        counterfactual_scenarios = {}
+        
+        counterfactual_scenarios['all_treated'] = {
+            'outcome_mean': np.mean(potential_outcomes['Y1']),
+            'effect_vs_observed': np.mean(potential_outcomes['Y1']) - cf_data[outcome].mean()
+        }
+        
+        counterfactual_scenarios['none_treated'] = {
+            'outcome_mean': np.mean(potential_outcomes['Y0']),
+            'effect_vs_observed': np.mean(potential_outcomes['Y0']) - cf_data[outcome].mean()
+        }
+        
+        counterfactual_scenarios['treatment_reversed'] = {
+            'outcome_mean': np.mean([potential_outcomes['Y1'][i] if cf_data[treatment].iloc[i] == 0 
+                                   else potential_outcomes['Y0'][i] for i in range(len(cf_data))]),
+            'effect_vs_observed': np.mean([potential_outcomes['Y1'][i] if cf_data[treatment].iloc[i] == 0 
+                                         else potential_outcomes['Y0'][i] for i in range(len(cf_data))]) - cf_data[outcome].mean()
+        }
+        
+        return {
+            'counterfactual_scenarios': counterfactual_scenarios,
+            'average_treatment_effect': float(causal_estimate.value),
+            'individual_treatment_effect_stats': {
+                'mean': float(cf_data['ITE'].mean()),
+                'std': float(cf_data['ITE'].std()),
+                'min': float(cf_data['ITE'].min()),
+                'max': float(cf_data['ITE'].max())
+            }
+        }

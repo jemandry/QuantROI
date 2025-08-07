@@ -63,5 +63,25 @@ flask-socketio>=5.3.0
 # Ensure pydantic v2 compatibility
 pydantic-core>=2.14.0
 typing-extensions>=4.8.0
+# Security and Cryptography (Enhanced)
+cryptography>=42.0.8
+ecdsa>=0.18.0
+
+# Web Framework for HITL Dashboard
+flask>=3.0.0
+
+# Neural Networks for Enhanced Causality
+torch>=2.2.0
+
+# Additional ML and Statistics
+arch>=5.3.0
+networkx>=2.8.0
+
+# API and HTTP
+requests>=2.28.0
+
+# Time series forecasting
+pmdarima>=2.0.0
+
 # Note: pyo3 and maturin removed due to Python 3.12 compatibility issues
 # Rust simulation bridge will use Python fallback implementation
