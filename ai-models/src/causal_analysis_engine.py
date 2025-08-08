@@ -35,6 +35,14 @@ class CausalAnalysisEngine:
         self.confidence_threshold = self.config.get('confidence_threshold', 0.7)
         self.p_value_threshold = self.config.get('p_value_threshold', 0.05)
         self.effect_size_threshold = self.config.get('effect_size_threshold', 0.1)
+        
+        # Initialize news tracker for comprehensive analysis
+        self.news_tracker = None
+        try:
+            from news_tracking_system import NewsTrackingSystem
+            self.news_tracker = NewsTrackingSystem()
+        except ImportError:
+            self.logger.warning("NewsTrackingSystem not available, using fallback")
 
     async def perform_causal_analysis(self, data: pd.DataFrame, 
                                     request_context: Dict[str, Any]) -> Dict[str, Any]:
@@ -420,8 +428,8 @@ class CausalAnalysisEngine:
         if confounders is None:
             confounders = []
         
-        base_result = await self.analyze_causal_relationship(
-            data, treatment, outcome, confounders
+        base_result = await self.perform_causal_analysis(
+            data, {'treatment': treatment, 'outcome': outcome, 'confounders': confounders}
         )
         
         if news_data is not None and not news_data.empty:
@@ -601,8 +609,17 @@ class CausalAnalysisEngine:
         simulation_bridge = SimulationEngineBridge()
         etf_tracker = ETFSectorTracker(simulation_bridge)
         indicator_storage = TechnicalIndicatorStorage()
+        news_tracker = self.news_tracker
+        if news_tracker is None:
+            try:
+                from news_tracking_system import NewsTrackingSystem
+                news_tracker = NewsTrackingSystem()
+            except ImportError:
+                self.logger.warning("NewsTrackingSystem not available for confidence scoring")
+                news_tracker = None
+        
         confidence_engine = ConfidenceScoringEngine(
-            self.news_tracker, etf_tracker, indicator_storage
+            news_tracker, etf_tracker, indicator_storage
         )
         
         analysis_start = datetime.now()

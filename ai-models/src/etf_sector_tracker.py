@@ -50,8 +50,16 @@ class ETFSectorTracker:
                 
                 acceleration = np.diff(velocity)
                 
-                acceleration_threshold = 2 * np.std(acceleration)
-                recent_acceleration = acceleration[-1] if len(acceleration) > 0 else 0
+                if len(acceleration) > 0:
+                    try:
+                        acceleration_threshold = float(2 * np.std(acceleration))
+                        recent_acceleration = float(acceleration[-1])
+                    except (ValueError, TypeError) as e:
+                        acceleration_threshold = 0.0
+                        recent_acceleration = 0.0
+                else:
+                    acceleration_threshold = 0.0
+                    recent_acceleration = 0.0
                 
                 is_accelerating = abs(recent_acceleration) > acceleration_threshold
                 
