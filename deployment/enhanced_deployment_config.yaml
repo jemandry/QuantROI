@@ -1,0 +1,340 @@
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: quantroi-enhanced-config
+  namespace: quantroi
+data:
+  mrm_bot_config.json: |
+    {
+      "confidence_threshold": 0.85,
+      "drift_threshold": 0.15,
+      "error_rate_threshold": 0.05,
+      "min_predictions": 100,
+      "override_cooldown_minutes": 5,
+      "batch_size": 1000
+    }
+  
+  ipfs_config.json: |
+    {
+      "ipfs_gateway_url": "http://ipfs-gateway:8080",
+      "ipfs_api_url": "/ip4/ipfs-node/tcp/5001",
+      "batch_size": 100,
+      "batch_timeout_seconds": 30,
+      "max_cache_age_hours": 1,
+      "enable_compression": true
+    }
+  
+  telemetry_config.json: |
+    {
+      "service_name": "quantroi-trading-engine",
+      "service_version": "1.0.0",
+      "environment": "production",
+      "jaeger_endpoint": "http://jaeger-collector:14268/api/traces",
+      "prometheus_port": 8000,
+      "sampling_rate": 1.0,
+      "enable_metrics": true
+    }
+  
+  vector_clock_config.json: |
+    {
+      "max_event_age_hours": 24,
+      "causal_analysis_batch_size": 100,
+      "cleanup_interval_hours": 6,
+      "enable_integrity_verification": true
+    }
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: quantroi-trading-engine
+  namespace: quantroi
+  labels:
+    app: quantroi-trading-engine
+    component: enhanced-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: quantroi-trading-engine
+  template:
+    metadata:
+      labels:
+        app: quantroi-trading-engine
+        component: enhanced-deployment
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: trading-engine
+        image: quantroi/trading-engine:enhanced-v1.0.0
+        ports:
+        - containerPort: 8080
+          name: http
+        - containerPort: 8000
+          name: metrics
+        env:
+        - name: NODE_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: ENVIRONMENT
+          value: "production"
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: ENABLE_ENHANCED_FEATURES
+          value: "true"
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/config
+        - name: audit-logs
+          mountPath: /app/audit_logs
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      
+      - name: mrm-bot
+        image: quantroi/mrm-bot:v1.0.0
+        ports:
+        - containerPort: 8081
+          name: mrm-http
+        env:
+        - name: NODE_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: MRM_CONFIG_PATH
+          value: "/app/config/mrm_bot_config.json"
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/config
+        - name: audit-logs
+          mountPath: /app/audit_logs
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+      
+      - name: ipfs-logger
+        image: quantroi/ipfs-logger:v1.0.0
+        ports:
+        - containerPort: 8082
+          name: ipfs-http
+        env:
+        - name: IPFS_CONFIG_PATH
+          value: "/app/config/ipfs_config.json"
+        - name: IPFS_NODE_URL
+          value: "http://ipfs-node:5001"
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/config
+        - name: audit-logs
+          mountPath: /app/audit_logs
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      
+      volumes:
+      - name: config-volume
+        configMap:
+          name: quantroi-enhanced-config
+      - name: audit-logs
+        persistentVolumeClaim:
+          claimName: quantroi-audit-logs
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ionet-scaling-config
+  namespace: quantroi
+data:
+  scaling_policy.yaml: |
+    scaling:
+      enabled: true
+      provider: "io.net"
+      
+      triggers:
+        - name: "cpu_utilization"
+          metric: "cpu"
+          threshold: 70
+          action: "scale_up"
+          cooldown: "5m"
+        
+        - name: "memory_utilization"
+          metric: "memory"
+          threshold: 80
+          action: "scale_up"
+          cooldown: "5m"
+        
+        - name: "trading_volume_spike"
+          metric: "custom.trading_events_per_second"
+          threshold: 15000
+          action: "scale_up"
+          cooldown: "2m"
+        
+        - name: "latency_degradation"
+          metric: "custom.avg_response_time_ms"
+          threshold: 50
+          action: "scale_up"
+          cooldown: "1m"
+      
+      ionet:
+        api_endpoint: "https://api.io.net/v1"
+        cluster_id: "quantroi-trading-cluster"
+        
+        container_specs:
+          - name: "trading-engine"
+            image: "quantroi/trading-engine:enhanced-v1.0.0"
+            cpu_request: "500m"
+            memory_request: "512Mi"
+            gpu_required: false
+            
+          - name: "gpu-inference"
+            image: "quantroi/gpu-inference:v1.0.0"
+            cpu_request: "1000m"
+            memory_request: "2Gi"
+            gpu_required: true
+            gpu_type: "nvidia-t4"
+        
+        scaling_limits:
+          min_replicas: 2
+          max_replicas: 50
+          scale_up_step: 2
+          scale_down_step: 1
+          
+        cost_optimization:
+          prefer_spot_instances: true
+          max_cost_per_hour: 10.0
+          auto_shutdown_idle: true
+          idle_timeout_minutes: 15
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: quantroi-trading-service
+  namespace: quantroi
+  labels:
+    app: quantroi-trading-engine
+spec:
+  selector:
+    app: quantroi-trading-engine
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+  - name: metrics
+    port: 8000
+    targetPort: 8000
+  - name: mrm-bot
+    port: 8081
+    targetPort: 8081
+  - name: ipfs-logger
+    port: 8082
+    targetPort: 8082
+  type: LoadBalancer
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: quantroi-hpa
+  namespace: quantroi
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: quantroi-trading-engine
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  - type: Pods
+    pods:
+      metric:
+        name: trading_events_per_second
+      target:
+        type: AverageValue
+        averageValue: "1000"
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: quantroi-audit-logs
+  namespace: quantroi
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: fast-ssd
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: quantroi-metrics
+  namespace: quantroi
+  labels:
+    app: quantroi-trading-engine
+spec:
+  selector:
+    matchLabels:
+      app: quantroi-trading-engine
+  endpoints:
+  - port: metrics
+    interval: 15s
+    path: /metrics
