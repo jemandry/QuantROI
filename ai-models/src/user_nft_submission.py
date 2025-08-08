@@ -239,7 +239,7 @@ class NFTCompetitionEngine:
                 performance_metrics={},
                 royalty_rate=0.05,  # 5% default royalty
                 created_at=datetime.now(),
-                last_updated=datetime.now(),
+                last_updated=datetime.now().isoformat(),
                 status='pending'
             )
             
@@ -621,7 +621,7 @@ class NFTStrategyEngine:
                     performance_metrics={},
                     royalty_rate=0.05,
                     created_at=datetime.now(),
-                    last_updated=datetime.now(),
+                    last_updated=datetime.now().isoformat(),
                     status='active'
                 )
             
@@ -695,7 +695,7 @@ class RoyaltyManager:
                 'creator_address': creator_address,
                 'amount': amount,
                 'transaction_hash': transaction_hash or f"mock_tx_{uuid.uuid4()}",
-                'timestamp': datetime.now(),
+                'timestamp': datetime.now().isoformat(),
                 'status': 'completed'
             }
             

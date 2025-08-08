@@ -314,9 +314,20 @@ async def main():
         
         comprehensive_report = await deployment.generate_comprehensive_report()
         
+        def json_serializer(obj):
+            if hasattr(obj, 'isoformat'):
+                return obj.isoformat()
+            elif isinstance(obj, dict):
+                return {k: json_serializer(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [json_serializer(item) for item in obj]
+            return str(obj)
+        
+        serializable_report = json_serializer(comprehensive_report)
+        
         report_filename = f"enhanced_deployment_test_report_{int(datetime.now().timestamp())}.json"
         with open(report_filename, 'w') as f:
-            json.dump(comprehensive_report, f, indent=2, default=str)
+            json.dump(serializable_report, f, indent=2)
         
         logger.info(f"Comprehensive report saved to: {report_filename}")
         logger.info(f"Report summary: {json.dumps(comprehensive_report['system_health'], indent=2)}")

@@ -387,8 +387,8 @@ class NewsSentimentAnalyzer:
                 'volume_spike_ratio': option_data.get('volume_spike_ratio', 1.0),
                 'integrated_signal': correlation_result['integrated_signal'],
                 'confidence': correlation_result['confidence'],
-                'timestamp': datetime.now(),
-                'created_at': datetime.now()
+                'timestamp': datetime.now().isoformat(),
+                'created_at': datetime.now().isoformat()
             }
             
             correlation_collection = self.mongo["trading_db"]["news_option_correlations"]

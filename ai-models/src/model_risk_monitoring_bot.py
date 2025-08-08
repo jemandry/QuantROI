@@ -21,9 +21,24 @@ class ModelPerformanceMetrics:
     f1_score: float
     drift_score: float
     confidence_score: float
-    last_updated: datetime
+    last_updated: str
     prediction_count: int
     error_rate: float
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to JSON-serializable dictionary"""
+        return {
+            'model_id': self.model_id,
+            'accuracy': self.accuracy,
+            'precision': self.precision,
+            'recall': self.recall,
+            'f1_score': self.f1_score,
+            'drift_score': self.drift_score,
+            'confidence_score': self.confidence_score,
+            'last_updated': self.last_updated,
+            'prediction_count': self.prediction_count,
+            'error_rate': self.error_rate
+        }
 
 @dataclass
 class OverrideDecision:
@@ -32,9 +47,22 @@ class OverrideDecision:
     override_reason: str
     confidence_threshold: float
     actual_confidence: float
-    timestamp: datetime
+    timestamp: str
     model_metrics: ModelPerformanceMetrics
     risk_assessment: RiskMetrics
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to JSON-serializable dictionary"""
+        return {
+            'decision_id': self.decision_id,
+            'original_signal': self.original_signal,
+            'override_reason': self.override_reason,
+            'confidence_threshold': self.confidence_threshold,
+            'actual_confidence': self.actual_confidence,
+            'timestamp': self.timestamp,
+            'model_metrics': self.model_metrics.__dict__ if self.model_metrics else None,
+            'risk_assessment': self.risk_assessment.__dict__ if self.risk_assessment else None
+        }
 
 class ModelRiskMonitoringBot(EventDrivenRiskMonitor):
     """
@@ -89,7 +117,7 @@ class ModelRiskMonitoringBot(EventDrivenRiskMonitor):
             prediction_entry = {
                 'model_id': model_id,
                 'prediction': prediction,
-                'timestamp': datetime.now(),
+                'timestamp': datetime.now().isoformat(),
                 'confidence': prediction.get('confidence', 0.0),
                 'signal_strength': prediction.get('signal_strength', 0.0)
             }
@@ -139,7 +167,7 @@ class ModelRiskMonitoringBot(EventDrivenRiskMonitor):
             self.model_performance_tracker[model_id] = {
                 'predictions': deque(maxlen=1000),
                 'errors': deque(maxlen=1000),
-                'last_assessment': datetime.now()
+                'last_assessment': datetime.now().isoformat()
             }
         
         tracker = self.model_performance_tracker[model_id]
@@ -197,7 +225,7 @@ class ModelRiskMonitoringBot(EventDrivenRiskMonitor):
             f1_score=f1_score,
             drift_score=drift_score,
             confidence_score=avg_confidence,
-            last_updated=datetime.now(),
+            last_updated=datetime.now().isoformat(),
             prediction_count=len(predictions),
             error_rate=error_rate
         )
@@ -266,7 +294,7 @@ class ModelRiskMonitoringBot(EventDrivenRiskMonitor):
                 override_reason="; ".join(override_reasons),
                 confidence_threshold=self.confidence_threshold,
                 actual_confidence=prediction_confidence,
-                timestamp=datetime.now(),
+                timestamp=datetime.now().isoformat(),
                 model_metrics=performance_metrics,
                 risk_assessment=risk_metrics
             )
@@ -360,11 +388,21 @@ class ModelRiskMonitoringBot(EventDrivenRiskMonitor):
             performance_summary = await self.get_model_performance_summary()
             
             all_predictions = list(self.prediction_history)
-            recent_predictions = [p for p in all_predictions if 
-                                (datetime.now() - p['timestamp']).total_seconds() < 3600]  # Last hour
+            recent_predictions = []
+            for p in all_predictions:
+                pred_time = p['timestamp']
+                if isinstance(pred_time, str):
+                    pred_time = datetime.fromisoformat(pred_time)
+                if (datetime.now() - pred_time).total_seconds() < 3600:
+                    recent_predictions.append(p)
             
-            recent_overrides = [o for o in self.override_history if 
-                              (datetime.now() - o.timestamp).total_seconds() < 3600]
+            recent_overrides = []
+            for o in self.override_history:
+                override_time = o.timestamp
+                if isinstance(override_time, str):
+                    override_time = datetime.fromisoformat(override_time)
+                if (datetime.now() - override_time).total_seconds() < 3600:
+                    recent_overrides.append(o)
             
             risk_report = {
                 'report_id': f"risk_report_{int(datetime.now().timestamp())}",

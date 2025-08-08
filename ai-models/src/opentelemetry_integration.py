@@ -31,7 +31,7 @@ class TraceMetrics:
     error_rate: float
     p95_duration_ms: float
     p99_duration_ms: float
-    last_updated: datetime
+    last_updated: str
 
 @dataclass
 class ComponentLatency:
@@ -39,7 +39,7 @@ class ComponentLatency:
     operation: str
     duration_ms: float
     success: bool
-    timestamp: datetime
+    timestamp: str
     trace_id: str
     span_id: str
 
@@ -67,7 +67,7 @@ class OpenTelemetryIntegration:
             error_rate=0.0,
             p95_duration_ms=0.0,
             p99_duration_ms=0.0,
-            last_updated=datetime.now()
+            last_updated=datetime.now().isoformat()
         )
         
         self.component_latencies = {}
@@ -264,7 +264,7 @@ class OpenTelemetryIntegration:
                 operation=operation,
                 duration_ms=duration_ms,
                 success=success,
-                timestamp=datetime.now(),
+                timestamp=datetime.now().isoformat(),
                 trace_id=trace_id,
                 span_id=span_id
             )
@@ -357,7 +357,7 @@ class OpenTelemetryIntegration:
                 error_rate=len(errors) / len(recent_measurements),
                 p95_duration_ms=durations_sorted[p95_index] if durations_sorted else 0.0,
                 p99_duration_ms=durations_sorted[p99_index] if durations_sorted else 0.0,
-                last_updated=datetime.now()
+                last_updated=datetime.now().isoformat()
             )
             
         except Exception as e:
@@ -372,10 +372,16 @@ class OpenTelemetryIntegration:
             component_analysis = {}
             for component, measurements in self.component_latencies.items():
                 if measurements:
-                    recent_measurements = [
-                        m for m in measurements 
-                        if (datetime.now() - m.timestamp).total_seconds() < 3600
-                    ]
+                    recent_measurements = []
+                    for m in measurements:
+                        if isinstance(m.timestamp, str):
+                            measurement_time = datetime.fromisoformat(m.timestamp.replace('Z', '+00:00'))
+                        else:
+                            measurement_time = m.timestamp
+                        
+                        time_diff = datetime.now() - measurement_time
+                        if time_diff.total_seconds() < 3600:
+                            recent_measurements.append(m)
                     
                     if recent_measurements:
                         durations = [m.duration_ms for m in recent_measurements]
@@ -425,8 +431,7 @@ class OpenTelemetryIntegration:
                         'threshold_ms': threshold_value,
                         'violations_last_hour': sum(
                             1 for m in self.latency_measurements
-                            if (datetime.now() - m.timestamp).total_seconds() < 3600
-                            and m.duration_ms > threshold_value
+                            if self._is_recent_measurement(m) and m.duration_ms > threshold_value
                         )
                     }
                     for threshold_name, threshold_value in self.latency_thresholds.items()
@@ -477,6 +482,19 @@ class OpenTelemetryIntegration:
         except Exception as e:
             self.logger.error(f"Distributed trace retrieval failed: {e}")
             return None
+
+    def _is_recent_measurement(self, measurement) -> bool:
+        """Check if measurement is from the last hour"""
+        try:
+            if isinstance(measurement.timestamp, str):
+                measurement_time = datetime.fromisoformat(measurement.timestamp.replace('Z', '+00:00'))
+            else:
+                measurement_time = measurement.timestamp
+            
+            time_diff = datetime.now() - measurement_time
+            return time_diff.total_seconds() < 3600
+        except Exception:
+            return False
 
     async def shutdown(self):
         """Shutdown OpenTelemetry integration"""

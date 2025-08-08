@@ -219,18 +219,32 @@ class EnhancedDeploymentIntegration:
                     
                     await self.ipfs_logger.log_immutable_decision(
                         decision_data={
-                            "override_decision": override_decision.__dict__,
+                            "override_decision": override_decision.to_dict() if hasattr(override_decision, 'to_dict') else override_decision.__dict__,
                             "override_result": override_result,
                             "original_decision_event": decision_event.event_id
                         },
                         decision_type="trading_override"
                     )
                 
+                def serialize_for_json(obj):
+                    if hasattr(obj, 'to_dict'):
+                        return obj.to_dict()
+                    elif hasattr(obj, '__dict__'):
+                        return {k: serialize_for_json(v) for k, v in obj.__dict__.items()}
+                    elif isinstance(obj, (list, tuple)):
+                        return [serialize_for_json(item) for item in obj]
+                    elif isinstance(obj, dict):
+                        return {k: serialize_for_json(v) for k, v in obj.items()}
+                    elif isinstance(obj, datetime):
+                        return obj.isoformat()
+                    else:
+                        return obj
+
                 return {
                     'status': 'processed',
                     'decision_event_id': decision_event.event_id,
-                    'monitoring_result': monitoring_result,
-                    'ipfs_entry': ipfs_entry.__dict__ if ipfs_entry else None,
+                    'monitoring_result': serialize_for_json(monitoring_result),
+                    'ipfs_entry': serialize_for_json(ipfs_entry) if ipfs_entry else None,
                     'override_executed': override_decision is not None,
                     'timestamp': datetime.now().isoformat()
                 }
@@ -271,11 +285,20 @@ class EnhancedDeploymentIntegration:
                     'initialized': self.initialized
                 }
                 
+                def serialize_datetime_objects(obj):
+                    if hasattr(obj, 'isoformat'):
+                        return obj.isoformat()
+                    elif isinstance(obj, dict):
+                        return {k: serialize_datetime_objects(v) for k, v in obj.items()}
+                    elif isinstance(obj, list):
+                        return [serialize_datetime_objects(item) for item in obj]
+                    return obj
+                
                 comprehensive_report = {
                     'report_id': f"comprehensive_report_{int(datetime.now().timestamp())}",
                     'timestamp': datetime.now().isoformat(),
-                    'system_health': system_health,
-                    'component_reports': reports
+                    'system_health': serialize_datetime_objects(system_health),
+                    'component_reports': serialize_datetime_objects(reports)
                 }
                 
                 return comprehensive_report

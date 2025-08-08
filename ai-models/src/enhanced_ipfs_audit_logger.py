@@ -26,7 +26,7 @@ class IPFSAuditEntry:
     ipfs_hash: str
     content_type: str
     metadata: Dict[str, Any]
-    timestamp: datetime
+    timestamp: str
     size_bytes: int
     retrieval_verified: bool = False
 
@@ -38,7 +38,7 @@ class IPFSStorageMetrics:
     failed_uploads: int
     retrieval_success_rate: float
     avg_upload_time_ms: float
-    last_updated: datetime
+    last_updated: str
 
 class EnhancedIPFSAuditLogger(StreamBasedAuditLogger):
     """
@@ -63,7 +63,7 @@ class EnhancedIPFSAuditLogger(StreamBasedAuditLogger):
             failed_uploads=0,
             retrieval_success_rate=0.0,
             avg_upload_time_ms=0.0,
-            last_updated=datetime.now()
+            last_updated=datetime.now().isoformat()
         )
         
         self.upload_times = deque(maxlen=1000)
@@ -140,7 +140,7 @@ class EnhancedIPFSAuditLogger(StreamBasedAuditLogger):
                     ipfs_hash=ipfs_hash,
                     content_type=decision_type,
                     metadata=enhanced_decision['audit_metadata'],
-                    timestamp=datetime.now(),
+                    timestamp=datetime.now().isoformat(),
                     size_bytes=len(content_json.encode()),
                     retrieval_verified=False
                 )
@@ -204,14 +204,15 @@ class EnhancedIPFSAuditLogger(StreamBasedAuditLogger):
         cache_key = f"verify_{ipfs_hash}"
         if cache_key in self.retrieval_cache:
             cache_entry = self.retrieval_cache[cache_key]
-            if datetime.now() - cache_entry['timestamp'] < self.cache_ttl:
+            cache_time = datetime.fromisoformat(cache_entry['timestamp'])
+            if datetime.now() - cache_time < self.cache_ttl:
                 return cache_entry['success'], cache_entry.get('content')
         
         if not self.ipfs_client:
             self.retrieval_cache[cache_key] = {
                 'success': True,
                 'content': f"mock_content_for_{ipfs_hash}",
-                'timestamp': datetime.now()
+                'timestamp': datetime.now().isoformat()
             }
             return True, f"mock_content_for_{ipfs_hash}"
         
@@ -222,7 +223,7 @@ class EnhancedIPFSAuditLogger(StreamBasedAuditLogger):
             self.retrieval_cache[cache_key] = {
                 'success': True,
                 'content': content_str,
-                'timestamp': datetime.now()
+                'timestamp': datetime.now().isoformat()
             }
             
             return True, content_str
@@ -233,7 +234,7 @@ class EnhancedIPFSAuditLogger(StreamBasedAuditLogger):
             self.retrieval_cache[cache_key] = {
                 'success': False,
                 'content': None,
-                'timestamp': datetime.now()
+                'timestamp': datetime.now().isoformat()
             }
             
             return False, None
@@ -270,7 +271,7 @@ class EnhancedIPFSAuditLogger(StreamBasedAuditLogger):
                         'entry_id': entry.entry_id,
                         'ipfs_hash': entry.ipfs_hash,
                         'content_hash': entry.content_hash,
-                        'timestamp': entry.timestamp.isoformat()
+                        'timestamp': entry.timestamp
                     })
                 
                 await self.merkle_audit.add_audit_entry(
@@ -302,7 +303,7 @@ class EnhancedIPFSAuditLogger(StreamBasedAuditLogger):
                     (1 - alpha) * self.storage_metrics.retrieval_success_rate
                 )
             
-            self.storage_metrics.last_updated = datetime.now()
+            self.storage_metrics.last_updated = datetime.now().isoformat()
             
             self.logger.info(f"Processed IPFS audit batch: {len(batch_entries)} entries")
             
@@ -356,7 +357,7 @@ class EnhancedIPFSAuditLogger(StreamBasedAuditLogger):
             
             recent_entries = [
                 entry for entry in self.ipfs_entries 
-                if (datetime.now() - entry.timestamp).total_seconds() < 3600
+                if (datetime.now() - datetime.fromisoformat(entry.timestamp)).total_seconds() < 3600
             ]
             
             verified_entries = [entry for entry in self.ipfs_entries if entry.retrieval_verified]

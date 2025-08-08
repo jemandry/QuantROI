@@ -203,7 +203,7 @@ class EnhancedMerkleAuditTool:
                 'leaf_hashes': leaf_hashes,
                 'date': date,
                 'entry_count': len(daily_entries),
-                'timestamp': datetime.now()
+                'timestamp': datetime.now().isoformat()
             }
             
             await self._store_merkle_tree(tree_id, root_hash, leaf_hashes, date)
@@ -289,7 +289,7 @@ class EnhancedMerkleAuditTool:
             self.audit_errors += 1
             return {
                 'error': str(e),
-                'timestamp': datetime.now().isoformat()
+                'timestamp': datetime.now().isoformat().isoformat()
             }
 
     async def _store_audit_entry(self, entry: AuditEntry):
@@ -353,7 +353,7 @@ class EnhancedMerkleAuditTool:
             anchor_data = {
                 'tree_id': tree_id,
                 'root_hash': root_hash,
-                'timestamp': datetime.now().isoformat()
+                'timestamp': datetime.now().isoformat().isoformat()
             }
             
             anchor_hash = hashlib.sha256(json.dumps(anchor_data, sort_keys=True).encode()).hexdigest()

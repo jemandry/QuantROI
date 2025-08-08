@@ -18,6 +18,22 @@ class RiskMetrics:
     alpha: float
     tracking_error: float
     information_ratio: float
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to JSON-serializable dictionary"""
+        return {
+            'var_95': self.var_95,
+            'var_99': self.var_99,
+            'expected_shortfall_95': self.expected_shortfall_95,
+            'expected_shortfall_99': self.expected_shortfall_99,
+            'maximum_drawdown': self.maximum_drawdown,
+            'calmar_ratio': self.calmar_ratio,
+            'sortino_ratio': self.sortino_ratio,
+            'beta': self.beta,
+            'alpha': self.alpha,
+            'tracking_error': self.tracking_error,
+            'information_ratio': self.information_ratio
+        }
 
 @numba.jit(nopython=True)
 def calculate_var_numba(returns: np.ndarray, confidence_level: float) -> float:

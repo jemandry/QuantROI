@@ -387,7 +387,7 @@ class SimulationStrategySelector:
             data_frame=data_frame.copy(),
             metadata=metadata or {},
             checksum=checksum,
-            last_updated=datetime.now()
+            last_updated=datetime.now().isoformat()
         )
         
         self.braided_strands[strand_id] = strand
@@ -926,7 +926,7 @@ class SimulationStrategySelector:
                         'vega': np.random.uniform(0, 1),
                         'bid': np.random.uniform(0.5, 10),
                         'ask': np.random.uniform(0.6, 11),
-                        'timestamp': datetime.now(),
+                        'timestamp': datetime.now().isoformat(),
                         'asset_id': f"{symbol}_{strike}_{option_type}"
                     })
         

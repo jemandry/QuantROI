@@ -209,7 +209,7 @@ class DriftDetector:
                 'feature_maxs': training_data.max().to_dict(),
                 'correlations': training_data.corr().to_dict(),
                 'performance_metrics': performance_metrics,
-                'timestamp': datetime.now()
+                'timestamp': datetime.now().isoformat()
             }
             
             self.baseline_stats[model_id] = baseline

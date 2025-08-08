@@ -256,7 +256,7 @@ class EventDrivenAgent:
     def publish_event(self, event_type: str, event_data: Dict[str, Any]):
         topic = f"events.{event_type}"
         event_data['agent_id'] = self.agent_id
-        event_data['timestamp'] = datetime.now()
+        event_data['timestamp'] = datetime.now().isoformat()
         event_data['event_id'] = f"{self.agent_id}_{datetime.now().timestamp()}"
         
         self.event_bus.publish_event(topic, event_data)
@@ -482,7 +482,7 @@ class StrategySelectionAgent(EventDrivenAgent):
             self.strategy_performance_history[portfolio_id] = []
         
         self.strategy_performance_history[portfolio_id].append({
-            'timestamp': datetime.now(),
+            'timestamp': datetime.now().isoformat(),
             'value': total_value
         })
         
