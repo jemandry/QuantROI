@@ -59,24 +59,36 @@ class PostQuantumZKPRouter:
             PostQuantumZKPType.PLONK_PQ: 128
         }
         
-        self.logger.info(f"✓ Post-quantum ZKP router initialized for {environment.value} environment")
+        env_str = environment.value if hasattr(environment, 'value') else str(environment)
+        self.logger.info(f"✓ Post-quantum ZKP router initialized for {env_str} environment")
         
     async def generate_pq_proof(self, proof_data: Dict[str, Any], 
-                               pq_type: PostQuantumZKPType = PostQuantumZKPType.ZK_STARK,
+                               pq_type = PostQuantumZKPType.ZK_STARK,
                                institutional_grade: bool = False) -> Optional[Dict[str, Any]]:
         """Generate post-quantum secure ZKP proof with performance tracking"""
         start_time = datetime.now()
         
         try:
-            self.logger.info(f"🔐 Generating {pq_type.value} proof for {self.environment.value} environment")
+            if isinstance(pq_type, str):
+                pq_type_str = pq_type
+                env_str = self.environment.value if hasattr(self.environment, 'value') else str(self.environment)
+                self.logger.info(f"🔐 Generating {pq_type_str} proof for {env_str} environment")
+            elif hasattr(pq_type, 'value'):
+                pq_type_str = pq_type.value
+                env_str = self.environment.value if hasattr(self.environment, 'value') else str(self.environment)
+                self.logger.info(f"🔐 Generating {pq_type_str} proof for {env_str} environment")
+            else:
+                pq_type_str = str(pq_type)
+                env_str = self.environment.value if hasattr(self.environment, 'value') else str(self.environment)
+                self.logger.info(f"🔐 Generating {pq_type_str} proof for {env_str} environment")
             
-            if pq_type == PostQuantumZKPType.ZK_STARK:
+            if pq_type_str == "zk_stark" or pq_type == PostQuantumZKPType.ZK_STARK:
                 proof_result = await self._generate_stark_proof(proof_data, institutional_grade)
-            elif pq_type == PostQuantumZKPType.SUPERSONIC:
+            elif pq_type_str == "supersonic" or pq_type == PostQuantumZKPType.SUPERSONIC:
                 proof_result = await self._generate_supersonic_proof(proof_data, institutional_grade)
-            elif pq_type == PostQuantumZKPType.KYBER_GROTH16:
+            elif pq_type_str == "kyber_groth16" or pq_type == PostQuantumZKPType.KYBER_GROTH16:
                 proof_result = await self._generate_kyber_groth16_proof(proof_data, institutional_grade)
-            elif pq_type == PostQuantumZKPType.PLONK_PQ:
+            elif pq_type_str == "plonk_pq" or pq_type == PostQuantumZKPType.PLONK_PQ:
                 proof_result = await self._generate_plonk_pq_proof(proof_data, institutional_grade)
             else:
                 if self.dual_router:
@@ -91,12 +103,17 @@ class PostQuantumZKPRouter:
                 self.logger.info(f"✅ Proof generated in {generation_time:.2f}ms (under {self.target_proof_generation_ms}ms target)")
             
             if proof_result:
+                if isinstance(pq_type, str):
+                    enum_type = getattr(PostQuantumZKPType, pq_type.upper(), PostQuantumZKPType.ZK_STARK)
+                else:
+                    enum_type = pq_type
+                
                 proof_result['metadata'] = PQProofMetadata(
-                    proof_type=pq_type,
+                    proof_type=enum_type,
                     proof_size_bytes=len(proof_result.get('proof', '')),
                     generation_time_ms=generation_time,
                     verification_time_ms=0,  # Will be set during verification
-                    quantum_security_level=self.security_levels[pq_type],
+                    quantum_security_level=self.security_levels.get(enum_type, 128),
                     created_at=start_time
                 )
             
@@ -219,7 +236,8 @@ class PostQuantumZKPRouter:
     
     def _generate_verification_key(self, proof_type: str) -> str:
         """Generate mock verification key"""
-        return hashlib.sha256(f"vk_{proof_type}_{self.environment.value}".encode()).hexdigest()
+        env_str = self.environment.value if hasattr(self.environment, 'value') else str(self.environment)
+        return hashlib.sha256(f"vk_{proof_type}_{env_str}".encode()).hexdigest()
     
     async def verify_pq_proof(self, proof_data: Dict[str, Any]) -> Dict[str, Any]:
         """Verify post-quantum ZKP proof with performance tracking"""
@@ -299,11 +317,22 @@ class PostQuantumZKPRouter:
     
     def get_pq_router_statistics(self) -> Dict[str, Any]:
         """Get comprehensive statistics about post-quantum ZKP router performance"""
+        env_str = self.environment.value if hasattr(self.environment, 'value') else str(self.environment)
+        supported_types = []
+        for pq_type in PostQuantumZKPType:
+            type_str = pq_type.value if hasattr(pq_type, 'value') else str(pq_type)
+            supported_types.append(type_str)
+        
+        security_levels = {}
+        for pq_type, level in self.security_levels.items():
+            type_str = pq_type.value if hasattr(pq_type, 'value') else str(pq_type)
+            security_levels[type_str] = level
+        
         return {
-            'environment': self.environment.value,
+            'environment': env_str,
             'pq_enabled': self.pq_enabled,
-            'supported_types': [pq_type.value for pq_type in PostQuantumZKPType],
-            'security_levels': {pq_type.value: level for pq_type, level in self.security_levels.items()},
+            'supported_types': supported_types,
+            'security_levels': security_levels,
             'performance_targets': {
                 'proof_generation_ms': self.target_proof_generation_ms,
                 'verification_ms': self.target_verification_ms
