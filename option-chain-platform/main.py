@@ -50,6 +50,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+try:
+    from graphql_api import graphql_router
+    if graphql_router:
+        app.include_router(graphql_router, prefix="/graphql")
+        print("GraphQL API enabled at /graphql")
+except ImportError:
+    print("GraphQL API not available")
+
 
 @app.get("/")
 async def root():
