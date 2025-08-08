@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import json
+import random
 from typing import Dict, List, Any, Optional, Callable
 from datetime import datetime, timedelta
 from dataclasses import dataclass
@@ -24,6 +25,8 @@ class AgentWorkflowType(Enum):
     TAX_OPTIMIZATION = "tax_optimization"
     PORTFOLIO_REBALANCING = "portfolio_rebalancing"
     ANOMALY_RESPONSE = "anomaly_response"
+
+AgentType = AgentWorkflowType
 
 @dataclass
 class WorkflowTrigger:

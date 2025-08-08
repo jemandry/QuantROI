@@ -2,6 +2,7 @@ import asyncio
 import logging
 import json
 import re
+import hashlib
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
 from dataclasses import dataclass
@@ -23,6 +24,17 @@ class CausalHypothesis:
     evidence_sources: List[str]
     extracted_entities: Dict[str, str]
     temporal_markers: List[str]
+    generated_at: datetime
+    market_impact_prediction: str = "NEUTRAL"
+
+@dataclass
+class CausalInsightReport:
+    total_hypotheses: int
+    high_confidence_count: int
+    avg_confidence: float
+    dominant_patterns: List[str]
+    temporal_distribution: Dict[str, int]
+    entity_frequency: Dict[str, int]
     generated_at: datetime
 
 class LLMAssistedCausalInference:

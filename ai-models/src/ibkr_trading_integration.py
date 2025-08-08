@@ -109,16 +109,9 @@ class IBKRTradingIntegration:
             
             await asyncio.sleep(0.1)  # Simulate connection time
             
-            test_symbol = 'SPY'
-            market_data = await self.get_market_data(test_symbol)
-            
-            if market_data:
-                self.connected = True
-                self.logger.info(f"✅ Successfully connected to IBKR (test data: {test_symbol} @ ${market_data.last})")
-                return True
-            else:
-                self.logger.error("❌ Failed to retrieve test market data")
-                return False
+            self.connected = True
+            self.logger.info("✅ Successfully connected to IBKR")
+            return True
             
         except Exception as e:
             self.logger.error(f"❌ Failed to connect to IBKR: {e}")
@@ -128,7 +121,7 @@ class IBKRTradingIntegration:
         """Get real-time market data for a symbol"""
         try:
             if not self.connected:
-                await self.connect_to_ibkr()
+                self.logger.warning("Not connected to IBKR, using mock data")
             
             if symbol in self.mock_market_data:
                 base_data = self.mock_market_data[symbol]
@@ -280,7 +273,7 @@ class IBKRTradingIntegration:
         """Get current portfolio positions for a user"""
         try:
             if not self.connected:
-                await self.connect_to_ibkr()
+                self.logger.warning("Not connected to IBKR, using mock data")
             
             mock_positions = [
                 {
@@ -320,7 +313,7 @@ class IBKRTradingIntegration:
         """Get account information and buying power"""
         try:
             if not self.connected:
-                await self.connect_to_ibkr()
+                self.logger.warning("Not connected to IBKR, using mock data")
             
             account_info = {
                 'account_id': f"DU{user_id}",
@@ -345,7 +338,7 @@ class IBKRTradingIntegration:
         """Cancel an existing order"""
         try:
             if not self.connected:
-                await self.connect_to_ibkr()
+                self.logger.warning("Not connected to IBKR, using mock data")
             
             await asyncio.sleep(0.02)  # Simulate cancellation time
             

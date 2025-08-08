@@ -20,6 +20,10 @@ try:
 except ImportError:
     DUAL_ZKP_AVAILABLE = False
     logging.warning("Dual ZKP router not available")
+    
+    class ZKPEnvironment:
+        PRODUCTION = "production"
+        TESTING = "testing"
 
 class PostQuantumZKPType(Enum):
     ZK_STARK = "zk_stark"
