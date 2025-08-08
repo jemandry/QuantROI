@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+from datetime import datetime
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
 import json
@@ -171,6 +172,122 @@ class SimulationEngineBridge:
         except Exception as e:
             logger.error(f"Strand combination error: {e}")
             return []
+    
+    async def parse_nanosecond_data(self, raw_data: bytes, data_format: str = 'binary') -> List[Dict[str, Any]]:
+        """Parse nanosecond-precision market data for jukebox system"""
+        start_time = time.time()
+        
+        try:
+            parsed_events = []
+            
+            if data_format == 'binary':
+                offset = 0
+                while offset < len(raw_data) - 24:
+                    timestamp_ns = int.from_bytes(raw_data[offset:offset+8], byteorder='little')
+                    
+                    price_bytes = raw_data[offset+8:offset+16]
+                    price = np.frombuffer(price_bytes, dtype=np.float64)[0]
+                    
+                    volume = int.from_bytes(raw_data[offset+16:offset+24], byteorder='little')
+                    
+                    parsed_events.append({
+                        'timestamp_ns': timestamp_ns,
+                        'timestamp': datetime.fromtimestamp(timestamp_ns / 1_000_000_000),
+                        'price': price,
+                        'volume': volume,
+                        'resolution': 'nanosecond'
+                    })
+                    
+                    offset += 24
+            
+            elif data_format == 'csv':
+                lines = raw_data.decode('utf-8').strip().split('\n')
+                for line in lines[1:]:
+                    parts = line.split(',')
+                    if len(parts) >= 3:
+                        timestamp_ns = int(parts[0])
+                        price = float(parts[1])
+                        volume = int(parts[2])
+                        
+                        parsed_events.append({
+                            'timestamp_ns': timestamp_ns,
+                            'timestamp': datetime.fromtimestamp(timestamp_ns / 1_000_000_000),
+                            'price': price,
+                            'volume': volume,
+                            'resolution': 'nanosecond'
+                        })
+            
+            processing_time_ms = (time.time() - start_time) * 1000
+            
+            await self.audit_manager.log_audit_event(
+                'nanosecond_data_parsing',
+                'simulation_bridge',
+                f"Parsed {len(parsed_events)} nanosecond events in {processing_time_ms:.2f}ms"
+            )
+            
+            return parsed_events
+            
+        except Exception as e:
+            logger.error(f"Nanosecond data parsing error: {e}")
+            return []
+    
+    async def convert_resolution(self, data: List[Dict[str, Any]], 
+                               target_resolution: str) -> List[Dict[str, Any]]:
+        """Convert nanosecond data to lower resolution for jukebox system"""
+        try:
+            if not data or target_resolution == 'nanosecond':
+                return data
+            
+            resolution_map = {
+                'microsecond': 1000,
+                'millisecond': 1_000_000,
+                'second': 1_000_000_000,
+                'minute': 60_000_000_000,
+                'hour': 3_600_000_000_000
+            }
+            
+            if target_resolution not in resolution_map:
+                return data
+            
+            bucket_size_ns = resolution_map[target_resolution]
+            buckets = {}
+            
+            for event in data:
+                bucket_key = (event['timestamp_ns'] // bucket_size_ns) * bucket_size_ns
+                
+                if bucket_key not in buckets:
+                    buckets[bucket_key] = {
+                        'prices': [],
+                        'volumes': [],
+                        'count': 0
+                    }
+                
+                buckets[bucket_key]['prices'].append(event['price'])
+                buckets[bucket_key]['volumes'].append(event['volume'])
+                buckets[bucket_key]['count'] += 1
+            
+            converted_data = []
+            for bucket_timestamp, bucket_data in sorted(buckets.items()):
+                prices = bucket_data['prices']
+                volumes = bucket_data['volumes']
+                
+                converted_data.append({
+                    'timestamp_ns': bucket_timestamp,
+                    'timestamp': datetime.fromtimestamp(bucket_timestamp / 1_000_000_000),
+                    'open': prices[0],
+                    'high': max(prices),
+                    'low': min(prices),
+                    'close': prices[-1],
+                    'volume': sum(volumes),
+                    'count': bucket_data['count'],
+                    'resolution': target_resolution
+                })
+            
+            return converted_data
+            
+        except Exception as e:
+            logger.error(f"Resolution conversion error: {e}")
+            return data
     
     async def calculate_volatility_surface(self, base_request: SimulationRequest, 
                                          sigma_range: Tuple[float, float],
