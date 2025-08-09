@@ -68,3 +68,12 @@ memory-profiler>=0.61.0
 
 # Additional statistical analysis
 statsmodels>=0.14.0
+
+# LLM and Neural Matching Dependencies
+sentence-transformers>=2.2.0
+torch>=1.9.0
+transformers>=4.20.0
+datasets>=2.0.0
+accelerate>=0.20.0
+tokenizers>=0.13.0
+safetensors>=0.3.0
