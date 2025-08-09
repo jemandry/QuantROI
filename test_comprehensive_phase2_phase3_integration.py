@@ -723,5 +723,59 @@ async def test_d3_visualization():
         return False
 
 
+async def test_mev_protection_integration():
+    """Test MEV protection integration with all 4 priorities"""
+    try:
+        import sys
+        import os
+        sys.path.append(os.path.join(os.getcwd(), 'ai-models', 'src'))
+        from mev_protected_trading import MevProtectedTradingService
+        
+        print("\n🛡️ Testing MEV Protection Integration...")
+        
+        mev_service = MevProtectedTradingService()
+        
+        routing_result = await mev_service.switch_to_optimal_endpoint()
+        geographic_optimized = routing_result['target_met']
+        
+        from mev_protected_trading import AtomicTradeBundle
+        test_bundle = AtomicTradeBundle(
+            causal_analysis={"type": "test_analysis"},
+            trade_execution={"type": "test_execution"},
+            compliance_logging={"type": "test_compliance"},
+            masking_application=None,
+            bundle_metadata={
+                "strategy_id": "test_strategy",
+                "user_id": "test_user",
+                "expected_execution_time_ms": 2000,
+                "trade_value_usd": 25000
+            }
+        )
+        
+        start_time = time.time()
+        bundle_result = await mev_service.submit_atomic_bundle(test_bundle)
+        execution_time_ms = (time.time() - start_time) * 1000
+        
+        metrics = mev_service.get_performance_metrics()
+        
+        print(f"  ✓ Geographic optimization: {'✅ PASS' if geographic_optimized else '⚠ PARTIAL'}")
+        print(f"  ✓ Atomic bundling: {'✅ PASS' if bundle_result['success'] else '❌ FAIL'}")
+        print(f"  ✓ MEV protection: {'✅ PROTECTED' if bundle_result['mev_protection'] else '⚠ VULNERABLE'}")
+        print(f"  ✓ Execution time: {execution_time_ms:.2f}ms ({'✅ FAST' if execution_time_ms < 100 else '⚠ SLOW'})")
+        print(f"  ✓ Success rate: {metrics['success_rate'] * 100:.1f}%")
+        
+        performance_ok = execution_time_ms < 100
+        protection_ok = bundle_result['mev_protection']
+        
+        success = bundle_result['success'] and performance_ok and protection_ok
+        print(f"  🎯 MEV Protection Integration: {'✅ PASS' if success else '❌ FAIL'}")
+        
+        return success
+        
+    except Exception as e:
+        print(f"  ❌ MEV protection integration test failed: {e}")
+        return False
+
+
 if __name__ == "__main__":
     asyncio.run(run_comprehensive_phase2_phase3_tests())

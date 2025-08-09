@@ -1,0 +1,208 @@
+# MEV Protection Configuration
+mev_protection:
+  enabled: true
+  
+  # Jito Block Engine Configuration
+  jito:
+    enabled: true
+    block_engine_endpoints:
+      mainnet:
+        us_east: "https://ny.mainnet.block-engine.jito.wtf"
+        ap_southeast: "https://singapore.mainnet.block-engine.jito.wtf"
+        eu_west: "https://london.mainnet.block-engine.jito.wtf"
+      devnet:
+        default: "https://dallas.testnet.block-engine.jito.wtf"
+    
+    # Bundle Configuration
+    bundle_settings:
+      max_transactions_per_bundle: 5
+      max_retries: 3
+      timeout_ms: 5000
+      
+    # Tip Configuration (1K-10K lamports as specified)
+    tip_settings:
+      min_tip_lamports: 1000
+      max_tip_lamports: 10000
+      base_tip_lamports: 2000
+      
+      # Tip multipliers based on trade characteristics
+      urgency_multipliers:
+        critical: 3.0    # <1s execution required
+        high: 2.0        # <5s execution required  
+        normal: 1.5      # <30s execution acceptable
+        low: 1.0         # Best effort
+        
+      trade_size_multipliers:
+        large: 2.5       # >$100K trades
+        medium: 1.8      # $10K-$100K trades
+        small: 1.0       # <$10K trades
+
+  # Priority Fee Configuration
+  priority_fees:
+    enabled: true
+    base_fee_lamports: 1000
+    
+    # Dynamic fee calculation
+    network_congestion:
+      low_multiplier: 1.0
+      medium_multiplier: 2.0
+      high_multiplier: 5.0
+      critical_multiplier: 10.0
+      
+    # Maximum fees (safety limits)
+    max_priority_fee_lamports: 10000
+    max_total_fee_lamports: 20000
+
+  # Geographic RPC Optimization
+  geographic_routing:
+    enabled: true
+    
+    # RPC Endpoints by region
+    endpoints:
+      us_east:
+        primary: "https://ny.rpc.jito.wtf"
+        fallback: "https://api.mainnet-beta.solana.com"
+        jito_validator: true
+        
+      ap_southeast:
+        primary: "https://singapore.rpc.jito.wtf"
+        fallback: "https://api.mainnet-beta.solana.com"
+        jito_validator: true
+        
+      eu_west:
+        primary: "https://london.rpc.jito.wtf"
+        fallback: "https://api.mainnet-beta.solana.com"
+        jito_validator: true
+        
+      fallback:
+        primary: "https://api.mainnet-beta.solana.com"
+        fallback: "https://api.devnet.solana.com"
+        jito_validator: false
+    
+    # Latency optimization
+    latency_settings:
+      target_latency_ms: 50
+      latency_test_interval_seconds: 300  # Test every 5 minutes
+      auto_switch_threshold_ms: 100       # Switch if latency >100ms worse
+      
+    # Load balancing
+    load_balancing:
+      enabled: true
+      strategy: "latency_weighted"  # Options: round_robin, latency_weighted, random
+      health_check_interval_seconds: 60
+
+  # Atomic Transaction Bundling
+  atomic_bundling:
+    enabled: true
+    
+    # Bundle types for different trading strategies
+    bundle_types:
+      causal_ai_trade:
+        transactions:
+          - causal_analysis
+          - risk_validation  
+          - trade_execution
+          - compliance_logging
+          - masking_application  # Optional for large trades
+        max_execution_time_ms: 1000
+        
+      periodic_payment:
+        transactions:
+          - payment_authorization
+          - fund_transfer
+          - audit_logging
+        max_execution_time_ms: 2000
+        
+      delegation_update:
+        transactions:
+          - delegation_validation
+          - policy_update
+          - notification_logging
+        max_execution_time_ms: 3000
+    
+    # Rollback configuration
+    rollback_settings:
+      enabled: true
+      max_rollback_attempts: 3
+      rollback_timeout_ms: 10000
+
+  # Performance Monitoring
+  monitoring:
+    enabled: true
+    
+    # Metrics collection
+    metrics:
+      - bundle_success_rate
+      - average_execution_time
+      - mev_protection_effectiveness
+      - geographic_latency_distribution
+      - tip_efficiency_ratio
+      - priority_fee_optimization
+      
+    # Alerting thresholds
+    alerts:
+      bundle_failure_rate_threshold: 0.05  # Alert if >5% bundles fail
+      execution_time_threshold_ms: 2000    # Alert if avg execution >2s
+      mev_protection_threshold: 0.95       # Alert if protection <95%
+      latency_threshold_ms: 100            # Alert if latency >100ms
+      
+    # Reporting
+    reporting:
+      daily_summary: true
+      weekly_analysis: true
+      performance_dashboard: true
+
+  # Security Settings
+  security:
+    # Private key management
+    key_management:
+      use_hardware_wallet: false  # Set to true for production
+      key_rotation_days: 30
+      
+    # Transaction validation
+    validation:
+      verify_bundle_integrity: true
+      check_transaction_signatures: true
+      validate_fee_limits: true
+      
+    # Audit logging
+    audit:
+      log_all_bundles: true
+      log_mev_protection_events: true
+      log_geographic_switches: true
+      retention_days: 365
+
+# Environment-specific overrides
+environments:
+  development:
+    mev_protection:
+      jito:
+        enabled: false  # Use fallback in development
+      geographic_routing:
+        endpoints:
+          default:
+            primary: "https://api.devnet.solana.com"
+            fallback: "http://localhost:8899"
+            jito_validator: false
+            
+  staging:
+    mev_protection:
+      jito:
+        enabled: true
+        block_engine_endpoints:
+          testnet:
+            default: "https://dallas.testnet.block-engine.jito.wtf"
+      tip_settings:
+        min_tip_lamports: 500   # Reduced for testing
+        max_tip_lamports: 5000
+        
+  production:
+    mev_protection:
+      jito:
+        enabled: true
+      security:
+        key_management:
+          use_hardware_wallet: true
+        audit:
+          log_all_bundles: true
+          retention_days: 2555  # 7 years for compliance

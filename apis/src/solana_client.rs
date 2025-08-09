@@ -8,10 +8,12 @@ use solana_sdk::{
 use std::str::FromStr;
 
 use crate::error::ApiError;
+use crate::jito_mev_protection::{JitoMevProtectionService, AtomicTradeBundle};
 
 pub struct SolanaClientService {
     client: RpcClient,
     commitment: CommitmentConfig,
+    mev_protection: JitoMevProtectionService,
 }
 
 impl SolanaClientService {
@@ -20,14 +22,24 @@ impl SolanaClientService {
             .unwrap_or_else(|_| "https://api.devnet.solana.com".to_string());
         
         let client = RpcClient::new_with_commitment(rpc_url, CommitmentConfig::confirmed());
+        let mev_protection = JitoMevProtectionService::new().await?;
         
         Ok(Self {
             client,
             commitment: CommitmentConfig::confirmed(),
+            mev_protection,
         })
     }
 
     pub async fn send_transaction(&self, transaction: &Transaction) -> Result<Signature, ApiError> {
+        self.mev_protection.send_private_transaction(transaction).await
+    }
+
+    pub async fn send_atomic_bundle(&mut self, bundle: AtomicTradeBundle) -> Result<String, ApiError> {
+        self.mev_protection.submit_atomic_bundle(bundle).await
+    }
+
+    pub async fn send_transaction_legacy(&self, transaction: &Transaction) -> Result<Signature, ApiError> {
         self.client
             .send_and_confirm_transaction(transaction)
             .map_err(|e| ApiError::SolanaTransactionFailed(format!("Transaction failed: {}", e)))
@@ -68,5 +80,30 @@ impl SolanaClientService {
     pub fn get_knowledge_verification_program_id(&self) -> Result<Pubkey, ApiError> {
         Pubkey::from_str("KnowledgeVerificationProgram1111111111111")
             .map_err(|e| ApiError::InternalServerError(format!("Invalid program ID: {}", e)))
+    }
+
+    pub async fn optimize_geographic_routing(&mut self) -> Result<(), ApiError> {
+        self.mev_protection.switch_to_optimal_endpoint().await
+    }
+
+    pub fn get_mev_protection_metrics(&self) -> serde_json::Value {
+        let metrics = self.mev_protection.get_performance_metrics();
+        let endpoint = self.mev_protection.get_current_endpoint();
+        
+        serde_json::json!({
+            "total_bundles_submitted": metrics.total_bundles_submitted,
+            "successful_bundles": metrics.successful_bundles,
+            "failed_bundles": metrics.failed_bundles,
+            "avg_execution_time_ms": metrics.avg_execution_time_ms,
+            "total_tips_paid": metrics.total_tips_paid,
+            "mev_protection_rate": metrics.mev_protection_rate,
+            "current_endpoint": {
+                "region": endpoint.region,
+                "url": endpoint.url,
+                "is_jito_validator": endpoint.is_jito_validator,
+                "latency_ms": endpoint.latency_ms
+            },
+            "geographic_latencies": metrics.geographic_latencies
+        })
     }
 }
