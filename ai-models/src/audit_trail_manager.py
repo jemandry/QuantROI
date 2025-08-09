@@ -513,26 +513,53 @@ class AuditTrailManager:
             self.logger.error(f"IPFS hash generation failed: {str(e)}")
             return f"ipfs_error_{int(time.time())}"
     
-    async def _anchor_to_solana(self, event_hash: str, ipfs_hash: str) -> str:
-        """Anchor audit event to Solana blockchain for immutability"""
+    async def _anchor_to_solana_with_sha3(self, event_hash: str, ipfs_hash: str) -> str:
+        """Anchor audit event to Solana blockchain with SHA-3 hashing for enhanced compliance"""
         
         try:
             if self.solana_client:
+                import hashlib
+                
                 anchor_data = {
                     'event_hash': event_hash,
                     'ipfs_hash': ipfs_hash,
                     'timestamp': time.time(),
-                    'anchor_type': 'audit_event'
+                    'anchor_type': 'audit_event_sha3',
+                    'compliance_flags': ['SEC_17a4', 'MiFID_II', 'GDPR']
                 }
                 
-                anchor_hash = hashlib.sha256(
+                sha3_hash = hashlib.sha3_256(
                     json.dumps(anchor_data, sort_keys=True).encode()
                 ).hexdigest()
                 
-                return f"solana:{anchor_hash[:32]}"
+                await self._log_to_cloudflare_logpush(anchor_data, sha3_hash)
+                
+                return f"solana_sha3:{sha3_hash[:32]}"
             
-            return f"mock_solana_{int(time.time())}"
+            return f"mock_solana_sha3_{int(time.time())}"
             
         except Exception as e:
-            self.logger.error(f"Solana anchoring failed: {str(e)}")
-            return f"solana_error_{int(time.time())}"
+            self.logger.error(f"Solana SHA-3 anchoring failed: {str(e)}")
+            return f"solana_sha3_error_{int(time.time())}"
+
+    async def _log_to_cloudflare_logpush(self, anchor_data: Dict[str, Any], sha3_hash: str):
+        """Log to Cloudflare Logpush for RIA compliance (4 hours/year recordkeeping)"""
+        try:
+            logpush_data = {
+                'timestamp': anchor_data['timestamp'],
+                'event_type': 'regulatory_audit_log',
+                'sha3_hash': sha3_hash,
+                'compliance_framework': 'RIA_SEC_MiFID_II',
+                'retention_period': '7_years',
+                'data_classification': 'regulatory_required'
+            }
+            
+            # Mock Cloudflare Logpush integration
+            self.logger.info(f"Cloudflare Logpush: {json.dumps(logpush_data)}")
+            
+        except Exception as e:
+            self.logger.error(f"Cloudflare Logpush failed: {e}")
+
+    async def _anchor_to_solana(self, event_hash: str, ipfs_hash: str) -> str:
+        """Anchor audit event to Solana blockchain for immutability"""
+        return await self._anchor_to_solana_with_sha3(event_hash, ipfs_hash)

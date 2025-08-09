@@ -268,6 +268,40 @@ performance:
     targetLatency: "10s"
     maxConcurrency: 100
 
+keda:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 50
+  triggers:
+    prometheus:
+      enabled: true
+      serverAddress: "http://prometheus:9090"
+    smartContract:
+      enabled: true
+      governanceRequired: true
+  gpu:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 10
+    targetUtilization: 80
+
+smartContractGovernance:
+  enabled: true
+  boardMembers: 5
+  votingThresholds:
+    simpleMajority: 0.51
+    superMajority: 0.80
+  proposalExpiry: 300  # 5 minutes
+  solanaIntegration:
+    enabled: true
+    rpcUrl: "https://api.mainnet-beta.solana.com"
+
+compliance:
+  sha3Logging: true
+  cloudflareLogpush: true
+  retentionPeriod: "7_years"
+  frameworks: ["SEC_17a4", "MiFID_II", "GDPR"]
+
 dependencies:
   redis:
     enabled: true
