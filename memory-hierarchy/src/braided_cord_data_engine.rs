@@ -13,6 +13,22 @@ use crate::ai_architect_enhancements::{
 use crate::microservices_orchestrator::MicroservicesOrchestrator;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StrandCoordinates3D {
+    pub x: f64,
+    pub y: f64, 
+    pub z: f64,
+    pub timestamp_ns: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DecisionContext {
+    pub boundary_trigger: String,
+    pub confidence_breakdown: HashMap<String, f64>,
+    pub news_context: Vec<String>,
+    pub sentiment_context: Vec<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DataTier {
     Hot,    // Sub-100μs access - Redis Cluster with memory-mapped files
     Warm,   // 100μs-10ms access - PostgreSQL with time-based partitioning  
@@ -37,6 +53,7 @@ pub enum DataType {
     CausalGraphs,
     EdgeDeduplication,
     ComplianceReports,
+    StrandLibrary,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -419,6 +436,91 @@ impl BraidedCordDataEngine {
         } else {
             metrics.average_latency_us = latency_us;
         }
+    }
+    
+    pub async fn store_strand_with_decision_context(
+        &self,
+        strand_id: &str,
+        coordinates: StrandCoordinates3D,
+        decision_context: DecisionContext,
+        strand_data: &[u8],
+    ) -> Result<DataTier, Box<dyn std::error::Error + Send + Sync>> {
+        let start_time = SystemTime::now();
+        
+        let overall_confidence = decision_context.confidence_breakdown.values().sum::<f64>() / decision_context.confidence_breakdown.len() as f64;
+        
+        let tier = if coordinates.timestamp_ns > (SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos() as u64 - 60_000_000_000) // Last 60 seconds
+            && overall_confidence > 0.8
+        {
+            DataTier::Hot
+        } else if coordinates.z > 0.02 || overall_confidence > 0.6 { // High volatility or confidence
+            DataTier::Warm
+        } else {
+            DataTier::Cold
+        };
+        
+        let storage_key = format!("strand:{}:{}:{}:{}:conf_{}", 
+            coordinates.x as i32, 
+            coordinates.y as i32, 
+            coordinates.z as i32, 
+            strand_id,
+            (overall_confidence * 100.0) as i32
+        );
+        
+        let context_data = serde_json::to_vec(&decision_context)?;
+        let combined_data = [strand_data, &context_data].concat();
+        
+        match tier {
+            DataTier::Hot => {
+                self.store_in_hot_tier(&storage_key, &combined_data, coordinates.timestamp_ns).await?;
+            },
+            DataTier::Warm => {
+                self.store_in_warm_tier(&storage_key, &combined_data, coordinates.timestamp_ns, true).await?;
+            },
+            DataTier::Cold => {
+                self.store_in_cold_tier(&storage_key, &combined_data, coordinates.timestamp_ns, true).await?;
+            }
+        }
+        
+        self.update_metrics(tier).await;
+        
+        let elapsed = start_time.elapsed().unwrap_or_default();
+        self.update_latency_metrics(elapsed.as_micros() as f64).await;
+        
+        Ok(tier)
+    }
+    
+    pub async fn query_strands_by_decision_criteria(
+        &self,
+        confidence_threshold: f64,
+        event_types: Vec<String>,
+        time_range_ns: (u64, u64),
+    ) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
+        let mut strand_ids = Vec::new();
+        let confidence_filter = (confidence_threshold * 100.0) as i32;
+        
+        let pattern = format!("strand:*:*:*:*:conf_{}", confidence_filter);
+        
+        if let Some(ref redis_client) = self.redis_client {
+            if let Ok(mut conn) = redis_client.get_async_connection().await {
+                let keys: Vec<String> = redis::cmd("KEYS")
+                    .arg(&pattern)
+                    .query_async(&mut conn)
+                    .await
+                    .unwrap_or_default();
+                
+                for key in keys {
+                    if let Some(strand_id) = key.split(':').nth(4) {
+                        strand_ids.push(strand_id.to_string());
+                    }
+                }
+            }
+        }
+        
+        Ok(strand_ids)
     }
 }
 
