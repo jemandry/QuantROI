@@ -57,16 +57,45 @@ class BoardMember:
     term_end: Optional[float] = None
 
 @dataclass
+class DutyAssignment:
+    duty_id: str
+    duty_name: str
+    assigned_to: str
+    delegated_from: Optional[str]
+    authority_level: str  # "full", "limited", "monitoring_only", "reporting_only"
+    specific_permissions: List[str]
+    deadline: Optional[float]
+    priority: str  # "high", "medium", "low"
+    status: str  # "active", "completed", "delegated", "overdue"
+    performance_score: float
+    created_at: float
+    last_updated: float
+
+@dataclass
+class ResponsibilityMatrix:
+    member_id: str
+    primary_duties: List[DutyAssignment]
+    delegated_duties: List[DutyAssignment]  # Duties delegated TO this member
+    given_delegations: List[DutyAssignment]  # Duties delegated BY this member
+    accountability_chain: List[str]  # Chain of accountability (member -> supervisor -> chairman)
+    workload_score: float  # 0-1 scale of current workload
+    performance_score: float  # 0-1 scale of performance
+    accountability_score: float  # 0-1 scale of accountability
+    overdue_duties: List[Dict[str, Any]] = field(default_factory=list)
+
+@dataclass
 class DelegationRecord:
     delegation_id: str
     delegator: str
     delegate: str
     scope: DelegationScope
     authority_level: str
-    conditions: Dict[str, Any]
-    created_at: float
-    expires_at: Optional[float]
+    specific_duties: List[str] = field(default_factory=list)  # Specific duty names being delegated
+    conditions: Dict[str, Any] = field(default_factory=dict)
+    created_at: float = 0.0
+    expires_at: Optional[float] = None
     active: bool = True
+    duty_assignments: List[DutyAssignment] = field(default_factory=list)  # Associated duty assignments
 
 @dataclass
 class BoardVote:
@@ -102,8 +131,12 @@ class ComprehensiveGovernanceSystem:
         self.active_proposals = {}
         self.voting_history = []
         self.delegation_records = {}
+        self.duty_assignments = {}  # duty_id -> DutyAssignment
+        self.responsibility_matrices = {}  # member_id -> ResponsibilityMatrix
+        self.accountability_chains = {}  # member_id -> List[accountability_path]
         self.governance_rules = self._initialize_governance_rules()
         self.system_parameters = self._initialize_system_parameters()
+        self._initialize_duty_framework()
         
     def _initialize_board_members(self) -> Dict[str, BoardMember]:
         """Initialize board members with roles, duties, and obligations"""
@@ -823,12 +856,320 @@ class ComprehensiveGovernanceSystem:
             'delegate': delegation.delegate,
             'scope': delegation.scope.value,
             'authority_level': delegation.authority_level,
+            'specific_duties': delegation.specific_duties,
             'conditions': delegation.conditions,
             'created_at': delegation.created_at,
             'expires_at': delegation.expires_at,
             'time_remaining': max(0, delegation.expires_at - time.time()) if delegation.expires_at else None,
             'active': delegation.active,
-            'status': 'active' if delegation.active else 'inactive'
+            'status': 'active' if delegation.active else 'inactive',
+            'duty_assignments': [{'duty_name': duty.duty_name, 'authority_level': duty.authority_level, 'status': duty.status} for duty in delegation.duty_assignments]
+        }
+
+    def _initialize_duty_framework(self):
+        """Initialize comprehensive duty and responsibility framework"""
+        for member_id, member in self.board_members.items():
+            self.responsibility_matrices[member_id] = ResponsibilityMatrix(
+                member_id=member_id,
+                primary_duties=self._create_primary_duties(member),
+                delegated_duties=[],
+                given_delegations=[],
+                accountability_chain=[member_id],
+                workload_score=0.0,
+                performance_score=0.8,  # Default performance score
+                accountability_score=1.0
+            )
+        
+        self._initialize_accountability_chains()
+
+    def _create_primary_duties(self, member: BoardMember) -> List[DutyAssignment]:
+        """Create primary duty assignments for board member based on role"""
+        duties = []
+        current_time = time.time()
+        
+        duty_templates = {
+            BoardRole.CHAIRMAN: [
+                ("strategic_oversight", "Oversee strategic decisions and board governance", "full", ["approve_major_decisions", "lead_meetings", "stakeholder_communication"]),
+                ("fiduciary_responsibility", "Ensure fiduciary responsibility to stakeholders", "full", ["financial_oversight", "risk_assessment", "compliance_monitoring"]),
+                ("board_leadership", "Lead board meetings and facilitate decision-making", "full", ["meeting_management", "consensus_building", "conflict_resolution"])
+            ],
+            BoardRole.RISK_OFFICER: [
+                ("risk_monitoring", "Monitor system risk thresholds and exposure limits", "full", ["threshold_monitoring", "exposure_analysis", "risk_reporting"]),
+                ("risk_assessment", "Assess scaling decisions for risk impact", "full", ["impact_analysis", "risk_modeling", "recommendation_generation"]),
+                ("risk_reporting", "Report monthly risk metrics and compliance status", "full", ["metric_compilation", "report_generation", "stakeholder_communication"])
+            ],
+            BoardRole.COMPLIANCE_OFFICER: [
+                ("regulatory_compliance", "Ensure regulatory compliance across all operations", "full", ["compliance_monitoring", "policy_enforcement", "audit_coordination"]),
+                ("policy_review", "Review policy changes for SEC/MiFID II compliance", "full", ["policy_analysis", "regulatory_assessment", "approval_recommendation"]),
+                ("audit_management", "Monitor audit trails and compliance documentation", "full", ["audit_oversight", "documentation_review", "compliance_verification"])
+            ],
+            BoardRole.TECHNICAL_LEAD: [
+                ("technical_oversight", "Evaluate technical proposals and system changes", "full", ["proposal_review", "technical_assessment", "implementation_oversight"]),
+                ("performance_monitoring", "Monitor system performance and uptime metrics", "full", ["metric_monitoring", "performance_analysis", "optimization_recommendations"]),
+                ("security_management", "Ensure cybersecurity and data protection standards", "full", ["security_monitoring", "vulnerability_assessment", "protection_implementation"])
+            ],
+            BoardRole.BOARD_MEMBER: [
+                ("governance_participation", "Participate actively in board voting and decisions", "full", ["voting_participation", "proposal_review", "decision_support"]),
+                ("oversight_duties", "Review proposals and provide informed oversight", "full", ["proposal_analysis", "due_diligence", "recommendation_development"]),
+                ("stakeholder_representation", "Represent stakeholder interests in governance", "full", ["interest_advocacy", "feedback_collection", "communication_facilitation"])
+            ]
+        }
+        
+        role_duties = duty_templates.get(member.role, [])
+        
+        for i, (duty_name, description, authority, permissions) in enumerate(role_duties):
+            duty_id = f"{member.member_id}_{duty_name}_{int(current_time)}_{i}"
+            duty = DutyAssignment(
+                duty_id=duty_id,
+                duty_name=description,
+                assigned_to=member.member_id,
+                delegated_from=None,
+                authority_level=authority,
+                specific_permissions=permissions,
+                deadline=None,  # Ongoing duties
+                priority="high" if member.role in [BoardRole.CHAIRMAN, BoardRole.RISK_OFFICER] else "medium",
+                status="active",
+                performance_score=0.8,
+                created_at=current_time,
+                last_updated=current_time
+            )
+            duties.append(duty)
+            self.duty_assignments[duty_id] = duty
+        
+        return duties
+
+    def _initialize_accountability_chains(self):
+        """Initialize hierarchical accountability chains"""
+        chairman_id = None
+        for member_id, member in self.board_members.items():
+            if member.role == BoardRole.CHAIRMAN:
+                chairman_id = member_id
+                break
+        
+        if chairman_id:
+            for member_id, matrix in self.responsibility_matrices.items():
+                if member_id != chairman_id:
+                    matrix.accountability_chain = [member_id, chairman_id]
+                    self.accountability_chains[member_id] = [member_id, chairman_id]
+                else:
+                    matrix.accountability_chain = [chairman_id]
+                    self.accountability_chains[member_id] = [chairman_id]
+
+    def create_duty_delegation(self, delegation_data: Dict[str, Any]) -> str:
+        """Create sophisticated duty-specific delegation with accountability tracking"""
+        delegator = delegation_data['delegator']
+        delegate = delegation_data['delegate']
+        specific_duties = delegation_data.get('specific_duties', [])
+        authority_level = delegation_data.get('authority_level', 'limited')
+        
+        if delegator not in self.board_members or delegate not in self.board_members:
+            raise ValueError("Both delegator and delegate must be board members")
+        
+        delegator_matrix = self.responsibility_matrices[delegator]
+        available_duties = [duty for duty in delegator_matrix.primary_duties if duty.status == 'active']
+        
+        if specific_duties:
+            delegator_duty_names = [duty.duty_name for duty in available_duties]
+            invalid_duties = [duty for duty in specific_duties if duty not in delegator_duty_names]
+            if invalid_duties:
+                raise ValueError(f"Delegator lacks authority over duties: {invalid_duties}")
+        
+        delegation_id = f"duty_delegation_{int(time.time())}_{delegator}_{delegate}"
+        current_time = time.time()
+        
+        duty_assignments = []
+        for duty_name in specific_duties:
+            original_duty = next((duty for duty in available_duties if duty.duty_name == duty_name), None)
+            if original_duty:
+                delegated_duty = DutyAssignment(
+                    duty_id=f"{delegation_id}_{duty_name}_{int(current_time)}",
+                    duty_name=duty_name,
+                    assigned_to=delegate,
+                    delegated_from=delegator,
+                    authority_level=authority_level,
+                    specific_permissions=self._get_delegated_permissions(original_duty.specific_permissions, authority_level),
+                    deadline=delegation_data.get('deadline'),
+                    priority=original_duty.priority,
+                    status="active",
+                    performance_score=0.0,
+                    created_at=current_time,
+                    last_updated=current_time
+                )
+                duty_assignments.append(delegated_duty)
+                self.duty_assignments[delegated_duty.duty_id] = delegated_duty
+                
+                original_duty.status = "delegated"
+                original_duty.last_updated = current_time
+        
+        delegation = DelegationRecord(
+            delegation_id=delegation_id,
+            delegator=delegator,
+            delegate=delegate,
+            scope=DelegationScope(delegation_data.get('scope', 'SYSTEM_ADMINISTRATION')),
+            authority_level=authority_level,
+            specific_duties=specific_duties,
+            conditions=delegation_data.get('conditions', {}),
+            created_at=current_time,
+            expires_at=current_time + delegation_data.get('duration', 3600) if delegation_data.get('duration') else None,
+            active=True,
+            duty_assignments=duty_assignments
+        )
+        
+        self.delegation_records[delegation_id] = delegation
+        
+        self._update_responsibility_matrices_for_delegation(delegation)
+        
+        self._update_accountability_chains_for_delegation(delegation)
+        
+        logger.info(f"Created duty delegation {delegation_id}: {delegator} -> {delegate} for duties: {specific_duties}")
+        return delegation_id
+
+    def _get_delegated_permissions(self, original_permissions: List[str], authority_level: str) -> List[str]:
+        """Get appropriate permissions based on delegation authority level"""
+        if authority_level == "full":
+            return original_permissions
+        elif authority_level == "limited":
+            restricted = ["approve_major_decisions", "financial_oversight", "policy_enforcement"]
+            return [perm for perm in original_permissions if perm not in restricted]
+        elif authority_level == "monitoring_only":
+            monitoring_perms = ["threshold_monitoring", "metric_monitoring", "performance_analysis", "compliance_monitoring"]
+            return [perm for perm in original_permissions if perm in monitoring_perms]
+        elif authority_level == "reporting_only":
+            reporting_perms = ["report_generation", "metric_compilation", "documentation_review"]
+            return [perm for perm in original_permissions if perm in reporting_perms]
+        else:
+            return []
+
+    def _update_responsibility_matrices_for_delegation(self, delegation: DelegationRecord):
+        """Update responsibility matrices when delegation is created"""
+        delegator_matrix = self.responsibility_matrices[delegation.delegator]
+        delegate_matrix = self.responsibility_matrices[delegation.delegate]
+        
+        delegator_matrix.given_delegations.extend(delegation.duty_assignments)
+        
+        delegate_matrix.delegated_duties.extend(delegation.duty_assignments)
+        
+        self._recalculate_workload_scores([delegation.delegator, delegation.delegate])
+
+    def _update_accountability_chains_for_delegation(self, delegation: DelegationRecord):
+        """Update accountability chains for delegation"""
+        delegate_chain = self.accountability_chains.get(delegation.delegate, [delegation.delegate])
+        delegator_chain = self.accountability_chains.get(delegation.delegator, [delegation.delegator])
+        
+        new_chain = [delegation.delegate, delegation.delegator] + delegator_chain[1:]
+        self.accountability_chains[delegation.delegate] = new_chain
+        self.responsibility_matrices[delegation.delegate].accountability_chain = new_chain
+
+    def _recalculate_workload_scores(self, member_ids: List[str]):
+        """Recalculate workload scores for specified members"""
+        for member_id in member_ids:
+            matrix = self.responsibility_matrices[member_id]
+            
+            primary_workload = len(matrix.primary_duties) * 1.0
+            delegated_workload = len(matrix.delegated_duties) * 0.8  # Delegated duties have slightly less weight
+            given_delegation_overhead = len(matrix.given_delegations) * 0.2  # Overhead for managing delegations
+            
+            total_workload = primary_workload + delegated_workload + given_delegation_overhead
+            
+            matrix.workload_score = min(total_workload / 10.0, 1.0)
+
+    def get_responsibility_matrix(self, member_id: str) -> Dict[str, Any]:
+        """Get comprehensive responsibility matrix for board member"""
+        if member_id not in self.responsibility_matrices:
+            return {'status': 'not_found'}
+        
+        matrix = self.responsibility_matrices[member_id]
+        current_time = time.time()
+        
+        overdue_duties = []
+        for duty in matrix.primary_duties + matrix.delegated_duties:
+            if duty.deadline and current_time > duty.deadline and duty.status == 'active':
+                overdue_hours = (current_time - duty.deadline) / 3600
+                overdue_duties.append({
+                    'duty_name': duty.duty_name,
+                    'overdue_hours': overdue_hours,
+                    'priority': duty.priority
+                })
+        
+        matrix.overdue_duties = overdue_duties
+        
+        if matrix.workload_score < 0.3:
+            workload_status = "light"
+        elif matrix.workload_score < 0.7:
+            workload_status = "moderate"
+        elif matrix.workload_score < 0.9:
+            workload_status = "heavy"
+        else:
+            workload_status = "overloaded"
+        
+        return {
+            'member_id': member_id,
+            'total_duties': len(matrix.primary_duties) + len(matrix.delegated_duties),
+            'primary_duties_count': len(matrix.primary_duties),
+            'delegated_duties_count': len(matrix.delegated_duties),
+            'received_delegations_count': len(matrix.delegated_duties),
+            'given_delegations_count': len(matrix.given_delegations),
+            'workload_score': matrix.workload_score,
+            'workload_status': workload_status,
+            'current_performance_score': matrix.performance_score,
+            'accountability_score': matrix.accountability_score,
+            'accountability_chain': matrix.accountability_chain,
+            'overdue_duties': overdue_duties,
+            'primary_duties': [{'name': duty.duty_name, 'status': duty.status, 'authority': duty.authority_level} for duty in matrix.primary_duties],
+            'delegated_duties': [{'name': duty.duty_name, 'delegated_from': duty.delegated_from, 'authority': duty.authority_level} for duty in matrix.delegated_duties]
+        }
+
+    def generate_accountability_report(self) -> Dict[str, Any]:
+        """Generate system-wide accountability report"""
+        total_active_duties = 0
+        total_active_delegations = 0
+        overdue_duties_count = 0
+        performance_scores = []
+        
+        member_summaries = {}
+        
+        for member_id, matrix in self.responsibility_matrices.items():
+            member_matrix = self.get_responsibility_matrix(member_id)
+            
+            total_active_duties += member_matrix['total_duties']
+            total_active_delegations += member_matrix['given_delegations_count']
+            overdue_duties_count += len(member_matrix['overdue_duties'])
+            performance_scores.append(member_matrix['current_performance_score'])
+            
+            member_summaries[member_id] = {
+                'role': self.board_members[member_id].role.value,
+                'workload_status': member_matrix['workload_status'],
+                'performance_score': member_matrix['current_performance_score'],
+                'overdue_duties': len(member_matrix['overdue_duties'])
+            }
+        
+        avg_performance = sum(performance_scores) / len(performance_scores) if performance_scores else 0.0
+        
+        recommendations = []
+        
+        overloaded_members = [mid for mid, summary in member_summaries.items() if summary['workload_status'] == 'overloaded']
+        if overloaded_members:
+            recommendations.append(f"Consider redistributing duties for overloaded members: {', '.join(overloaded_members)}")
+        
+        low_performers = [mid for mid, summary in member_summaries.items() if summary['performance_score'] < 0.6]
+        if low_performers:
+            recommendations.append(f"Review performance and provide support for: {', '.join(low_performers)}")
+        
+        if overdue_duties_count > 5:
+            recommendations.append(f"Address {overdue_duties_count} overdue duties across the organization")
+        
+        return {
+            'generated_at': time.time(),
+            'system_wide_metrics': {
+                'total_active_duties': total_active_duties,
+                'total_active_delegations': total_active_delegations,
+                'overdue_duties_count': overdue_duties_count,
+                'average_performance_score': avg_performance,
+                'total_board_members': len(self.board_members)
+            },
+            'member_summaries': member_summaries,
+            'recommendations': recommendations,
+            'accountability_chains': self.accountability_chains
         }
 
 SmartContractGovernance = ComprehensiveGovernanceSystem

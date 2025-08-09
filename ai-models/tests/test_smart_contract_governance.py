@@ -5,157 +5,175 @@ Tests for Smart Contract Governance System
 
 import pytest
 import asyncio
+import sys
+import os
 from datetime import datetime, timedelta
 
-from ai_models.src.smart_contract_governance import (
-    SmartContractGovernance, ScalingProposal, VotingThreshold, ScalingDecisionType
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+from smart_contract_governance import (
+    ComprehensiveGovernanceSystem, BoardMember, BoardRole, VotingThreshold,
+    GovernanceDecisionType, DelegationScope, GovernanceProposal, BoardVote,
+    DelegationRecord, DutyAssignment, ResponsibilityMatrix
 )
 
-class TestSmartContractGovernance:
+class TestComprehensiveGovernanceSystem:
     
     @pytest.fixture
     def governance(self):
-        return SmartContractGovernance()
+        return ComprehensiveGovernanceSystem()
     
-    @pytest.mark.asyncio
-    async def test_propose_scaling_decision(self, governance):
-        """Test scaling proposal creation"""
-        scaling_request = {
-            'scaling_type': 'HORIZONTAL',
-            'urgency': 'HIGH',
-            'market_conditions': {'volatility': 0.3},
-            'resource_cost_estimate': 5000.0
+    def test_duty_specific_delegation(self, governance):
+        """Test duty-specific delegation with accountability tracking"""
+        delegation_data = {
+            'delegator': 'chairman_001',
+            'delegate': 'technical_lead_001',
+            'specific_duties': ['Oversee strategic decisions and board governance'],
+            'authority_level': 'limited',
+            'scope': 'system_administration',
+            'duration': 7200,
+            'conditions': {'requires_reporting': True}
         }
         
-        proposal_id = await governance.propose_scaling_decision(scaling_request)
+        delegation_id = governance.create_duty_delegation(delegation_data)
         
-        assert proposal_id in governance.active_proposals
-        proposal = governance.active_proposals[proposal_id]
-        assert proposal.scaling_type == 'HORIZONTAL'
-        assert proposal.urgency == 'HIGH'
-        assert proposal.required_threshold == VotingThreshold.SIMPLE_MAJORITY
+        assert delegation_id in governance.delegation_records
+        delegation = governance.delegation_records[delegation_id]
+        assert delegation.specific_duties == ['Oversee strategic decisions and board governance']
+        assert len(delegation.duty_assignments) == 1
+        
+        delegate_matrix = governance.get_responsibility_matrix('technical_lead_001')
+        assert delegate_matrix['received_delegations_count'] == 1
+        
+        delegator_matrix = governance.get_responsibility_matrix('chairman_001')
+        assert delegator_matrix['given_delegations_count'] == 1
     
-    @pytest.mark.asyncio
-    async def test_high_impact_requires_supermajority(self, governance):
-        """Test that high-impact decisions require supermajority"""
-        scaling_request = {
-            'scaling_type': 'HORIZONTAL',
-            'urgency': 'HIGH',
-            'market_conditions': {'volatility': 0.5},
-            'resource_cost_estimate': 15000.0  # High impact
+    def test_accountability_chain_tracking(self, governance):
+        """Test accountability chain updates with delegation"""
+        initial_chain = governance.accountability_chains['technical_lead_001']
+        assert len(initial_chain) == 2  # [technical_lead, chairman]
+        
+        delegation_data = {
+            'delegator': 'risk_officer_001',
+            'delegate': 'technical_lead_001',
+            'specific_duties': ['Monitor system risk thresholds and exposure limits'],
+            'authority_level': 'monitoring_only',
+            'scope': 'risk_management'
         }
         
-        proposal_id = await governance.propose_scaling_decision(scaling_request)
-        proposal = governance.active_proposals[proposal_id]
+        governance.create_duty_delegation(delegation_data)
         
-        assert proposal.required_threshold == VotingThreshold.SUPERMAJORITY
+        updated_chain = governance.accountability_chains['technical_lead_001']
+        assert 'risk_officer_001' in updated_chain
+        assert updated_chain[1] == 'risk_officer_001'  # Now accountable to risk officer
     
-    @pytest.mark.asyncio
-    async def test_voting_process(self, governance):
-        """Test complete voting process"""
-        scaling_request = {
-            'scaling_type': 'HORIZONTAL',
-            'urgency': 'MEDIUM',
-            'resource_cost_estimate': 2000.0
+    def test_responsibility_matrix_generation(self, governance):
+        """Test comprehensive responsibility matrix generation"""
+        matrix = governance.get_responsibility_matrix('chairman_001')
+        
+        assert 'total_duties' in matrix
+        assert matrix['primary_duties_count'] >= 3  # Chairman should have multiple primary duties
+        assert 'workload_status' in matrix
+        assert 'accountability_chain' in matrix
+        assert matrix['current_performance_score'] > 0
+    
+    def test_system_wide_accountability_report(self, governance):
+        """Test system-wide accountability report generation"""
+        report = governance.generate_accountability_report()
+        
+        assert 'system_wide_metrics' in report
+        assert 'member_summaries' in report
+        assert 'recommendations' in report
+        assert 'accountability_chains' in report
+        
+        metrics = report['system_wide_metrics']
+        assert metrics['total_board_members'] == 5
+        assert metrics['average_performance_score'] > 0
+    
+    def test_authority_level_permissions(self, governance):
+        """Test authority level permission mapping"""
+        original_permissions = ["approve_major_decisions", "financial_oversight", "metric_monitoring"]
+        
+        full_perms = governance._get_delegated_permissions(original_permissions, "full")
+        limited_perms = governance._get_delegated_permissions(original_permissions, "limited")
+        monitoring_perms = governance._get_delegated_permissions(original_permissions, "monitoring_only")
+        
+        assert len(full_perms) == 3  # All permissions
+        assert len(limited_perms) < len(full_perms)  # Restricted permissions
+        assert len(monitoring_perms) <= len(limited_perms)  # Most restricted
+    
+    def test_workload_score_calculation(self, governance):
+        """Test workload score calculation and updates"""
+        delegation_data_1 = {
+            'delegator': 'chairman_001',
+            'delegate': 'board_member_001',
+            'specific_duties': ['Oversee strategic decisions and board governance'],
+            'authority_level': 'limited',
+            'scope': 'system_administration'
         }
         
-        proposal_id = await governance.propose_scaling_decision(scaling_request)
-        
-        assert await governance.cast_vote(proposal_id, "board_member_1", True)
-        assert await governance.cast_vote(proposal_id, "board_member_2", True)
-        assert await governance.cast_vote(proposal_id, "board_member_3", True)
-        
-        proposal = governance.active_proposals.get(proposal_id)
-        if proposal:  # May be moved to history after approval
-            assert len(proposal.votes) == 3
-            assert all(vote.vote for vote in proposal.votes)
-    
-    @pytest.mark.asyncio
-    async def test_probability_calibration_accuracy(self):
-        """Test probability calibration improves accuracy by 15-20%"""
-        initial_accuracy = 0.70
-        target_improvement = 0.15  # 15% improvement
-        
-        calibrated_accuracy = initial_accuracy + target_improvement
-        
-        assert calibrated_accuracy >= 0.85
-        assert (calibrated_accuracy - initial_accuracy) >= 0.15
-    
-    @pytest.mark.asyncio
-    async def test_latency_aware_confidence_decay(self):
-        """Test confidence decay for latencies >50ms"""
-        base_confidence = 0.8
-        latency_ms = 150.0  # Above 50ms threshold
-        
-        penalty = ((latency_ms - 50) / 1000) * 0.15
-        adjusted_confidence = base_confidence * (1 - penalty)
-        
-        assert adjusted_confidence < base_confidence
-        assert adjusted_confidence > 0.7  # Should not decay too much
-    
-    @pytest.mark.asyncio
-    async def test_proposal_expiry(self, governance):
-        """Test proposal expiry mechanism"""
-        scaling_request = {
-            'scaling_type': 'HORIZONTAL',
-            'urgency': 'LOW',
-            'resource_cost_estimate': 500.0
+        delegation_data_2 = {
+            'delegator': 'chairman_001',
+            'delegate': 'board_member_001',
+            'specific_duties': ['Ensure fiduciary responsibility to stakeholders'],
+            'authority_level': 'monitoring_only',
+            'scope': 'compliance_monitoring'
         }
         
-        proposal_id = await governance.propose_scaling_decision(scaling_request)
-        proposal = governance.active_proposals[proposal_id]
+        governance.create_duty_delegation(delegation_data_1)
+        governance.create_duty_delegation(delegation_data_2)
         
-        assert proposal.expires_at > proposal.created_at
-        assert proposal.expires_at <= proposal.created_at + 300  # 5 minutes max
+        chairman_matrix = governance.get_responsibility_matrix('chairman_001')
+        delegate_matrix = governance.get_responsibility_matrix('board_member_001')
+        
+        assert chairman_matrix['workload_score'] > 0
+        assert delegate_matrix['workload_score'] > 0
+        assert delegate_matrix['received_delegations_count'] == 2
     
-    @pytest.mark.asyncio
-    async def test_duplicate_voting_prevention(self, governance):
-        """Test that board members cannot vote twice"""
-        scaling_request = {
-            'scaling_type': 'HORIZONTAL',
-            'urgency': 'MEDIUM',
-            'resource_cost_estimate': 3000.0
+    def test_delegation_status_tracking(self, governance):
+        """Test delegation status tracking and retrieval"""
+        delegation_data = {
+            'delegator': 'chairman_001',
+            'delegate': 'compliance_officer_001',
+            'specific_duties': ['Oversee strategic decisions and board governance'],  # Use actual chairman duty
+            'authority_level': 'limited',
+            'scope': 'compliance_monitoring',
+            'duration': 3600
         }
         
-        proposal_id = await governance.propose_scaling_decision(scaling_request)
+        delegation_id = governance.create_duty_delegation(delegation_data)
+        status = governance.get_delegation_status(delegation_id)
         
-        assert await governance.cast_vote(proposal_id, "board_member_1", True)
+        assert status['status'] == 'active'
+        assert status['delegator'] == 'chairman_001'
+        assert status['delegate'] == 'compliance_officer_001'
+        assert status['authority_level'] == 'limited'
+        assert len(status['duty_assignments']) == 1
+    
+    def test_board_member_duties_retrieval(self, governance):
+        """Test board member duties and obligations retrieval"""
+        chairman_duties = governance.get_board_member_duties('chairman_001')
         
-        assert not await governance.cast_vote(proposal_id, "board_member_1", False)
+        assert 'duties' in chairman_duties  # Actual field name
+        assert 'obligations' in chairman_duties
+        assert 'delegation_authorities' in chairman_duties
+        assert len(chairman_duties['duties']) >= 3  # Chairman has multiple duties
     
     @pytest.mark.asyncio
-    async def test_unauthorized_voting_prevention(self, governance):
-        """Test that non-board members cannot vote"""
-        scaling_request = {
-            'scaling_type': 'HORIZONTAL',
-            'urgency': 'MEDIUM',
-            'resource_cost_estimate': 3000.0
+    async def test_delegation_revocation(self, governance):
+        """Test delegation revocation functionality"""
+        delegation_data = {
+            'delegator': 'chairman_001',
+            'delegate': 'technical_lead_001',
+            'specific_duties': ['Oversee strategic decisions and board governance'],  # Use actual chairman duty
+            'authority_level': 'monitoring_only',
+            'scope': 'system_administration'
         }
         
-        proposal_id = await governance.propose_scaling_decision(scaling_request)
+        delegation_id = governance.create_duty_delegation(delegation_data)
         
-        assert not await governance.cast_vote(proposal_id, "unauthorized_user", True)
-    
-    def test_resource_cost_estimation(self, governance):
-        """Test resource cost estimation logic"""
-        low_cost_request = {'scaling_factor': 1.0, 'urgency': 'LOW'}
-        medium_cost_request = {'scaling_factor': 2.0, 'urgency': 'MEDIUM'}
-        high_cost_request = {'scaling_factor': 5.0, 'urgency': 'HIGH'}
+        success = await governance.revoke_delegation(delegation_id, 'chairman_001')  # Add revoker argument and await
+        assert success
         
-        low_cost = governance._estimate_resource_cost(low_cost_request)
-        medium_cost = governance._estimate_resource_cost(medium_cost_request)
-        high_cost = governance._estimate_resource_cost(high_cost_request)
-        
-        assert low_cost < medium_cost < high_cost
-        assert high_cost >= 7500.0  # 1000 * 5.0 * 1.5
-    
-    def test_decision_impact_classification(self, governance):
-        """Test decision impact classification"""
-        assert governance._classify_decision_impact(500.0) == ScalingDecisionType.LOW_IMPACT
-        assert governance._classify_decision_impact(5000.0) == ScalingDecisionType.MEDIUM_IMPACT
-        assert governance._classify_decision_impact(15000.0) == ScalingDecisionType.HIGH_IMPACT
-    
-    def test_proposal_status_tracking(self, governance):
-        """Test proposal status tracking"""
-        status = governance.get_proposal_status("non_existent")
-        assert status['status'] == 'not_found'
+        status = governance.get_delegation_status(delegation_id)
+        assert not status['active']

@@ -88,9 +88,40 @@ async def main():
                     'delegate': 'technical_lead_001',
                     'scope': 'emergency_response',
                     'authority_level': 'full',
+                    'specific_duties': ['Emergency response coordination'],
                     'time_remaining': 3600,
-                    'active': True
+                    'active': True,
+                    'duty_assignments': [{'duty_name': 'Emergency response coordination', 'authority_level': 'full', 'status': 'active'}]
                 }
+            
+            def get_responsibility_matrix(self, member_id):
+                return {
+                    'status': 'found',
+                    'total_duties': 5,
+                    'primary_duties_count': 3,
+                    'received_delegations_count': 2,
+                    'workload_status': 'moderate',
+                    'current_performance_score': 0.85,
+                    'accountability_score': 0.90,
+                    'overdue_duties': []
+                }
+            
+            def generate_accountability_report(self):
+                return {
+                    'system_wide_metrics': {
+                        'total_active_duties': 25,
+                        'total_active_delegations': 5,
+                        'overdue_duties_count': 2,
+                        'average_performance_score': 0.82
+                    },
+                    'recommendations': [
+                        'Review workload distribution across board members',
+                        'Address overdue compliance reporting duties'
+                    ]
+                }
+            
+            async def create_duty_delegation(self, data):
+                return f"duty_delegation_{int(time.time())}"
         
         governance = MockGovernance()
     
@@ -198,6 +229,7 @@ async def main():
         {
             'delegator': 'chairman_001',
             'delegate': 'technical_lead_001',
+            'specific_duties': ['Oversee strategic decisions and board governance'],
             'scope': 'emergency_response',
             'authority_level': 'full',
             'duration': 3600,
@@ -206,6 +238,7 @@ async def main():
         {
             'delegator': 'risk_officer_001',
             'delegate': 'compliance_officer_001',
+            'specific_duties': ['Monitor system risk thresholds and exposure limits'],
             'scope': 'risk_threshold_adjustments',
             'authority_level': 'limited',
             'duration': 7200,
@@ -215,17 +248,24 @@ async def main():
     
     for delegation_data in delegation_scenarios:
         try:
-            delegation_id = await governance.create_delegation(delegation_data)
+            if hasattr(governance, 'create_duty_delegation'):
+                delegation_id = await governance.create_duty_delegation(delegation_data)
+            else:
+                delegation_id = await governance.create_delegation(delegation_data)
             print(f"\nCreated delegation: {delegation_id}")
             
             delegation_status = governance.get_delegation_status(delegation_id)
             print(f"  Delegator: {delegation_status['delegator']} -> Delegate: {delegation_status['delegate']}")
             print(f"  Scope: {delegation_status['scope']}")
             print(f"  Authority Level: {delegation_status['authority_level']}")
+            if 'specific_duties' in delegation_status:
+                print(f"  Specific Duties: {delegation_status['specific_duties']}")
             print(f"  Time Remaining: {delegation_status['time_remaining']:.0f} seconds")
             print(f"  Active: {delegation_status['active']}")
+            if 'duty_assignments' in delegation_status:
+                print(f"  Duty Assignments: {len(delegation_status['duty_assignments'])}")
         except Exception as e:
-            print(f"Delegation creation (mock): {delegation_data['scope']}")
+            print(f"Delegation creation (mock): {delegation_data.get('scope', 'unknown')}")
     
     print("\n5. Unified Governance Decision Types")
     print("-" * 60)
@@ -255,7 +295,41 @@ async def main():
     print("  • Integrated with delegation authority validation")
     print("  • Recorded on Solana blockchain for immutability")
     
-    print("\n7. Performance and Compliance Metrics")
+    print("\n7. Responsibility Matrix and Accountability Tracking")
+    print("-" * 60)
+    
+    for member_id in ["chairman_001", "risk_officer_001", "compliance_officer_001", "technical_lead_001"]:
+        matrix = governance.get_responsibility_matrix(member_id)
+        if matrix.get('status') != 'not_found':
+            member_role = governance.board_members[member_id].role.value.replace('_', ' ').title()
+            print(f"\n{member_role} ({member_id}) Responsibility Matrix:")
+            print(f"  Total Duties: {matrix['total_duties']} (Primary: {matrix['primary_duties_count']}, Delegated: {matrix['received_delegations_count']})")
+            print(f"  Workload Status: {matrix['workload_status'].title()}")
+            print(f"  Performance Score: {matrix['current_performance_score']:.2f}")
+            print(f"  Accountability Score: {matrix['accountability_score']:.2f}")
+            
+            if matrix['overdue_duties']:
+                print(f"  ⚠️  Overdue Duties: {len(matrix['overdue_duties'])}")
+                for overdue in matrix['overdue_duties'][:2]:  # Show first 2
+                    print(f"    • {overdue['duty_name']} (overdue by {overdue['overdue_hours']:.1f} hours)")
+    
+    print("\n8. System-Wide Accountability Report")
+    print("-" * 60)
+    
+    accountability_report = governance.generate_accountability_report()
+    
+    print("System-Wide Metrics:")
+    print(f"  Total Active Duties: {accountability_report['system_wide_metrics']['total_active_duties']}")
+    print(f"  Total Active Delegations: {accountability_report['system_wide_metrics']['total_active_delegations']}")
+    print(f"  Overdue Duties: {accountability_report['system_wide_metrics']['overdue_duties_count']}")
+    print(f"  Average Performance Score: {accountability_report['system_wide_metrics']['average_performance_score']:.2f}")
+    
+    if accountability_report['recommendations']:
+        print("\nSystem Recommendations:")
+        for rec in accountability_report['recommendations'][:3]:  # Show first 3
+            print(f"  • {rec}")
+    
+    print("\n9. Performance and Compliance Metrics")
     print("-" * 60)
     
     print("System Performance Targets:")
@@ -270,7 +344,9 @@ async def main():
     print("  ✅ Cloudflare Logpush for regulatory compliance")
     print("  ✅ SEC Rule 17a-4, MiFID II, GDPR compliance")
     print("  ✅ Immutable audit trails for all decisions")
-    print("  ✅ Board duty and obligation tracking")
+    print("  ✅ Comprehensive duty and responsibility tracking")
+    print("  ✅ Hierarchical delegation with accountability chains")
+    print("  ✅ Performance monitoring and workload management")
     
     print("\n" + "=" * 80)
     print("✅ Comprehensive Board Governance and Delegation System Demo Complete")
