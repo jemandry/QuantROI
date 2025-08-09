@@ -793,15 +793,15 @@ class MarketRegimeDetector:
     def __init__(self):
         self.regime_history = {}
         self.volatility_thresholds = {
-            'low': 0.15,
-            'medium': 0.25,
-            'high': 0.05
+            'low': 0.0003,
+            'medium': 0.0008,
+            'high': 0.001
         }
     
     async def detect_regime(self, symbol: str, market_data: pd.DataFrame) -> MarketRegime:
         """Detect current market regime using multiple indicators"""
         
-        if len(market_data) < 50:
+        if len(market_data) < 20:
             return MarketRegime.SIDEWAYS
         
         returns = market_data['Close'].pct_change().dropna()
@@ -841,7 +841,7 @@ class DynamicWeightOptimizer:
         self.weight_history = {}
         self.performance_tracker = {}
     
-    async def calculate_optimal_weights(self, predictions: Dict[str, float],
+    def calculate_optimal_weights(self, predictions: Dict[str, float],
                                       model_confidences: Dict[str, float],
                                       symbol: str) -> Dict[str, float]:
         """Calculate optimal ensemble weights using performance history"""
@@ -1201,6 +1201,7 @@ class AIArchitectStockPredictionEngine:
     async def predict(self, request: PredictionRequest) -> PredictionResult:
         """AI Architect prediction with ensemble methods and audit integration"""
         start_time = time.time()
+        self.prediction_start = time.time()
         
         try:
             with mlflow.start_run():
@@ -1281,7 +1282,7 @@ class AIArchitectStockPredictionEngine:
         historical_performance = self.model_performance_history.get(performance_key, {})
         
         if not historical_performance:
-            return [ModelType.LSTM, ModelType.RANDOM_FOREST, ModelType.GRADIENT_BOOSTING]
+            return [ModelType.LSTM, ModelType.RANDOM_FOREST, ModelType.GRADIENT_BOOSTING, ModelType.XGBOOST]
         
         sorted_models = sorted(
             historical_performance.items(), 
@@ -1297,7 +1298,7 @@ class AIArchitectStockPredictionEngine:
                     break
         
         if len(selected) < 2:
-            selected = [ModelType.LSTM, ModelType.RANDOM_FOREST]
+            selected = [ModelType.LSTM, ModelType.RANDOM_FOREST, ModelType.XGBOOST]
         
         await self.audit_manager.log_audit_event(
             'model_selection',
@@ -1363,12 +1364,17 @@ class AIArchitectStockPredictionEngine:
                     predictions[model_type.value] = pred
                     model_confidences[model_type.value] = 0.85
                     
+                elif model_type == ModelType.XGBOOST:
+                    pred = await self._xgboost_predict(features, request)
+                    predictions[model_type.value] = pred
+                    model_confidences[model_type.value] = 0.88
+                    
             except Exception as e:
                 logger.error(f"Model {model_type.value} prediction failed: {e}")
                 continue
         
         if self.config.enable_dynamic_weights:
-            weights = await self.dynamic_weight_optimizer.calculate_optimal_weights(
+            weights = self.dynamic_weight_optimizer.calculate_optimal_weights(
                 predictions, model_confidences, request.symbol
             )
         else:
@@ -1441,6 +1447,41 @@ class AIArchitectStockPredictionEngine:
             
         except Exception as e:
             logger.error(f"Gradient Boosting prediction error: {e}")
+            return 0.0
+    
+    async def _xgboost_predict(self, features: Dict[str, Any], 
+                              request: PredictionRequest) -> float:
+        """XGBoost prediction using integrated features"""
+        
+        try:
+            feature_matrix = self._prepare_feature_matrix(features)
+            
+            model_key = f"{request.symbol}_xgb"
+            if model_key not in self.model_registry[ModelType.XGBOOST]:
+                model = xgb.XGBRegressor(
+                    n_estimators=100,
+                    max_depth=6,
+                    learning_rate=0.1,
+                    random_state=42,
+                    n_jobs=-1
+                )
+                X_train, y_train = await self._prepare_training_features(request.symbol, features)
+                model.fit(X_train, y_train)
+                self.model_registry[ModelType.XGBOOST][model_key] = model
+            else:
+                model = self.model_registry[ModelType.XGBOOST][model_key]
+            
+            prediction = model.predict(feature_matrix.reshape(1, -1))[0]
+            
+            ensemble_data = {
+                'individual_predictions': {'xgboost': prediction}
+            }
+            await self._update_model_performance(request.symbol, ensemble_data)
+            
+            return float(prediction)
+            
+        except Exception as e:
+            logger.error(f"XGBoost prediction failed for {request.symbol}: {e}")
             return 0.0
     
     def _prepare_feature_matrix(self, features: Dict[str, Any]) -> np.ndarray:
@@ -1606,6 +1647,12 @@ class AIArchitectStockPredictionEngine:
                 data_quality * 0.2 +
                 feature_completeness * 0.1
             )
+            
+            prediction_latency = (time.time() - self.prediction_start) * 1000
+            if prediction_latency > 50:
+                latency_penalty = min(0.5, (prediction_latency - 50) / 10000)
+                confidence *= (1 - latency_penalty)
+                self.performance_metrics['latency_penalties_applied'] += 1
             
             return min(1.0, max(0.0, confidence))
             
