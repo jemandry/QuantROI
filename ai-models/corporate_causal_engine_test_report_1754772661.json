@@ -1,0 +1,101 @@
+{
+  "test_suite": "Corporate Causal Engine",
+  "timestamp": "2025-08-09T20:51:01.616540",
+  "summary": {
+    "total_test_categories": 9,
+    "successful_categories": 9,
+    "failed_categories": 0
+  },
+  "detailed_results": {
+    "scientific_rigor": {
+      "tests_performed": 3,
+      "p_values_calculated": 2,
+      "statistical_significance": false,
+      "scientific_rigor_score": 0.0,
+      "success": true
+    },
+    "federated_learning": {
+      "local_training_success": true,
+      "global_aggregation_success": true,
+      "privacy_budget_used": 0.1,
+      "participating_companies": 2,
+      "success": true
+    },
+    "automated_dag": {
+      "dag_generated": true,
+      "nodes_count": 0,
+      "edges_count": 0,
+      "relationships_count": 3,
+      "confidence": 0.8000000000000002,
+      "validation_passed": true,
+      "success": true
+    },
+    "cross_company_comparison": {
+      "comparison_completed": true,
+      "primary_company": "AAPL",
+      "comparison_companies_count": 2,
+      "event_similarity": 0.0,
+      "causal_transportability": 0.5,
+      "statistical_significance": true,
+      "p_value": 0.025,
+      "success": true
+    },
+    "what_if_scenarios": {
+      "scenario_analyzed": true,
+      "scenario_id": "0d4ede13be3196b486ff49b77a96e971",
+      "intervention_variables": 2,
+      "predicted_outcomes": 2,
+      "confidence": 0.7000000000000001,
+      "causal_mechanisms": 4,
+      "statistical_validation": true,
+      "success": true
+    },
+    "reversal_detection": {
+      "detection_completed": true,
+      "symbol": "TEST",
+      "changepoints_detected": 13,
+      "reversals_detected": 0,
+      "fizzles_detected": 7,
+      "detection_methods": 3,
+      "confidence_scores": 3,
+      "success": true
+    },
+    "news_generation": {
+      "news_generated": true,
+      "news_content_length": 146,
+      "sentiment_score": 1.0,
+      "market_impact_variables": 3,
+      "causal_explanation_length": 181,
+      "confidence": 0.8,
+      "company": "AAPL",
+      "event_type": "earnings",
+      "success": true
+    },
+    "integration": {
+      "analysis_completed": false,
+      "company": "AAPL",
+      "scenario_type": "earnings",
+      "components_analyzed": 0,
+      "overall_confidence": 0.0,
+      "causal_nexus_size": 0,
+      "inference_time_ms": 0.0,
+      "meets_latency_target": false,
+      "platform_status": "operational",
+      "success": true
+    },
+    "performance": {
+      "total_scenarios_tested": 5,
+      "total_time_seconds": 0.000746,
+      "avg_inference_time_ms": 0.1456,
+      "max_inference_time_ms": 0.165,
+      "min_inference_time_ms": 0.129,
+      "meets_10ms_target": "True",
+      "throughput_scenarios_per_second": 6702.412868632708,
+      "success": true
+    }
+  },
+  "recommendations": [
+    "Improve overall confidence through better model calibration",
+    "Enhance statistical validation methods for higher rigor"
+  ]
+}
