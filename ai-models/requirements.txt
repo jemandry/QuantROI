@@ -77,3 +77,20 @@ datasets>=2.0.0
 accelerate>=0.20.0
 tokenizers>=0.13.0
 safetensors>=0.3.0
+
+# Corporate Causal Engine Dependencies
+causalml>=0.15.0
+econml>=0.14.0
+prophet>=1.1.0
+ruptures>=1.1.0
+scipy>=1.9.0
+networkx>=2.8.0
+
+# Federated Learning Dependencies
+flower>=1.5.0
+pysyft>=0.8.0
+tenseal>=0.3.0
+
+# Additional Scientific Computing
+scikit-learn>=1.3.0
+lightgbm>=3.3.0
