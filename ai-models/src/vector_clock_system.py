@@ -48,11 +48,11 @@ class VectorClock:
         if self_dominates and not other_dominates:
             return "happens_before"  # self -> other
         elif other_dominates and not self_dominates:
-            return "happens_after"   # other -> self
-        elif not self_dominates and not other_dominates:
-            return "equal"
+            return "happens_after"  # other -> self
+        elif self_dominates and other_dominates:
+            return "concurrent"  # concurrent events
         else:
-            return "concurrent"
+            return "identical"  # identical clocks
 
 @dataclass
 class CausalEvent:
