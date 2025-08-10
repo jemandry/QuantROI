@@ -9,6 +9,13 @@ import json
 import hashlib
 
 try:
+    from .counterfactual_gan import CounterfactualGAN, CounterfactualGANIntegration, MarketCondition
+    GAN_AVAILABLE = True
+except ImportError:
+    GAN_AVAILABLE = False
+    logging.warning("CounterfactualGAN not available - what-if scenarios will use basic simulation")
+
+try:
     from dowhy import CausalModel
     from causalnex.structure import StructureModel
     from causalnex.network import BayesianNetwork
@@ -839,11 +846,18 @@ class CausalTransportabilityEngine:
             return 1.0, (0.0, 0.0)
 
 class CorporateWhatIfEngine:
-    """Engine for corporate what-if scenario analysis using Pearl's do-calculus"""
+    """Engine for corporate what-if scenario analysis using Pearl's do-calculus with GAN enhancement"""
     
     def __init__(self, causal_model: Optional[CausalModel] = None):
         self.causal_model = causal_model
         self.scenario_cache = {}
+        
+        if GAN_AVAILABLE:
+            self.gan_integration = CounterfactualGANIntegration()
+            logging.info("GAN-enhanced what-if analysis enabled")
+        else:
+            self.gan_integration = None
+            logging.info("Using basic what-if analysis without GAN enhancement")
         
     def analyze_what_if_scenario(self, intervention: Dict[str, Any], 
                                company_data: Dict[str, Any]) -> WhatIfScenario:
