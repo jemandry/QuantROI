@@ -1,0 +1,22 @@
+{
+  "network": {
+    "mina": "https://proxy.berkeley.minaexplorer.com/graphql",
+    "archive": "https://archive.berkeley.minaexplorer.com"
+  },
+  "zkapp": {
+    "strategy_verification": {
+      "fee": "0.1",
+      "memo": "QuantROI Strategy Verification"
+    }
+  },
+  "performance": {
+    "proof_generation_timeout_ms": 30000,
+    "max_concurrent_proofs": 5,
+    "cache_proofs": true
+  },
+  "integration": {
+    "solana_fallback": true,
+    "dual_chain_verification": true,
+    "privacy_threshold": 0.8
+  }
+}

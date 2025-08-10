@@ -23,28 +23,38 @@ The Ethical AI-Driven Fintech Trading Platform revolutionizes wealth management 
 - **Post-Quantum Cryptography**: Kyber/Dilithium encryption protects against future quantum attacks
 - **Quantum Key Distribution**: Quantropi QKD ensures unbreakable communication security
 - **Quantum Random Number Generation**: True randomness for cryptographic operations
+- **Dual-Chain ZKP Architecture**: Mina Protocol for zero-knowledge proofs, Solana for fast transactions
+- **Recursive SNARKs**: Constant-size proofs (~22KB) for strategy verification and audit trails
 - **Future-Proof Architecture**: Upgradeable quantum security as technology evolves
 
 ---
 
 ## 🏗️ Architecture Components
 
-### **Solana Smart Contracts (Rust)**
+### **Dual-Chain Smart Contracts**
 ```
-solana-contracts/
+solana-contracts/               # Fast transaction processing
 ├── programs/
-│   ├── delegation/          # Bank-to-AI policy delegation contracts
-│   ├── knowledge-tests/     # Investor competency verification
-│   ├── ria-contracts/       # Registered Investment Advisor agreements
-│   ├── payments/            # Cryptographic payment processing
-│   ├── billing/             # Automated fee management
-│   ├── execution-masking/   # Trade execution privacy
-│   ├── goal-tracking/       # Investment objective monitoring
-│   ├── voting/              # Governance and decision voting
-│   ├── transfers/           # Departmental fund transfers
-│   └── roi-competitions/    # AI agent performance competitions
-├── tests/                   # Contract unit and integration tests
-└── migrations/              # Deployment and upgrade scripts
+│   ├── delegation/            # Bank-to-AI policy delegation contracts
+│   ├── knowledge-tests/       # Investor competency verification
+│   ├── ria-contracts/         # Registered Investment Advisor agreements
+│   ├── payments/              # Cryptographic payment processing
+│   ├── billing/               # Automated fee management
+│   ├── execution-masking/     # Trade execution privacy
+│   ├── goal-tracking/         # Investment objective monitoring
+│   ├── voting/                # Governance and decision voting
+│   ├── transfers/             # Departmental fund transfers
+│   └── roi-competitions/      # AI agent performance competitions
+├── tests/                     # Contract unit and integration tests
+└── migrations/                # Deployment and upgrade scripts
+
+mina-zkapp/                    # Zero-knowledge proof verification
+├── src/
+│   ├── StrategyVerificationZkApp.ts  # Strategy commitment proofs
+│   ├── PerformanceAuditZkApp.ts      # Performance claim verification
+│   └── PrivacyPreservingAudit.ts     # Sensitive audit trail proofs
+├── tests/                     # zkApp unit and integration tests
+└── config/                    # Mina network configuration
 ```
 
 ### **Data Pipelines (Rust/Kafka)**
@@ -130,7 +140,7 @@ frontend/
 - **Smart Contract Recording**: All task activities recorded on Solana blockchain for immutable audit trails
 - **Multi-Channel Notifications**: Email, Slack, dashboard, and voice alerts via Grok 3 integration
 - **Compliance Tracking**: Automated monitoring of RIA/SEC milestones and deadlines
-- **Fast Recall**: <1ms query time for task history via TimescaleDB and Solana logs
+- **Fast Recall**: <1ms query time for task history via TimescaleDB, Solana logs, and Mina ZKP verification
 - **Cryptographic Security**: SHA-3 hashing and Kyber encryption for all task communications
 - **Extension Petitions**: Policy-based deadline extension requests with automated approval workflows
 

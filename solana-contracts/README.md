@@ -1,7 +1,7 @@
-# Solana Smart Contracts
+# Dual-Chain Smart Contracts
 ## Ethical AI-Driven Fintech Trading Platform
 
-This directory contains all Solana smart contracts (programs) written in Rust using the Anchor framework.
+This directory contains Solana smart contracts (programs) written in Rust using the Anchor framework. The platform also integrates Mina Protocol zkApps for zero-knowledge proof verification, creating a dual-chain architecture where Solana handles fast transactions and Mina provides privacy-preserving audit trails.
 
 ## Contract Overview
 
@@ -36,6 +36,7 @@ anchor test
 ```
 
 ## Performance Requirements
-- Execution time: <1ms per transaction
-- Compute units: <30K per transaction
-- Throughput: 1000+ TPS sustained
+- **Solana Execution**: <1ms per transaction, <30K compute units, 1000+ TPS sustained
+- **Mina ZKP Generation**: <30ms proof generation, constant-size proofs (~22KB)
+- **Dual-Chain Routing**: <10ms total latency for audit event processing
+- **Privacy vs Transparency**: Strategy commitments → Mina, Trade execution → Solana

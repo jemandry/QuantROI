@@ -22,6 +22,12 @@ class StreamBasedAuditLogger:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         self.audit_integration = ComprehensiveAuditIntegration()
+        try:
+            from .zkp_audit_router import ZKPAuditRouter
+            self.zkp_router = ZKPAuditRouter()
+        except ImportError:
+            self.logger.warning("ZKPAuditRouter not available, using basic audit integration")
+            self.zkp_router = None
         self.event_buffer = []
         self.buffer_size = 1000
         self.processing_stats = {
