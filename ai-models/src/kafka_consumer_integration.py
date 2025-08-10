@@ -45,16 +45,17 @@ class KafkaAIConsumer:
         self.mnpi_detector = MNPIDetectionEngine()
         
         from .automated_strand_creator import AutomatedStrandCreator
+        import os
         self.strand_creator = AutomatedStrandCreator(config={
             'volatility_threshold': 0.02,
             'volume_threshold_multiplier': 2.0,
             'trend_strength_threshold': 0.05,
             'sentiment_threshold': 0.3,
             'max_strand_duration_ns': 60_000_000_000,
-            'kafka_servers': ['localhost:9092'],
-            'neo4j_uri': 'bolt://localhost:7687',
-            'neo4j_user': 'neo4j',
-            'neo4j_password': 'password'
+            'kafka_servers': os.getenv('KAFKA_SERVERS', 'localhost:9092').split(','),
+            'neo4j_uri': os.getenv('NEO4J_URI', 'bolt://localhost:7687'),
+            'neo4j_user': os.getenv('NEO4J_USER', 'neo4j'),
+            'neo4j_password': os.getenv('NEO4J_PASSWORD', 'neo4j')
         })
         
         self.stats = {
