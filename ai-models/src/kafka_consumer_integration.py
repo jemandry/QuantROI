@@ -44,6 +44,20 @@ class KafkaAIConsumer:
         self.risk_manager = PortfolioRiskManager()
         self.mnpi_detector = MNPIDetectionEngine()
         
+        from .automated_strand_creator import AutomatedStrandCreator
+        import os
+        self.strand_creator = AutomatedStrandCreator(config={
+            'volatility_threshold': 0.02,
+            'volume_threshold_multiplier': 2.0,
+            'trend_strength_threshold': 0.05,
+            'sentiment_threshold': 0.3,
+            'max_strand_duration_ns': 60_000_000_000,
+            'kafka_servers': os.getenv('KAFKA_SERVERS', 'localhost:9092').split(','),
+            'neo4j_uri': os.getenv('NEO4J_URI', 'bolt://localhost:7687'),
+            'neo4j_user': os.getenv('NEO4J_USER', 'neo4j'),
+            'neo4j_password': os.getenv('NEO4J_PASSWORD', 'neo4j')
+        })
+        
         self.stats = {
             'messages_processed': 0,
             'ai_predictions_generated': 0,
@@ -70,6 +84,9 @@ class KafkaAIConsumer:
             
             await self.mnpi_detector.initialize()
             logger.info("✅ MNPI detection system initialized")
+            
+            await self.strand_creator.initialize()
+            logger.info("✅ Automated strand creator initialized")
             
         except Exception as e:
             logger.error(f"Error initializing AI models: {e}")
@@ -147,12 +164,35 @@ class KafkaAIConsumer:
             consumer.close()
     
     async def process_trade_message(self, message_data: Dict[str, Any]):
-        """Process trade messages with causal AI analysis"""
+        """Process trade messages with causal AI analysis and automated strand creation"""
         try:
             symbol = message_data.get('symbol', 'UNKNOWN')
             price = float(message_data.get('price', 0.0))
             volume = int(message_data.get('volume', 0))
             timestamp = message_data.get('time', datetime.now().isoformat())
+            
+            from .nanosecond_timing import get_ns_timestamp, ClockType
+            timestamp_ns = get_ns_timestamp(ClockType.MONOTONIC)
+            
+            volatility = 0.0
+            if hasattr(self, f'_last_price_{symbol}'):
+                last_price = getattr(self, f'_last_price_{symbol}')
+                volatility = abs(price - last_price) / last_price if last_price > 0 else 0.0
+            setattr(self, f'_last_price_{symbol}', price)
+            
+            market_data = {
+                'symbol': symbol,
+                'price': price,
+                'volume': volume,
+                'volatility': volatility,
+                'timestamp_ns': timestamp_ns,
+                'timestamp': timestamp
+            }
+            
+            completed_strand = await self.strand_creator.process_market_data_stream(market_data)
+            if completed_strand:
+                await self.strand_creator.store_strand_in_library(completed_strand)
+                logger.info(f"📊 Created strand {completed_strand.strand_id} for {symbol} with decision context")
             
             mnpi_risk = await self.mnpi_detector.analyze_trade(
                 symbol=symbol,
