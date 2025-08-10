@@ -72,6 +72,15 @@ class LeadersLaggardsAnalyzer:
         self.braided_engine = braided_engine
         self.logger = logging.getLogger(__name__)
         
+        try:
+            from .automated_strand_creator import AutomatedStrandCreator
+            from .unified_strand_interface import UnifiedStrandInterface
+            self.strand_creator = AutomatedStrandCreator({'volatility_threshold': 0.02})
+            self.strand_interface = UnifiedStrandInterface()
+        except ImportError:
+            self.strand_creator = None
+            self.strand_interface = None
+        
     async def analyze_sector_correlations(self, sector_symbols: Dict[str, List[str]], 
                                         time_window_days: int = 30) -> Dict[str, Any]:
         """Analyze correlations within and across sectors"""

@@ -143,6 +143,14 @@ class BraidedCordDataEngine:
                 storage_backend="postgresql_partitioned",
                 compression_enabled=True,
                 quantization_level="FP16"
+            ),
+            CordPlacementRule(
+                data_type="strand_library",
+                latency_threshold_ms=1.0,
+                cord_tier="warm_path",
+                storage_backend="postgresql_partitioned",
+                compression_enabled=True,
+                quantization_level="FP16"
             )
         ]
 

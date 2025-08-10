@@ -84,6 +84,7 @@ try:
     from .llm_question_answering_system import LLMQuestionAnsweringSystem, QuestionContext
     from .temporal_causal_gnn import CausalGraphDiscovery
     from .nlp_processor import FinancialEventOntology
+    from .automated_strand_creator import AutomatedStrandCreator
     EXISTING_COMPONENTS_AVAILABLE = True
 except ImportError:
     EXISTING_COMPONENTS_AVAILABLE = False
@@ -1566,6 +1567,11 @@ class CorporateCausalPlatform:
                 self.neural_matching = NeuralMatchingEngine()
                 self.llm_qa = LLMQuestionAnsweringSystem()
                 self.causal_discovery = CausalGraphDiscovery()
+                self.strand_creator = AutomatedStrandCreator({
+                    'volatility_threshold': 0.02,
+                    'sentiment_threshold': 0.3,
+                    'kafka_servers': ['localhost:9092']
+                })
                 
                 self.transportability_engine.neural_matching_engine = self.neural_matching
                 self.news_generator.sentiment_analyzer = self.sentiment_analyzer
@@ -1650,6 +1656,19 @@ class CorporateCausalPlatform:
                 company,
                 scenario_type
             )
+            
+            if 'market_data' in scenario_data and hasattr(self, 'strand_creator'):
+                try:
+                    strand_result = await self.strand_creator.process_market_data_stream(scenario_data['market_data'])
+                    if strand_result:
+                        analysis_result['strand_analysis'] = {
+                            'strand_id': strand_result.strand_id,
+                            'coordinates_3d': strand_result.coordinates_3d,
+                            'decision_context': strand_result.decision_context,
+                            'boundary_events': len(strand_result.boundary_events)
+                        }
+                except Exception as e:
+                    logging.warning(f"Strand creation failed: {e}")
             
             analysis_result['causal_nexus'] = self._build_causal_nexus(analysis_result)
             

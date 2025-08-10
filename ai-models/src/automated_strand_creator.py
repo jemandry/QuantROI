@@ -471,6 +471,25 @@ class AutomatedStrandCreator:
                 symbol=strand.symbol
             )
             
+            try:
+                from .zkp_audit_router import ZKPAuditRouter
+                zkp_router = ZKPAuditRouter()
+                
+                audit_event = {
+                    'event_type': 'strand_stored',
+                    'strand_id': strand.strand_id,
+                    'symbol': strand.symbol,
+                    'decision_context': strand.decision_context,
+                    'requires_zkp': True,
+                    'privacy_sensitive': True
+                }
+                
+                zkp_result = await zkp_router.route_audit_event(audit_event)
+                strand_data['zkp_audit'] = zkp_result
+                
+            except Exception as e:
+                self.logger.warning(f"ZKP audit routing failed: {e}")
+            
             await self.audit_logger.log_event({
                 'event_type': 'strand_stored',
                 'strand_id': strand.strand_id,
