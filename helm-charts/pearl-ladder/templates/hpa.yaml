@@ -36,6 +36,20 @@ spec:
         target:
           type: AverageValue
           averageValue: "50"
+    - type: Pods
+      pods:
+        metric:
+          name: causal_analyses_per_second
+        target:
+          type: AverageValue
+          averageValue: "100"
+    - type: Pods
+      pods:
+        metric:
+          name: stock_prediction_confidence_score
+        target:
+          type: AverageValue
+          averageValue: "0.8"
 {{- end }}
 
 ---

@@ -157,6 +157,12 @@ async def predict_vix_impact(request: VIXPredictionRequest):
             "price_prediction": result.get('price_prediction', {}),
             "confidence": result.get('confidence_score', 0.0),
             "causal_factors": result.get('causal_analysis', {}),
+            "causal_ai_enabled": getattr(stock_engine, 'causal_ai_enabled', False),
+            "causal_metrics": {
+                'causal_analyses_performed': result.get('causal_analyses_performed', 0),
+                'granger_tests_executed': result.get('granger_tests_executed', 0),
+                'counterfactual_analyses': result.get('counterfactual_analyses', 0)
+            },
             "processing_time_ms": result.get('processing_time_ms', 0)
         }
         
@@ -245,6 +251,19 @@ async def get_metrics():
         
     except Exception as e:
         return {"error": f"Error getting metrics: {str(e)}"}
+
+@app.get("/causal_ai_status")
+async def get_causal_ai_status():
+    """Get causal AI integration status"""
+    if not stock_engine:
+        return {"error": "Stock prediction engine not initialized"}
+    
+    return {
+        "causal_ai_enabled": getattr(stock_engine, 'causal_ai_enabled', False),
+        "causal_analysis_engine_available": stock_engine.causal_analysis_engine is not None,
+        "time_series_causality_available": stock_engine.time_series_causality is not None,
+        "performance_metrics": stock_engine.get_performance_metrics()
+    }
 
 if __name__ == "__main__":
     uvicorn.run(
