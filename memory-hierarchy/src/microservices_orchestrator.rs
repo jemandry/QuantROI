@@ -23,6 +23,7 @@ impl Default for ServiceRegistry {
     }
 }
 
+#[derive(Debug)]
 pub struct MicroservicesOrchestrator {
     service_registry: Arc<RwLock<ServiceRegistry>>,
     health_checks: Arc<RwLock<HashMap<String, bool>>>,

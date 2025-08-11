@@ -300,6 +300,7 @@ impl MetaLearningModelSelector {
 }
 
 #[allow(dead_code)]
+#[derive(Debug)]
 pub struct EnhancedSimulationEngine {
     query_cache: QueryOptimizationCache,
     model_selector: MetaLearningModelSelector,
@@ -583,6 +584,7 @@ pub struct CompactionStats {
 }
 
 #[allow(dead_code)]
+#[derive(Debug)]
 pub struct TieredStorageManager {
     config: TieredStorageConfig,
     hot_tier: Arc<RwLock<HashMap<String, VolatilitySimulationRecord>>>,

@@ -22,10 +22,23 @@ pub mod cross_source_resolver;
 pub mod ai_causal_graph_builder;
 pub mod wasm_edge_client;
 pub mod compliance_report_generator;
+pub mod voting_system;
+pub mod sip_switch_system;
+pub mod mina_zkp_integration;
+pub mod inspector_verification_system;
+pub mod money_disbursement_system;
 
 pub use ai_optimization::{AIModel, AIModelOptimizer, BraidedBrownianModel, QuantizationLevel, PruningStrategy, OptimizationMetadata, BrownianStorageConfig, OptimizedPathStorage, SparsePathMatrix, StoragePerformanceMetrics};
 pub use causal_data_agent::{CausalDataAgent, DataInventory, CausalQuestion, UserResponse, AnalysisSession, SessionStatus};
 pub use brownian_volatility_strand::{BrownianVolatilityStrand, BrownianMotionParameters, VolatilitySimulationRecord};
+pub use ai_causal_graph_builder::AICausalGraphBuilder;
+pub use wasm_edge_client::WasmEdgeClient;
+pub use compliance_report_generator::ComplianceReportGenerator;
+pub use voting_system::{VotingSystem, Proposal, Vote, VoteChoice, ProposalType};
+pub use sip_switch_system::{SipSwitchSystem, SipSession, SipEndpoint, SessionType};
+pub use mina_zkp_integration::{MinaZkpIntegration, ZkCircuit, ZkProof, ProofType};
+pub use inspector_verification_system::{InspectorVerificationSystem, Inspector, VerificationRequest};
+pub use money_disbursement_system::{MoneyDisbursementSystem, DisbursementRequest, DisbursementType};
 pub use async_volatility_engine::{AsyncVolatilityEngine, VolatilityStrandStatistics};
 pub use volatility_integration::VolatilityIntegratedMemoryHierarchy;
 pub use quantum_audit::{QuantumAuditEngine, QuantumAuditSession, QuantumMode, QuantumAuditResult, RegulatoryPrediction, QuantumSimulationEngine, ClassicalAuditEngine};
@@ -38,7 +51,7 @@ pub use braided_cord_data_engine::{BraidedCordDataEngine, DataType, DataTier, Da
 pub use solana_event_logger::{SolanaEventLogger, SolanaEventData, SolanaEventType, MertonJumpParams};
 pub use enhanced_confidence_engine::{EnhancedConfidenceEngine, EventSource, EventSourceData, SourceType, MultiSourceEvent};
 pub use cross_source_resolver::{CrossSourceResolver, ConflictAnalysis, ConflictSeverity, ResolutionStrategy};
-pub use ai_causal_graph_builder::{AICausalGraphBuilder, CausalNode, CausalEdge, CausalGraph, CausalNodeType, GraphBuildRequest, CausalInsight};
+pub use ai_causal_graph_builder::{CausalNode, CausalEdge, CausalGraph, CausalNodeType, GraphBuildRequest, CausalInsight};
 pub use wasm_edge_client::*;
 pub use compliance_report_generator::*;
 
