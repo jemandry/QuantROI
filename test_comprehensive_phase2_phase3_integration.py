@@ -776,6 +776,39 @@ async def test_mev_protection_integration():
         print(f"  ❌ MEV protection integration test failed: {e}")
         return False
 
+async def test_trading_system_mev_integration():
+    """Test complete trading system integration with MEV protection"""
+    try:
+        import subprocess
+        import sys
+        import os
+        
+        print("\n🛡️ Testing Complete Trading System MEV Integration...")
+        
+        result = subprocess.run([
+            sys.executable, 
+            "test_trading_system_mev_integration.py"
+        ], capture_output=True, text=True, cwd=os.getcwd())
+        
+        success = result.returncode == 0
+        
+        if success:
+            print("  ✅ All trading engines integrated with MEV protection")
+            print("  ✅ Performance targets met across all components")
+            print("  ✅ MEV protection working system-wide")
+        else:
+            print("  ❌ Trading system MEV integration issues detected")
+            if result.stderr:
+                print(f"  Error: {result.stderr[:200]}...")
+        
+        print(f"  🎯 Trading System MEV Integration: {'✅ PASS' if success else '❌ FAIL'}")
+        
+        return success
+        
+    except Exception as e:
+        print(f"  ❌ Trading system MEV integration test failed: {e}")
+        return False
+
 
 if __name__ == "__main__":
     asyncio.run(run_comprehensive_phase2_phase3_tests())

@@ -3,6 +3,14 @@ from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 
 try:
+    from .mev_trade_execution_router import get_mev_trade_router, TradeExecutionRequest
+    MEV_ROUTER_AVAILABLE = True
+except ImportError:
+    MEV_ROUTER_AVAILABLE = False
+    import logging
+    logging.warning("MEV trade router not available for causal trading model")
+
+try:
     from .trading_instructions import TradingInstructionEngine, EnhancedMasterStrategy
 except ImportError:
     try:
@@ -1212,6 +1220,47 @@ class EnhancedCausalTradingModel:
         self.logger.info(f"Master Strategy Trade: {result.strategy_used.value} - {result.action} "
                         f"(confidence: {result.confidence:.3f}, time: {execution_time:.2f}ms)")
         self.logger.debug(f"Strategy weights: {learning_insights['strategy_weights']}")
+        
+        return result
+    
+    async def execute_adaptive_trading_with_mev(self, market_data: MarketData, qos_requirements: QoSRequirements, execute_actual_trades: bool = False) -> TradingResult:
+        """Execute adaptive trading with optional MEV-protected actual trade execution"""
+        start_time = datetime.now()
+        
+        result = self.execute_adaptive_trading(market_data, qos_requirements)
+        
+        if execute_actual_trades and result.action != "hold" and MEV_ROUTER_AVAILABLE:
+            try:
+                router = get_mev_trade_router()
+                
+                trade_request = TradeExecutionRequest(
+                    symbol=market_data.symbol,
+                    quantity=result.quantity,
+                    action=result.action,
+                    user_id="causal_trading_model",
+                    strategy_id=f"causal_{result.strategy_used.value}",
+                    urgency_ms=int(qos_requirements.latency_requirement * 1000) if hasattr(qos_requirements, 'latency_requirement') else 5000,
+                    trade_value_usd=result.quantity * market_data.price,
+                    confidence=result.confidence,
+                    source_engine="EnhancedCausalTradingModel",
+                    causal_analysis={
+                        "strategy_used": result.strategy_used.value,
+                        "confidence": result.confidence,
+                        "expected_return": result.expected_return,
+                        "risk_score": result.risk_score
+                    }
+                )
+                
+                execution_result = await router.execute_trade(trade_request)
+                
+                if execution_result.success:
+                    self.logger.info(f"✅ Causal trade executed with MEV protection: {execution_result.order_id}")
+                    result.timestamp = datetime.now().isoformat()
+                else:
+                    self.logger.error(f"❌ Causal trade execution failed: {execution_result.error_message}")
+                    
+            except Exception as e:
+                self.logger.error(f"❌ MEV-protected execution failed for causal trade: {e}")
         
         return result
     

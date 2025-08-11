@@ -23,6 +23,13 @@ except ImportError:
         MarketData = None
         AdaptiveStrategyManager = None
 
+try:
+    from .mev_trade_execution_router import get_mev_trade_router, TradeExecutionRequest
+    MEV_ROUTER_AVAILABLE = True
+except ImportError:
+    MEV_ROUTER_AVAILABLE = False
+    logging.warning("MEV trade router not available for multi-timescale engine")
+
 class TimescaleLevel(Enum):
     MILLISECOND = "ms"
     SECOND = "sec"
@@ -279,3 +286,57 @@ class MultiTimescaleDecisionEngine:
         except Exception as e:
             self.logger.error(f"Error in option sniffing processing: {e}")
             return {"type": "ERROR", "message": str(e)}
+    
+    async def execute_decision_with_mev(self, decision_result: Dict[str, Any], execute_actual_trades: bool = False) -> Dict[str, Any]:
+        """Execute decision result with optional MEV-protected trade execution"""
+        try:
+            if not execute_actual_trades or not MEV_ROUTER_AVAILABLE:
+                return decision_result
+            
+            result = decision_result.get('result', {})
+            
+            if result.get('type') != 'ORDER':
+                return decision_result
+            
+            router = get_mev_trade_router()
+            
+            timescale = decision_result.get('timescale', 'hour')
+            urgency_map = {
+                'ms': 100,
+                'sec': 1000,
+                'min': 30000,
+                'hour': 300000
+            }
+            urgency_ms = urgency_map.get(timescale, 5000)
+            
+            trade_request = TradeExecutionRequest(
+                symbol=result.get('symbol', 'UNKNOWN'),
+                quantity=float(result.get('quantity', 100)),
+                action=result.get('action', 'hold'),
+                user_id="multi_timescale_engine",
+                strategy_id=result.get('strategy', 'multi_timescale'),
+                urgency_ms=urgency_ms,
+                trade_value_usd=float(result.get('quantity', 100)) * 100.0,
+                confidence=result.get('confidence', 0.7),
+                source_engine="MultiTimescaleDecisionEngine"
+            )
+            
+            execution_result = await router.execute_trade(trade_request)
+            
+            decision_result['execution'] = {
+                'success': execution_result.success,
+                'order_id': execution_result.order_id,
+                'mev_protected': execution_result.mev_protected,
+                'execution_time_ms': execution_result.execution_time_ms,
+                'error': execution_result.error_message
+            }
+            
+            return decision_result
+            
+        except Exception as e:
+            logging.error(f"❌ Decision execution with MEV failed: {e}")
+            decision_result['execution'] = {
+                'success': False,
+                'error': str(e)
+            }
+            return decision_result
