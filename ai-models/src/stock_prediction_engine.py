@@ -2052,6 +2052,16 @@ class AIArchitectStockPredictionEngine:
     def get_performance_metrics(self) -> Dict[str, Any]:
         """Get comprehensive AI Architect performance metrics"""
         
+        confidence_scorer_status = {'error': 'Confidence scorer not available'}
+        confidence_scorer_active = False
+        
+        try:
+            if hasattr(self, 'confidence_scorer') and self.confidence_scorer:
+                confidence_scorer_status = self.confidence_scorer.get_expert_optimization_status()
+                confidence_scorer_active = True
+        except Exception as e:
+            confidence_scorer_status = {'error': f'Failed to get confidence scorer status: {str(e)}'}
+        
         return {
             'predictions_made': self.performance_metrics['predictions_made'],
             'ensemble_accuracy': self.performance_metrics['ensemble_accuracy'],
@@ -2065,5 +2075,7 @@ class AIArchitectStockPredictionEngine:
             'granger_tests_executed': self.performance_metrics['granger_tests_executed'],
             'counterfactual_analyses': self.performance_metrics['counterfactual_analyses'],
             'model_registry_size': {k.value: len(v) for k, v in self.model_registry.items()},
-            'regime_history_size': len(self.market_regime_detector.regime_history)
+            'regime_history_size': len(self.market_regime_detector.regime_history),
+            'confidence_scorer_active': confidence_scorer_active,
+            'confidence_scorer_expert_optimizations': confidence_scorer_status
         }
