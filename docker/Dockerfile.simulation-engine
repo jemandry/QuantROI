@@ -1,0 +1,50 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install system dependencies including Rust
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    curl \
+    build-essential \
+    && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
+    && . ~/.cargo/env \
+    && rm -rf /var/lib/apt/lists/*
+
+# Add Rust to PATH
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Upgrade pip and install build tools
+RUN pip install --upgrade pip setuptools wheel
+
+# Copy lightweight requirements and install Python dependencies
+COPY requirements-light.txt .
+RUN pip install --no-cache-dir -r requirements-light.txt
+
+# Copy Rust source code
+COPY memory-hierarchy/ ./memory-hierarchy/
+
+# Copy Python source code
+COPY ai-models/src/simulation_engine_bridge.py .
+COPY ai-models/src/microservices/simulation_engine_service.py .
+COPY ai-models/src/audit_trail_manager.py .
+
+# Build Rust module (optional, will fallback to Python if fails)
+RUN cd memory-hierarchy && \
+    (maturin develop || echo "Rust build failed, will use Python fallback") && \
+    cd ..
+
+# Set environment variables
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8006/health || exit 1
+
+# Expose port
+EXPOSE 8006
+
+# Run the service
+CMD ["python", "simulation_engine_service.py"]

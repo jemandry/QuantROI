@@ -1,0 +1,103 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "pearl-ladder.fullname" . }}-config
+  labels:
+    {{- include "pearl-ladder.labels" . | nindent 4 }}
+data:
+  performance.yaml: |
+    hot_path:
+      target_latency_ns: 50000  # 50μs
+      max_concurrency: {{ .Values.performance.hotPath.maxConcurrency }}
+      enabled: {{ .Values.performance.hotPath.enabled }}
+    warm_path:
+      target_latency_ns: 500000000  # 500ms
+      max_concurrency: {{ .Values.performance.warmPath.maxConcurrency }}
+      enabled: {{ .Values.performance.warmPath.enabled }}
+    cold_path:
+      target_latency_ns: 10000000000  # 10s
+      max_concurrency: {{ .Values.performance.coldPath.maxConcurrency }}
+      enabled: {{ .Values.performance.coldPath.enabled }}
+
+  ladder.yaml: |
+    escalation_thresholds:
+      rung1_to_rung2:
+        correlation_threshold: 0.3
+        p_value_threshold: 0.05
+        confidence_threshold: 0.8
+      rung2_to_rung3:
+        effect_size_threshold: 0.1
+        statistical_power: 0.8
+        confounding_score: 0.7
+    
+    performance_targets:
+      rung1_latency_ns: 50000      # 50μs for Association
+      rung2_latency_ns: 500000000  # 500ms for Intervention
+      rung3_latency_ns: 10000000000 # 10s for Counterfactual
+    
+    audit_settings:
+      ipfs_enabled: {{ .Values.dependencies.ipfs.enabled }}
+      solana_enabled: {{ .Values.dependencies.solana.enabled }}
+      hash_algorithm: "sha256"
+      immutable_logging: true
+
+  dependencies.yaml: |
+    redis:
+      host: {{ .Values.dependencies.redis.host }}
+      port: {{ .Values.dependencies.redis.port }}
+      enabled: {{ .Values.dependencies.redis.enabled }}
+    
+    postgresql:
+      host: {{ .Values.dependencies.postgresql.host }}
+      port: {{ .Values.dependencies.postgresql.port }}
+      database: {{ .Values.dependencies.postgresql.database }}
+      enabled: {{ .Values.dependencies.postgresql.enabled }}
+    
+    kafka:
+      brokers: {{ .Values.dependencies.kafka.brokers }}
+      enabled: {{ .Values.dependencies.kafka.enabled }}
+    
+    neo4j:
+      host: {{ .Values.dependencies.neo4j.host }}
+      port: {{ .Values.dependencies.neo4j.port }}
+      enabled: {{ .Values.dependencies.neo4j.enabled }}
+    
+    ipfs:
+      host: {{ .Values.dependencies.ipfs.host }}
+      port: {{ .Values.dependencies.ipfs.port }}
+      enabled: {{ .Values.dependencies.ipfs.enabled }}
+    
+    solana:
+      rpc_url: {{ .Values.dependencies.solana.rpcUrl }}
+      enabled: {{ .Values.dependencies.solana.enabled }}
+
+  monitoring.yaml: |
+    prometheus:
+      enabled: {{ .Values.monitoring.prometheus.enabled }}
+      port: {{ .Values.monitoring.prometheus.port }}
+      metrics_path: "/metrics"
+      scrape_interval: "15s"
+    
+    grafana:
+      enabled: {{ .Values.monitoring.grafana.enabled }}
+      port: {{ .Values.monitoring.grafana.port }}
+    
+    custom_metrics:
+      - name: "causal_signals_processed_total"
+        type: "counter"
+        help: "Total number of causal signals processed"
+      - name: "stock_predictions_with_causal_ai_total"
+        type: "counter"
+        help: "Total number of stock predictions using causal AI"
+      - name: "causal_model_selections_total"
+        type: "counter"
+        help: "Total number of causal-informed model selections"
+      - name: "granger_tests_executed_total"
+        type: "counter"
+        help: "Total number of Granger causality tests executed"
+      - name: "ladder_escalation_duration_seconds"
+        type: "histogram"
+        help: "Time spent escalating between ladder rungs"
+      - name: "benchmark_validation_accuracy"
+        type: "gauge"
+        help: "Accuracy of benchmark validation results"

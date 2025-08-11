@@ -1,0 +1,64 @@
+{{- if .Values.keda.enabled }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "pearl-ladder.fullname" . }}-keda-scaler
+  labels:
+    {{- include "pearl-ladder.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    name: {{ include "pearl-ladder.fullname" . }}-ladder-escalator
+  minReplicaCount: {{ .Values.keda.minReplicas | default 2 }}
+  maxReplicaCount: {{ .Values.keda.maxReplicas | default 50 }}
+  triggers:
+  - type: prometheus
+    metadata:
+      serverAddress: http://prometheus:9090
+      metricName: prediction_latency_ms
+      threshold: '100'
+      query: avg(prediction_latency_ms{service="ladder-escalator"})
+  - type: prometheus
+    metadata:
+      serverAddress: http://prometheus:9090
+      metricName: trades_per_second
+      threshold: '1000'
+      query: avg(trades_per_second{service="ladder-escalator"})
+  - type: prometheus
+    metadata:
+      serverAddress: http://prometheus:9090
+      metricName: smart_contract_governance_required
+      threshold: '1'
+      query: sum(smart_contract_governance_required{service="ladder-escalator"})
+  cooldownPeriod: 300
+  pollingInterval: 30
+{{- end }}
+
+---
+{{- if .Values.keda.enabled }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "pearl-ladder.fullname" . }}-gpu-keda-scaler
+  labels:
+    {{- include "pearl-ladder.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    name: {{ include "pearl-ladder.fullname" . }}-simulation-engine
+  minReplicaCount: {{ .Values.keda.gpu.minReplicas | default 1 }}
+  maxReplicaCount: {{ .Values.keda.gpu.maxReplicas | default 10 }}
+  triggers:
+  - type: prometheus
+    metadata:
+      serverAddress: http://prometheus:9090
+      metricName: gpu_utilization_percent
+      threshold: '80'
+      query: avg(gpu_utilization_percent{service="simulation-engine"})
+  - type: prometheus
+    metadata:
+      serverAddress: http://prometheus:9090
+      metricName: causal_ai_prediction_confidence
+      threshold: '0.95'
+      query: avg(causal_ai_prediction_confidence{service="simulation-engine"})
+  cooldownPeriod: 600
+  pollingInterval: 60
+{{- end }}
