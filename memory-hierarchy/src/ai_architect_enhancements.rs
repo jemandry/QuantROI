@@ -392,6 +392,23 @@ impl EnhancedSimulationEngine {
                     path.push(next_value.max(0.001));
                 }
             },
+            StochasticModelType::FractionalBrownianMotion { mu, sigma, hurst } => {
+                let mut path = Vec::with_capacity(num_steps + 1);
+                path.push(parameters.initial_value);
+                
+                let fbm_increments = self.generate_fbm_increments(*hurst, num_steps, parameters.dt).await?;
+                
+                for i in 0..num_steps {
+                    let current_value = *path.last().unwrap();
+                    let drift_term = mu * parameters.dt;
+                    let diffusion_term = sigma * fbm_increments[i];
+                    
+                    let next_value = current_value * (1.0 + drift_term + diffusion_term);
+                    path.push(next_value.max(0.001));
+                }
+                
+                return Ok(path);
+            },
             _ => {
                 return self.generate_euler_maruyama_path(parameters, num_steps).await;
             }
@@ -511,6 +528,18 @@ impl EnhancedSimulationEngine {
                     path.push(next_value.max(0.001));
                 }
             },
+            StochasticModelType::FractionalBrownianMotion { mu, sigma, hurst } => {
+                let fbm_increments = self.generate_fbm_increments(*hurst, num_steps, parameters.dt).await?;
+                
+                for i in 0..num_steps {
+                    let current_value = *path.last().unwrap();
+                    let drift_term = mu * parameters.dt;
+                    let diffusion_term = sigma * fbm_increments[i];
+                    
+                    let next_value = current_value * (1.0 + drift_term + diffusion_term);
+                    path.push(next_value.max(0.001));
+                }
+            },
             _ => {
                 for _ in 0..num_steps {
                     let dw = rng.sample::<f64, _>(rand_distr::StandardNormal) * sqrt_dt;
@@ -522,6 +551,61 @@ impl EnhancedSimulationEngine {
         }
 
         Ok(path)
+    }
+
+    async fn generate_fbm_increments(
+        &self,
+        hurst: f64,
+        num_steps: usize,
+        dt: f64,
+    ) -> Result<Vec<f64>, Box<dyn std::error::Error>> {
+        use std::f64::consts::PI;
+        
+        let n = num_steps;
+        let mut rng = ChaCha8Rng::from_entropy();
+        
+        let mut eigenvalues = Vec::with_capacity(2 * n);
+        
+        for k in 0..(2 * n) {
+            let k_f64 = k as f64;
+            let covariance = if k == 0 {
+                dt.powf(2.0 * hurst)
+            } else if k <= n {
+                0.5 * (
+                    (k_f64 + 1.0).powf(2.0 * hurst) - 
+                    2.0 * k_f64.powf(2.0 * hurst) + 
+                    (k_f64 - 1.0).abs().powf(2.0 * hurst)
+                ) * dt.powf(2.0 * hurst)
+            } else {
+                eigenvalues[2 * n - k]
+            };
+            eigenvalues.push(covariance.max(0.0));
+        }
+        
+        let mut z_real = Vec::with_capacity(n);
+        let mut z_imag = Vec::with_capacity(n);
+        
+        for _ in 0..n {
+            z_real.push(rng.sample::<f64, _>(rand_distr::StandardNormal));
+            z_imag.push(rng.sample::<f64, _>(rand_distr::StandardNormal));
+        }
+        
+        let mut fbm_increments = Vec::with_capacity(num_steps);
+        
+        for i in 0..num_steps {
+            let sqrt_eigenval = eigenvalues[i].sqrt();
+            let increment = sqrt_eigenval * z_real[i] / (2.0 * PI).sqrt();
+            fbm_increments.push(increment);
+        }
+        
+        let mut increments = Vec::with_capacity(num_steps);
+        increments.push(fbm_increments[0]);
+        
+        for i in 1..num_steps {
+            increments.push(fbm_increments[i] - fbm_increments[i-1]);
+        }
+        
+        Ok(increments)
     }
 }
 
