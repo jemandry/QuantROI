@@ -237,9 +237,103 @@ async def test_comprehensive_mev_integration():
         
         overall_enhanced_success = enhanced_success and overall_success
         
-        print(f"\n🎯 Overall Enhanced MEV Protection Status: {'✅ FULLY OPERATIONAL' if overall_enhanced_success else '❌ NEEDS ATTENTION'}")
+        print("\n🔗 Testing BAM/ZKP Integration Features...")
         
-        return overall_enhanced_success
+        bam_zkp_integrator = mev_service.bam_zkp_integrator
+        test_trade_data = {
+            'symbol': 'TSLA',
+            'price': 250.0,
+            'strategy_id': 'bam_zkp_test',
+            'predicted_return': 0.08,
+            'user_id': 'bam_test_user'
+        }
+        
+        bam_zkp_bundle = await bam_zkp_integrator.create_protected_bundle(test_trade_data)
+        
+        print(f"  BAM ZKP bundle creation: {'✅' if bam_zkp_bundle else '❌'}")
+        
+        market_data = {'symbol': 'TSLA', 'congestion': True}
+        optimized_fee = bam_zkp_integrator.optimize_bam_zkp_fees('high', market_data)
+        base_fee = 10000
+        fee_optimized = optimized_fee < base_fee
+        
+        print(f"  BAM fee optimization: {'✅' if fee_optimized else '❌'} ({optimized_fee} vs {base_fee})")
+        
+        bam_spam_monitor = mev_service.bam_spam_monitor
+        bam_response = {'rejected_txs': 5, 'status': 'processed'}
+        zk_proof = bam_zkp_bundle.get('zk_proof', {}).get('proof_data', 'test_proof') if bam_zkp_bundle else 'test_proof'
+        
+        spam_valid = bam_spam_monitor.monitor_bam_zkp_spam(bam_response, zk_proof)
+        
+        print(f"  BAM spam monitoring: {'✅' if spam_valid else '❌'}")
+        
+        bam_audit_logger = mev_service.bam_audit_logger
+        audit_id = bam_audit_logger.log_bam_zkp_audit(
+            bam_zkp_bundle or {'id': 'test_bundle'}, 
+            bam_response, 
+            zk_proof
+        )
+        
+        print(f"  BAM audit logging: {'✅' if audit_id else '❌'}")
+        
+        bam_preconfirmation = mev_service.bam_preconfirmation
+        preconf_trade = bam_preconfirmation.add_preconfirmation_zkp(test_trade_data.copy(), zk_proof)
+        preconf_added = preconf_trade.get('preconfirm', {}).get('zkp_verified', False)
+        
+        print(f"  BAM preconfirmation hooks: {'✅' if preconf_added else '❌'}")
+        
+        bam_validator_optimizer = mev_service.bam_validator_optimizer
+        optimal_rpc = bam_validator_optimizer.select_bam_rpc('us_east')
+        
+        print(f"  BAM validator optimization: {'✅' if optimal_rpc else '❌'}")
+        
+        bam_zkp_workflow_trade = {
+            "symbol": "AMZN",
+            "quantity": 75,
+            "side": "BUY",
+            "order_type": "MARKET",
+            "user_id": "bam_zkp_workflow_user",
+            "strategy_id": "bam_zkp_causal_ai_protected",
+            "urgency_ms": 500,
+            "trade_value_usd": 25000
+        }
+        
+        bam_zkp_result = await mev_service.execute_mev_protected_trade(bam_zkp_workflow_trade)
+        
+        bam_zkp_features = bam_zkp_result.get('bundle_details', {}).get('bam_zkp_features', {})
+        
+        print(f"  BAM/ZKP workflow success: {'✅' if bam_zkp_result['success'] else '❌'}")
+        print(f"  ZKP privacy protection: {'✅' if bam_zkp_features.get('zkp_privacy') else '❌'}")
+        print(f"  Fee optimization: {'✅' if bam_zkp_features.get('fee_optimized') else '❌'}")
+        print(f"  Spam monitoring: {'✅' if bam_zkp_features.get('spam_monitored') else '❌'}")
+        print(f"  Audit logging: {'✅' if bam_zkp_features.get('audit_logged') else '❌'}")
+        print(f"  ZKP preconfirmation: {'✅' if bam_zkp_features.get('zkp_preconfirmed') else '❌'}")
+        print(f"  Validator optimization: {'✅' if bam_zkp_features.get('validator_optimized') else '❌'}")
+        
+        bam_zkp_success = (
+            bam_zkp_bundle is not None and
+            fee_optimized and
+            spam_valid and
+            audit_id is not None and
+            preconf_added and
+            optimal_rpc is not None and
+            bam_zkp_result['success']
+        )
+        
+        print(f"\n📋 BAM/ZKP Integration Summary:")
+        print(f"  ✅ BAM ZKP Bundle Creation: {'Working' if bam_zkp_bundle else 'Failed'}")
+        print(f"  ✅ Fee Optimization: {'Working' if fee_optimized else 'Failed'}")
+        print(f"  ✅ Spam Monitoring: {'Working' if spam_valid else 'Failed'}")
+        print(f"  ✅ Audit Logging: {'Working' if audit_id else 'Failed'}")
+        print(f"  ✅ Preconfirmation Hooks: {'Working' if preconf_added else 'Failed'}")
+        print(f"  ✅ Validator Optimization: {'Working' if optimal_rpc else 'Failed'}")
+        print(f"  ✅ End-to-End Workflow: {'Working' if bam_zkp_result['success'] else 'Failed'}")
+        
+        overall_bam_zkp_success = bam_zkp_success and overall_enhanced_success
+        
+        print(f"\n🎯 Overall BAM/ZKP Enhanced MEV Protection Status: {'✅ FULLY OPERATIONAL' if overall_bam_zkp_success else '❌ NEEDS ATTENTION'}")
+        
+        return overall_bam_zkp_success
         
     except Exception as e:
         print(f"❌ MEV integration test failed: {e}")
