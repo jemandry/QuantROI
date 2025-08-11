@@ -658,6 +658,96 @@ async def get_oracle_performance_metrics(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Performance metrics query failed: {e}")
 
+@app.get("/api/performance/dashboard")
+async def get_performance_dashboard(
+    auth: Dict[str, Any] = Depends(verify_zkp_auth)
+):
+    """Get comprehensive performance monitoring dashboard"""
+    try:
+        if not hasattr(orchestrator, 'performance_adapter') or orchestrator.performance_adapter is None:
+            await orchestrator.initialize_performance_monitoring()
+        
+        dashboard = await orchestrator.get_system_performance_dashboard()
+        
+        return {
+            "status": "success",
+            "dashboard": dashboard,
+            "timestamp": datetime.now().isoformat(),
+            "sec_disclosure": "AI-supervised performance monitoring - metrics subject to operational oversight"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Performance dashboard query failed: {e}")
+
+@app.get("/api/performance/metrics")
+async def get_performance_metrics(
+    auth: Dict[str, Any] = Depends(verify_zkp_auth)
+):
+    """Get real-time performance metrics"""
+    try:
+        if not hasattr(orchestrator, 'performance_adapter') or orchestrator.performance_adapter is None:
+            await orchestrator.initialize_performance_monitoring()
+        
+        if orchestrator.performance_adapter and orchestrator.performance_adapter.performance_monitor:
+            current_metrics = await orchestrator.performance_adapter.performance_monitor.collect_performance_metrics()
+            
+            return {
+                "status": "success",
+                "metrics": {
+                    "timestamp": current_metrics.timestamp.isoformat(),
+                    "latency_ms": current_metrics.latency_ms,
+                    "cpu_usage": current_metrics.cpu_usage,
+                    "memory_usage": current_metrics.memory_usage,
+                    "cache_hit_rate": current_metrics.cache_hit_rate,
+                    "error_rate": current_metrics.error_rate,
+                    "throughput_rps": current_metrics.throughput_rps,
+                    "active_connections": current_metrics.active_connections,
+                    "queue_depth": current_metrics.queue_depth
+                },
+                "timestamp": datetime.now().isoformat(),
+                "sec_disclosure": "AI-supervised performance metrics - real-time system monitoring"
+            }
+        else:
+            return {
+                "status": "error",
+                "error": "Performance monitoring not initialized",
+                "timestamp": datetime.now().isoformat()
+            }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Performance metrics collection failed: {e}")
+
+@app.post("/api/performance/optimize")
+async def optimize_system_performance(
+    auth: Dict[str, Any] = Depends(verify_zkp_auth)
+):
+    """Trigger system performance optimization"""
+    try:
+        if 'custom_analysis' not in auth['permissions']:
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        
+        if not hasattr(orchestrator, 'performance_adapter') or orchestrator.performance_adapter is None:
+            await orchestrator.initialize_performance_monitoring()
+        
+        if orchestrator.performance_adapter:
+            optimization_results = await orchestrator.performance_adapter.optimize_performance_based_on_patterns()
+            
+            return {
+                "status": "success",
+                "optimization_results": optimization_results,
+                "timestamp": datetime.now().isoformat(),
+                "sec_disclosure": "AI-supervised performance optimization - results subject to operational oversight"
+            }
+        else:
+            return {
+                "status": "error",
+                "error": "Performance monitoring not available",
+                "timestamp": datetime.now().isoformat()
+            }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Performance optimization failed: {e}")
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)

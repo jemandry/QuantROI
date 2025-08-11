@@ -25,6 +25,8 @@ try:
     from delayed_vote_detection import DelayedVoteDetector
     from redis_cache_integration import create_cached_oracle_system
     from solana_batch_integration import create_solana_batch_oracle_system
+    from performance_monitoring_autoscaling import PerformanceMonitoringAutoScaling
+    from braided_cord_data_engine import BraidedCordDataEngine
 except ImportError:
     class EnhancedCausalAIEngine:
         def __init__(self, neo4j_uri):
@@ -83,6 +85,8 @@ class SystemOrchestrator:
         self.cache = create_cache_client(use_mock=True)
         self.zkp_pipeline = ZKPVotingPipeline()
         self.delay_detector = DelayedVoteDetector()
+        
+        self.performance_adapter = None
         
         try:
             self.backtesting_orchestrator = EventDrivenBacktestingOrchestrator()
@@ -396,6 +400,47 @@ class SystemOrchestrator:
             self.logger.error(f"Oracle-optimized delegation vote orchestration failed: {e}")
             raise
     
+    async def initialize_performance_monitoring(self):
+        """Initialize performance monitoring integration"""
+        try:
+            from performance_integration_adapter import PerformanceIntegrationAdapter
+            
+            self.performance_adapter = PerformanceIntegrationAdapter({
+                'monitoring_enabled': True,
+                'autoscaling_enabled': True
+            })
+            await self.performance_adapter.initialize()
+            
+            self.logger.info("Performance monitoring integration initialized")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to initialize performance monitoring: {e}")
+    
+    async def get_system_performance_dashboard(self) -> Dict[str, Any]:
+        """Get comprehensive system performance dashboard"""
+        try:
+            dashboard_data = {
+                'timestamp': datetime.now().isoformat(),
+                'system_status': 'operational'
+            }
+            
+            if self.performance_adapter:
+                integrated_dashboard = await self.performance_adapter.get_integrated_performance_dashboard()
+                dashboard_data.update(integrated_dashboard)
+            
+            health_status = await self.health_check()
+            dashboard_data['orchestrator_health'] = health_status
+            
+            return dashboard_data
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get system performance dashboard: {e}")
+            return {
+                'timestamp': datetime.now().isoformat(),
+                'system_status': 'error',
+                'error': str(e)
+            }
+    
     def close(self):
         """Close orchestrator connections"""
         try:
@@ -407,6 +452,8 @@ class SystemOrchestrator:
                 self.knowledge_base.close()
             if hasattr(self, 'cached_oracle_manager'):
                 asyncio.create_task(self.cached_oracle_manager.redis_cache.close())
+            if self.performance_adapter:
+                asyncio.create_task(self.performance_adapter.shutdown())
         except Exception as e:
             self.logger.error(f"Error closing orchestrator: {e}")
 

@@ -78,24 +78,36 @@ class PerformanceMonitoringAutoScaling:
         self.monitoring_active = True
         self.logger.info(f"Starting performance monitoring with {interval_seconds}s interval")
         
-        while self.monitoring_active:
-            try:
-                metrics = await self.collect_performance_metrics()
-                
-                self.metrics_history.append(metrics)
-                
-                alerts = await self.check_performance_alerts(metrics)
-                
-                scaling_action = await self.evaluate_auto_scaling(metrics)
-                
-                if len(self.metrics_history) % 12 == 0:  # Every minute with 5s interval
-                    await self.log_performance_summary()
-                
-                await asyncio.sleep(interval_seconds)
-                
-            except Exception as e:
-                self.logger.error(f"Performance monitoring error: {e}")
-                await asyncio.sleep(interval_seconds)
+        try:
+            while self.monitoring_active:
+                try:
+                    metrics = await self.collect_performance_metrics()
+                    
+                    self.metrics_history.append(metrics)
+                    
+                    alerts = await self.check_performance_alerts(metrics)
+                    for alert in alerts:
+                        for callback in self.alert_callbacks:
+                            await callback(alert)
+                    
+                    scaling_action = await self.evaluate_auto_scaling(metrics)
+                    if scaling_action:
+                        for callback in self.scaling_callbacks:
+                            await callback(scaling_action)
+                    
+                    if len(self.metrics_history) % 12 == 0:  # Every minute with 5s interval
+                        await self.log_performance_summary()
+                    
+                    await asyncio.sleep(interval_seconds)
+                    
+                except asyncio.CancelledError:
+                    break
+                except Exception as e:
+                    self.logger.error(f"Performance monitoring error: {e}")
+                    await asyncio.sleep(interval_seconds)
+        finally:
+            self.monitoring_active = False
+            self.logger.info("Performance monitoring stopped")
     
     async def collect_performance_metrics(self) -> PerformanceMetrics:
         """Collect current performance metrics from various sources"""
