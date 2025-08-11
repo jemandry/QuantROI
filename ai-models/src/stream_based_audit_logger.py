@@ -119,3 +119,77 @@ class StreamBasedAuditLogger:
             'buffer_capacity': self.buffer_size,
             'buffer_utilization': len(self.event_buffer) / self.buffer_size
         }
+
+    async def log_performance_audit(self, component: str, metrics: Dict[str, Any], 
+                                   thresholds: Dict[str, Any] = None) -> str:
+        """Log performance metrics for audit compliance"""
+        performance_event = {
+            'event_type': 'performance_monitoring',
+            'component': component,
+            'metrics': metrics,
+            'thresholds': thresholds or {},
+            'violations': [],
+            'compliance_status': 'compliant'
+        }
+        
+        if thresholds:
+            for metric_name, threshold in thresholds.items():
+                if metric_name in metrics:
+                    metric_value = metrics[metric_name]
+                    if isinstance(threshold, dict):
+                        if 'max' in threshold and metric_value > threshold['max']:
+                            performance_event['violations'].append({
+                                'metric': metric_name,
+                                'value': metric_value,
+                                'threshold': threshold['max'],
+                                'type': 'exceeded_maximum'
+                            })
+                        if 'min' in threshold and metric_value < threshold['min']:
+                            performance_event['violations'].append({
+                                'metric': metric_name,
+                                'value': metric_value,
+                                'threshold': threshold['min'],
+                                'type': 'below_minimum'
+                            })
+                    elif metric_value > threshold:
+                        performance_event['violations'].append({
+                            'metric': metric_name,
+                            'value': metric_value,
+                            'threshold': threshold,
+                            'type': 'exceeded_threshold'
+                        })
+        
+        if performance_event['violations']:
+            performance_event['compliance_status'] = 'violation'
+        
+        return await self.log_event(performance_event)
+
+    async def log_execution_audit(self, trade_data: Dict[str, Any], 
+                                 execution_metrics: Dict[str, Any]) -> str:
+        """Log trade execution metrics for regulatory compliance"""
+        execution_event = {
+            'event_type': 'trade_execution',
+            'trade_id': trade_data.get('trade_id'),
+            'symbol': trade_data.get('symbol'),
+            'trade_type': trade_data.get('trade_type', 'unknown'),
+            'execution_time_ms': execution_metrics.get('execution_time_ms'),
+            'slippage_bps': execution_metrics.get('slippage_bps'),
+            'expected_price': trade_data.get('expected_price'),
+            'actual_price': execution_metrics.get('actual_price'),
+            'api_latency_ms': execution_metrics.get('api_latency_ms'),
+            'is_mock_trade': trade_data.get('is_mock_trade', False),
+            'broker_response_time_ms': execution_metrics.get('broker_response_time_ms'),
+            'market_impact_bps': execution_metrics.get('market_impact_bps'),
+            'compliance_flags': []
+        }
+        
+        if execution_event['execution_time_ms'] and execution_event['execution_time_ms'] > 1000:
+            execution_event['compliance_flags'].append('high_execution_latency')
+        
+        if execution_event['slippage_bps'] and execution_event['slippage_bps'] > 50:
+            execution_event['compliance_flags'].append('high_slippage')
+        
+        if execution_event['is_mock_trade']:
+            execution_event['compliance_flags'].append('mock_trade_no_real_execution')
+        
+        return await self.log_event(execution_event)
