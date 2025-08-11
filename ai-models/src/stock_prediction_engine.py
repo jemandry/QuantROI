@@ -1152,6 +1152,19 @@ class AIArchitectStockPredictionEngine:
         self.causal_transfer = CausalTransferLearning()
         self.hft_transfer = HFTCausalTransfer()
         
+        try:
+            from causal_analysis_engine import CausalAnalysisEngine
+            from time_series_causality import TimeSeriesCausalityAnalyzer
+            self.causal_analysis_engine = CausalAnalysisEngine()
+            self.time_series_causality = TimeSeriesCausalityAnalyzer()
+            self.causal_ai_enabled = True
+            logger.info("Comprehensive causal AI integration enabled")
+        except ImportError as e:
+            logger.warning(f"Causal AI components not available: {e}")
+            self.causal_analysis_engine = None
+            self.time_series_causality = None
+            self.causal_ai_enabled = False
+        
         if NEWS_INTELLIGENCE_AVAILABLE:
             try:
                 self.news_intelligence = NewsIntelligenceEngine()
@@ -1185,7 +1198,11 @@ class AIArchitectStockPredictionEngine:
             'average_brier_score': 0.0,
             'average_ece_score': 0.0,
             'latency_penalties_applied': 0,
-            'edge_agent_recommendations': 0
+            'edge_agent_recommendations': 0,
+            'causal_analyses_performed': 0,
+            'causal_model_selections': 0,
+            'granger_tests_executed': 0,
+            'counterfactual_analyses': 0
         }
         
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -1215,9 +1232,14 @@ class AIArchitectStockPredictionEngine:
                 
                 market_regime = await self.market_regime_detector.detect_regime(request.symbol, data)
                 
-                selected_models = await self._select_optimal_models(request.symbol, market_regime)
-                
                 features = await self._engineer_comprehensive_features(request, data)
+                
+                if self.causal_ai_enabled:
+                    selected_models = await self._perform_causal_model_selection(
+                        features, market_regime, request.symbol
+                    )
+                else:
+                    selected_models = await self._select_optimal_models(request.symbol, market_regime)
                 
                 ensemble_prediction = await self._ensemble_predict(selected_models, features, request)
                 
@@ -1331,8 +1353,11 @@ class AIArchitectStockPredictionEngine:
             logger.warning(f"Sector features unavailable: {e}")
             features['sector'] = {}
         
-        causal_features = await self._extract_causal_transfer_features(request.symbol)
-        features['causal_transfer'] = causal_features
+        causal_features = await self._extract_comprehensive_causal_features(request.symbol, data)
+        features['causal_transfer'] = causal_features.get('transfer_features', {})
+        features['causal_analysis'] = causal_features.get('causal_analysis', {})
+        features['granger_causality'] = causal_features.get('granger_causality', {})
+        features['counterfactuals'] = causal_features.get('counterfactuals', {})
         
         volatility_features = await self._extract_volatility_features(request.symbol, data)
         features['volatility'] = volatility_features
@@ -1747,21 +1772,79 @@ class AIArchitectStockPredictionEngine:
         else:
             return "MEDIUM - Single model prediction"
     
-    async def _extract_causal_transfer_features(self, symbol: str) -> Dict[str, Any]:
-        """Extract causal transfer learning features"""
+    async def _extract_comprehensive_causal_features(self, symbol: str, data: pd.DataFrame) -> Dict[str, Any]:
+        """Extract comprehensive causal features using integrated causal AI components"""
         
         try:
-            causal_features = {}
+            causal_features = {
+                'transfer_features': {},
+                'causal_analysis': {},
+                'granger_causality': {},
+                'counterfactuals': {}
+            }
             
-            causal_features['cross_asset_correlation'] = 0.5
-            causal_features['sector_causality'] = 0.3
-            causal_features['market_regime_transfer'] = 0.7
+            causal_features['transfer_features'] = {
+                'cross_asset_correlation': 0.5,
+                'sector_causality': 0.3,
+                'market_regime_transfer': 0.7
+            }
+            
+            if self.causal_ai_enabled and len(data) > 50:
+                if self.causal_analysis_engine:
+                    causal_result = await self.causal_analysis_engine.perform_causal_analysis(
+                        data[['Close', 'Volume', 'Returns']].dropna(),
+                        {'symbol': symbol, 'analysis_type': 'prediction_enhancement'}
+                    )
+                    causal_features['causal_analysis'] = {
+                        'causal_relationships': len(causal_result.get('causal_relationships', {})),
+                        'scientific_rigor_score': causal_result.get('scientific_rigor', {}).get('overall_score', 0.5),
+                        'effect_strength': self._extract_effect_strength(causal_result)
+                    }
+                    self.performance_metrics['causal_analyses_performed'] += 1
+                
+                if self.time_series_causality and len(data) > 100:
+                    variables = ['Close', 'Volume']
+                    if 'VIX' in data.columns:
+                        variables.append('VIX')
+                    
+                    granger_result = await self.time_series_causality.comprehensive_causality_matrix(
+                        data, variables
+                    )
+                    causal_features['granger_causality'] = {
+                        'total_relationships': granger_result.get('total_causal_relationships', 0),
+                        'causality_strength': self._calculate_causality_strength(granger_result),
+                        'var_model_quality': granger_result.get('var_model_results', {}).get('aic', 0)
+                    }
+                    self.performance_metrics['granger_tests_executed'] += 1
+                
+                if self.causal_analysis_engine:
+                    counterfactual_result = await self.causal_analysis_engine._perform_counterfactual_analysis(
+                        data[['Close', 'Volume', 'Returns']].dropna(),
+                        {'treatment': 'Volume', 'outcome': 'Close', 'symbol': symbol}
+                    )
+                    causal_features['counterfactuals'] = {
+                        'causal_effect': counterfactual_result.get('causal_effect', 0.0),
+                        'confidence_interval_width': self._calculate_ci_width(counterfactual_result),
+                        'counterfactual_scenarios': len(counterfactual_result.get('counterfactual_scenarios', {}))
+                    }
+                    self.performance_metrics['counterfactual_analyses'] += 1
+            
+            await self.audit_manager.log_audit_event(
+                'causal_feature_extraction',
+                'ai_architect_engine',
+                f"Extracted causal features for {symbol}: {len(causal_features)} feature categories"
+            )
             
             return causal_features
             
         except Exception as e:
-            logger.error(f"Causal transfer feature extraction error: {e}")
-            return {}
+            logger.error(f"Comprehensive causal feature extraction error: {e}")
+            return {
+                'transfer_features': {'cross_asset_correlation': 0.5, 'sector_causality': 0.3},
+                'causal_analysis': {},
+                'granger_causality': {},
+                'counterfactuals': {}
+            }
     
     async def _extract_volatility_features(self, symbol: str, data: pd.DataFrame) -> Dict[str, Any]:
         """Extract comprehensive volatility features"""
@@ -1884,6 +1967,88 @@ class AIArchitectStockPredictionEngine:
             model_confidences={}
         )
     
+    def _extract_effect_strength(self, causal_result: Dict[str, Any]) -> float:
+        """Extract overall effect strength from causal analysis results"""
+        try:
+            relationships = causal_result.get('causal_relationships', {})
+            if not relationships:
+                return 0.0
+            
+            effects = []
+            for rel_data in relationships.values():
+                if isinstance(rel_data, dict) and 'causal_effect' in rel_data:
+                    effects.append(abs(rel_data['causal_effect']))
+            
+            return float(np.mean(effects)) if effects else 0.0
+        except Exception:
+            return 0.0
+    
+    def _calculate_causality_strength(self, granger_result: Dict[str, Any]) -> float:
+        """Calculate overall causality strength from Granger test results"""
+        try:
+            causality_summary = granger_result.get('causality_summary', [])
+            if not causality_summary:
+                return 0.0
+            
+            strong_count = sum(1 for rel in causality_summary if rel.get('strength') == 'strong')
+            total_count = len(causality_summary)
+            
+            return float(strong_count / total_count) if total_count > 0 else 0.0
+        except Exception:
+            return 0.0
+    
+    def _calculate_ci_width(self, counterfactual_result: Dict[str, Any]) -> float:
+        """Calculate confidence interval width from counterfactual analysis"""
+        try:
+            ci = counterfactual_result.get('confidence_interval', [])
+            if len(ci) == 2:
+                return float(abs(ci[1] - ci[0]))
+            return 0.0
+        except Exception:
+            return 0.0
+    
+    async def _perform_causal_model_selection(self, features: Dict[str, Any], 
+                                            market_regime: MarketRegime, 
+                                            symbol: str) -> List[ModelType]:
+        """Enhanced model selection using causal analysis insights"""
+        
+        try:
+            base_models = await self._select_optimal_models(symbol, market_regime)
+            
+            if not self.causal_ai_enabled:
+                return base_models
+            
+            causal_analysis = features.get('causal_analysis', {})
+            granger_causality = features.get('granger_causality', {})
+            
+            rigor_score = causal_analysis.get('scientific_rigor_score', 0.5)
+            causality_strength = granger_causality.get('causality_strength', 0.0)
+            
+            enhanced_models = base_models.copy()
+            
+            if causality_strength > 0.7 and rigor_score > 0.8:
+                if ModelType.XGBOOST not in enhanced_models:
+                    enhanced_models.append(ModelType.XGBOOST)
+                if ModelType.GRADIENT_BOOSTING not in enhanced_models:
+                    enhanced_models.append(ModelType.GRADIENT_BOOSTING)
+            
+            elif causality_strength < 0.3 or rigor_score < 0.4:
+                enhanced_models = [ModelType.LSTM, ModelType.RANDOM_FOREST]
+            
+            await self.audit_manager.log_audit_event(
+                'causal_model_selection',
+                'ai_architect_engine',
+                f"Selected models based on causal analysis: {[m.value for m in enhanced_models]}"
+            )
+            
+            self.performance_metrics['causal_model_selections'] += 1
+            
+            return enhanced_models[:4]
+            
+        except Exception as e:
+            logger.error(f"Causal model selection error: {e}")
+            return base_models
+
     def get_performance_metrics(self) -> Dict[str, Any]:
         """Get comprehensive AI Architect performance metrics"""
         
@@ -1895,6 +2060,10 @@ class AIArchitectStockPredictionEngine:
             'audit_snapshots_created': self.performance_metrics['audit_snapshots_created'],
             'regime_detection_accuracy': self.performance_metrics['regime_detection_accuracy'],
             'dynamic_weight_adjustments': self.performance_metrics['dynamic_weight_adjustments'],
+            'causal_analyses_performed': self.performance_metrics['causal_analyses_performed'],
+            'causal_model_selections': self.performance_metrics['causal_model_selections'],
+            'granger_tests_executed': self.performance_metrics['granger_tests_executed'],
+            'counterfactual_analyses': self.performance_metrics['counterfactual_analyses'],
             'model_registry_size': {k.value: len(v) for k, v in self.model_registry.items()},
             'regime_history_size': len(self.market_regime_detector.regime_history)
         }
