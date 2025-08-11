@@ -485,7 +485,7 @@ impl BraidedCordDataEngine {
             }
         }
         
-        self.update_metrics(tier).await;
+        self.update_metrics(tier.clone()).await;
         
         let elapsed = start_time.elapsed().unwrap_or_default();
         self.update_latency_metrics(elapsed.as_micros() as f64).await;

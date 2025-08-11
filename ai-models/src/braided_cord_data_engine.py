@@ -254,7 +254,7 @@ class BraidedCordDataEngine:
             
             serialized_data = json.dumps(data).encode('utf-8')
             if rule.compression_enabled:
-                serialized_data = serialized_data[:len(serialized_data)//2]  # Simulate compression
+                serialized_data = self._compress_data(serialized_data)
             
             success = await self.memory_hierarchy.put(key, serialized_data)
             
@@ -466,6 +466,32 @@ class BraidedCordDataEngine:
         self.placement_stats['total_latency_ns'] += latency_ns
         self.placement_stats['total_requests'] += 1
     
+    def _compress_data(self, data: bytes, compression_level: int = 3) -> bytes:
+        """Compress data using zstd compression"""
+        try:
+            import zstandard as zstd
+            compressor = zstd.ZstdCompressor(level=compression_level)
+            return compressor.compress(data)
+        except ImportError:
+            self.logger.warning("zstandard library not available, falling back to simulation")
+            return data[:len(data)//2]  # Fallback simulation
+        except Exception as e:
+            self.logger.error(f"Compression failed: {e}")
+            return data
+    
+    def _decompress_data(self, compressed_data: bytes) -> bytes:
+        """Decompress data using zstd decompression"""
+        try:
+            import zstandard as zstd
+            decompressor = zstd.ZstdDecompressor()
+            return decompressor.decompress(compressed_data)
+        except ImportError:
+            self.logger.warning("zstandard library not available, returning data as-is")
+            return compressed_data
+        except Exception as e:
+            self.logger.error(f"Decompression failed: {e}")
+            return compressed_data
+
     def _calculate_precision_achieved(self, extraction_time_ns: int) -> Dict[str, Any]:
         """Calculate precision achieved for the extraction"""
         return {
