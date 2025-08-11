@@ -1,6 +1,6 @@
 use memory_hierarchy::*;
 use memory_hierarchy::voting_system::{ProposalStatus, ProposalType};
-use memory_hierarchy::sip_switch_system::{EndpointType, EndpointStatus, SessionType};
+use memory_hierarchy::dip_switch_system::BankType;
 use memory_hierarchy::money_disbursement_system::{DisbursementStatus, DisbursementPriority, DisbursementType};
 use memory_hierarchy::inspector_verification_system::{Inspector, InspectorSpecialization, InspectorStatus};
 use std::sync::Arc;
@@ -23,8 +23,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let voting_system = Arc::new(VotingSystem::new(solana_logger.clone()).await);
     println!("✅ Voting system initialized");
     
-    let sip_system = Arc::new(SipSwitchSystem::new(solana_logger.clone()).await);
-    println!("✅ SIP switch system initialized");
+    let dip_system = Arc::new(DipSwitchSystem::new(solana_logger.clone()).await);
+    println!("✅ DIP switch system initialized");
     
     let mina_zkp = Arc::new(MinaZkpIntegration::new(
         "https://berkeley.minaprotocol.com:3085".to_string(),
@@ -87,39 +87,50 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     
     println!("✅ Generated ZKP for strategy: {}", strategy_proof.proof_id);
     
-    println!("\n📞 Demo 2: SIP Communication for Trading Coordination");
+    println!("\n🔧 Demo 2: DIP Switch Configuration for Trading Parameters");
     
-    let trading_desk = SipEndpoint {
-        endpoint_id: "trading_desk_main".to_string(),
-        uri: "sip:trading@quantroi.com".to_string(),
-        endpoint_type: EndpointType::TradingDesk,
-        status: EndpointStatus::Online,
-        capabilities: vec!["audio".to_string(), "secure_messaging".to_string()],
-        priority: 1,
-        last_seen: Utc::now(),
+    let trading_params_bank = DipSwitchBank {
+        bank_id: "trading_params_main".to_string(),
+        bank_name: "Main Trading Parameters".to_string(),
+        switch_count: 8,
+        current_state: vec![false; 8],
+        bank_type: BankType::TradingParameters,
+        hardware_address: "0x1000".to_string(),
+        last_modified: Utc::now(),
+        description: "Primary trading parameter configuration bank".to_string(),
     };
     
-    let risk_manager = SipEndpoint {
-        endpoint_id: "risk_manager_001".to_string(),
-        uri: "sip:risk@quantroi.com".to_string(),
-        endpoint_type: EndpointType::RiskManager,
-        status: EndpointStatus::Online,
-        capabilities: vec!["audio".to_string(), "data_sharing".to_string()],
-        priority: 1,
-        last_seen: Utc::now(),
+    let risk_management_bank = DipSwitchBank {
+        bank_id: "risk_mgmt_001".to_string(),
+        bank_name: "Risk Management Controls".to_string(),
+        switch_count: 6,
+        current_state: vec![false; 6],
+        bank_type: BankType::RiskManagement,
+        hardware_address: "0x2000".to_string(),
+        last_modified: Utc::now(),
+        description: "Risk management and compliance controls".to_string(),
     };
     
-    sip_system.register_endpoint(trading_desk).await?;
-    sip_system.register_endpoint(risk_manager).await?;
+    dip_system.register_switch_bank(trading_params_bank).await?;
+    dip_system.register_switch_bank(risk_management_bank).await?;
     
-    let session_id = sip_system.initiate_session(
-        "trading_desk_main",
-        "risk_manager_001",
-        SessionType::RiskManagement,
-        [("urgency".to_string(), "high".to_string())].iter().cloned().collect(),
+    dip_system.set_switch_state(
+        "trading_params_main",
+        0,
+        true,
+        "system_admin",
+        "Enable high-frequency trading mode"
     ).await?;
     
-    println!("✅ Initiated SIP session: {}", session_id);
+    dip_system.set_switch_state(
+        "risk_mgmt_001",
+        2,
+        true,
+        "risk_manager",
+        "Activate volatility monitoring"
+    ).await?;
+    
+    println!("✅ Configured DIP switches for trading parameters");
     
     println!("\n🔍 Demo 3: Inspector Verification for Money Disbursement");
     
@@ -216,7 +227,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     
     println!("\n🎉 Unified Trading Platform Integration Demo Complete!");
     println!("   ✅ Voting system with ZKP verification");
-    println!("   ✅ SIP communication for coordination");
+    println!("   ✅ DIP switch hardware configuration");
     println!("   ✅ Inspector verification for disbursements");
     println!("   ✅ Comprehensive audit trail");
     println!("   ✅ Dual-chain Solana + Mina integration");
