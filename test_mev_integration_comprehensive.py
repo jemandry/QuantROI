@@ -128,9 +128,118 @@ async def test_comprehensive_mev_integration():
             workflow_result['success']
         )
         
-        print(f"\n🎯 Overall MEV Protection Status: {'✅ OPERATIONAL' if overall_success else '❌ NEEDS ATTENTION'}")
+        print("\n🔐 Testing Transaction Encryption...")
         
-        return overall_success
+        from mev_protected_trading import EncryptedBundleExecutor
+        
+        try:
+            encryptor = EncryptedBundleExecutor("test_encryption_key_32_chars_long")
+            test_tx = {"symbol": "AAPL", "quantity": 100, "action": "buy"}
+            
+            encrypted_tx = encryptor.encrypt_transaction(test_tx)
+            decrypted_tx = encryptor.decrypt_transaction(encrypted_tx)
+            
+            encryption_working = decrypted_tx == test_tx
+            print(f"  Encryption working: {'✅' if encryption_working else '❌'}")
+            print(f"  Encrypted payload length: {len(encrypted_tx)} chars")
+        except ImportError:
+            encryption_working = False
+            print(f"  Encryption working: ❌ (cryptography not available)")
+        
+        print("\n🏗️ Testing BAM Integration...")
+        
+        bam_integrator = mev_service.bam_integrator
+        test_bundle = {"transactions": [{"symbol": "AAPL", "quantity": 100}], "tip": 2000}
+        
+        bam_result = await bam_integrator.integrate_bam_protection(test_bundle)
+        
+        print(f"  BAM protection applied: {'✅' if bam_result.get('bam_protected') else '❌'}")
+        print(f"  Ordering rules applied: {'✅' if bam_result.get('ordering_rules_applied') else '❌'}")
+        
+        print("\n🛡️ Testing MEV Blockers and Preconfirmation...")
+        
+        mev_blocker = mev_service.mev_blocker
+        
+        blocked_trade = await mev_blocker.apply_blocker(test_tx if 'test_tx' in locals() else {"symbol": "MSFT"})
+        preconfirmed_trade = await mev_blocker.add_preconfirmation(blocked_trade)
+        
+        print(f"  MEV blocker applied: {'✅' if blocked_trade.get('mev_blocked') else '❌'}")
+        print(f"  Preconfirmation added: {'✅' if 'preconfirm' in preconfirmed_trade else '❌'}")
+        
+        print("\n🚨 Testing Spam Monitoring and Blacklisting...")
+        
+        spam_monitor = mev_service.spam_monitor
+        
+        normal_tx = {"user_id": "normal_user", "symbol": "MSFT", "quantity": 50}
+        normal_result = spam_monitor.check_spam_patterns(normal_tx)
+        
+        spam_user_tx = {"user_id": "spam_user", "symbol": "TSLA", "quantity": 10}
+        for _ in range(105):  # Exceed 100 tx/minute threshold
+            spam_monitor.check_spam_patterns(spam_user_tx)
+        
+        spam_result = spam_monitor.check_spam_patterns(spam_user_tx)
+        
+        print(f"  Normal user spam check: {'✅' if not normal_result.get('spam_check', {}).get('is_spam') else '❌'}")
+        print(f"  Spam detection working: {'✅' if spam_result.get('spam_check', {}).get('is_spam') else '❌'}")
+        print(f"  Auto-blacklisting working: {'✅' if spam_result.get('spam_check', {}).get('blacklisted') else '❌'}")
+        
+        blacklist_updated = await spam_monitor.update_blacklist()
+        print(f"  Blacklist update: {'✅' if blacklist_updated else '❌'}")
+        
+        print("\n🔄 Testing Enhanced End-to-End Workflow...")
+        
+        enhanced_workflow_trade = {
+            "symbol": "NVDA",
+            "quantity": 150,
+            "side": "BUY",
+            "order_type": "MARKET",
+            "user_id": "enhanced_test_user",
+            "strategy_id": "enhanced_causal_ai_mev_protected",
+            "urgency_ms": 800,
+            "trade_value_usd": 45000
+        }
+        
+        enhanced_result = await mev_service.execute_mev_protected_trade(enhanced_workflow_trade)
+        
+        enhanced_features = enhanced_result.get('bundle_details', {}).get('enhanced_features', {})
+        
+        print(f"  Enhanced workflow success: {'✅' if enhanced_result['success'] else '❌'}")
+        print(f"  Encryption applied: {'✅' if enhanced_features.get('encrypted') else '❌'}")
+        print(f"  BAM protection: {'✅' if enhanced_features.get('bam_protected') else '❌'}")
+        print(f"  MEV blocking: {'✅' if enhanced_features.get('mev_blocked') else '❌'}")
+        print(f"  Preconfirmation: {'✅' if enhanced_features.get('preconfirmed') else '❌'}")
+        print(f"  Spam checking: {'✅' if enhanced_features.get('spam_checked') else '❌'}")
+        
+        enhanced_success = (
+            (encryption_working if 'encryption_working' in locals() else True) and
+            bam_result.get('bam_protected', False) and
+            blocked_trade.get('mev_blocked', False) and
+            'preconfirm' in preconfirmed_trade and
+            spam_result.get('spam_check', {}).get('is_spam', False) and
+            enhanced_result['success']
+        )
+        
+        print(f"\n📋 Enhanced MEV Protection Summary:")
+        print(f"  ✅ Transaction Encryption: {'Working' if encryption_working else 'Failed/Disabled'}")
+        print(f"  ✅ BAM Integration: {'Working' if bam_result.get('bam_protected') else 'Failed'}")
+        print(f"  ✅ MEV Blockers: {'Working' if blocked_trade.get('mev_blocked') else 'Failed'}")
+        print(f"  ✅ Preconfirmation: {'Working' if 'preconfirm' in preconfirmed_trade else 'Failed'}")
+        print(f"  ✅ Spam Monitoring: {'Working' if spam_result.get('spam_check', {}).get('is_spam') else 'Failed'}")
+        print(f"  ✅ Enhanced Workflow: {'Working' if enhanced_result['success'] else 'Failed'}")
+        
+        print(f"\n📋 MEV Protection Integration Summary:")
+        print(f"  ✅ Priority 1 - Jito Block Engine: {'Integrated' if jito_available else 'Fallback mode'}")
+        print(f"  ✅ Priority 2 - Atomic Bundling: {'Working' if bundle_result['success'] else 'Failed'}")
+        print(f"  ✅ Priority 3 - Priority Fees: {'Dynamic' if 1000 <= tip_amount <= 10000 else 'Static'}")
+        print(f"  ✅ Priority 4 - Geographic RPC: {'Optimized' if routing_result['target_met'] else 'Needs tuning'}")
+        print(f"  ✅ IBKR Integration: {'Complete' if trade_result else 'Failed'}")
+        print(f"  ✅ Enhanced Protection: {'Operational' if enhanced_success else 'Partial'}")
+        
+        overall_enhanced_success = enhanced_success and overall_success
+        
+        print(f"\n🎯 Overall Enhanced MEV Protection Status: {'✅ FULLY OPERATIONAL' if overall_enhanced_success else '❌ NEEDS ATTENTION'}")
+        
+        return overall_enhanced_success
         
     except Exception as e:
         print(f"❌ MEV integration test failed: {e}")

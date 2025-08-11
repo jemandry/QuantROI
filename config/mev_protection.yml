@@ -206,3 +206,51 @@ environments:
         audit:
           log_all_bundles: true
           retention_days: 2555  # 7 years for compliance
+
+# Enhanced MEV Protection Features
+enhanced_protection:
+  # Transaction Encryption for Privacy
+  encryption:
+    enabled: true
+    encryption_key: "your_secret_key_here"  # Should be from environment in production
+    encrypted_endpoints:
+      - "https://encrypted.jito.wtf/api/v1/submit"
+      - "https://private-relay.mevblocker.io/submit"
+    
+  # Block Assembly Marketplace (BAM) Integration
+  bam_integration:
+    enabled: true
+    bam_endpoint: "https://bam.jito.network/api/v1/submit"
+    encryption_required: true
+    ordering_rules:
+      hide_until_execution: true
+      cancel_on_divergence: true
+      mev_protect: "full"
+    
+  # MEV Blockers and Preconfirmation
+  mev_blockers:
+    enabled: true
+    blocker_endpoint: "https://mevblocker.io/api/submit"
+    preconfirmation:
+      enabled: true
+      guarantee_inclusion: true
+      mev_protect: "jito"
+      
+  # Spam Monitoring and Blacklisting
+  spam_monitoring:
+    enabled: true
+    jito_blacklist_endpoint: "https://stakenet.jito.wtf/api/v1/blacklist"
+    update_interval_minutes: 15
+    spam_detection:
+      max_transactions_per_minute: 100
+      suspicious_pattern_threshold: 0.8
+      auto_blacklist_enabled: true
+      
+  # Private Mempool Relays
+  private_mempools:
+    enabled: true
+    express_relay_endpoint: "https://express-relay.flashbots.net/submit"
+    limit_orders:
+      enabled: true
+      slippage_guards: true
+      max_slippage_bps: 50
