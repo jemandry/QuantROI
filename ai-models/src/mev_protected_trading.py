@@ -571,8 +571,7 @@ class MevProtectedTradingService:
         self.performance_metrics = MevPerformanceMetrics()
         self.ibkr_integration = IBKRTradingIntegration() if IBKR_AVAILABLE else None
         
-        if self.spam_monitor.config.get("enabled", False):
-            asyncio.create_task(self._periodic_blacklist_update())
+        self._spam_monitoring_enabled = self.spam_monitor.config.get("enabled", False)
         
     def _load_config(self, config_path: Optional[str] = None) -> Dict[str, Any]:
         if config_path is None:
@@ -856,10 +855,15 @@ class MevProtectedTradingService:
         
         while True:
             try:
-                await asyncio.sleep(update_interval * 60)  # Convert to seconds
+                await asyncio.sleep(update_interval * 60)
                 await self.spam_monitor.update_blacklist()
             except Exception as e:
                 self.logger.error(f"❌ Periodic blacklist update failed: {e}")
+    
+    async def start_spam_monitoring(self):
+        """Start spam monitoring task if enabled"""
+        if self._spam_monitoring_enabled:
+            asyncio.create_task(self._periodic_blacklist_update())
     
     async def _calculate_priority_fee(self, bundle: AtomicTradeBundle) -> int:
         config = self.config.get("mev_protection", {}).get("priority_fees", {})

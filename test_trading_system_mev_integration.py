@@ -8,6 +8,7 @@ import asyncio
 import sys
 import os
 import time
+import numpy as np
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent / "ai-models" / "src"))
@@ -72,13 +73,15 @@ async def test_trading_system_mev_integration():
         causal_model = EnhancedCausalTradingModel()
         
         market_data = MarketData(
-            symbol="GOOGL",
             price=150.0,
-            bid=149.5,
-            ask=150.5,
             volume=1000000,
             volatility=0.25,
-            timestamp=time.time()
+            timestamp=int(time.time()),
+            time_series=np.array([150.0, 149.8, 150.2, 150.1, 150.0]),
+            sentiment_score=0.0,
+            symbol="GOOGL",
+            bid=149.5,
+            ask=150.5
         )
         
         qos_requirements = QoSRequirements(

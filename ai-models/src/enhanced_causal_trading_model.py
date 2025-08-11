@@ -139,7 +139,23 @@ class GatedDeepQLearningStrategy:
         
     def extract_gru_features(self, market_data: MarketData) -> np.ndarray:
         with torch.no_grad():
-            time_series_tensor = torch.FloatTensor(market_data.time_series).unsqueeze(0)
+            if len(market_data.time_series) < 10:
+                extended_features = np.array([
+                    market_data.price,
+                    market_data.volume / 1000000,  # Normalize volume
+                    market_data.volatility,
+                    market_data.sentiment_score,
+                    market_data.bid if hasattr(market_data, 'bid') else market_data.price * 0.999,
+                    market_data.ask if hasattr(market_data, 'ask') else market_data.price * 1.001,
+                    (market_data.ask - market_data.bid) / market_data.price if hasattr(market_data, 'ask') and hasattr(market_data, 'bid') else 0.001,
+                    market_data.price / (market_data.bid if hasattr(market_data, 'bid') else market_data.price) - 1,
+                    market_data.volume * market_data.price / 1000000,  # Dollar volume
+                    (market_data.timestamp % 86400) / 86400  # Time of day normalized
+                ])
+                time_series_tensor = torch.FloatTensor(extended_features).unsqueeze(0).unsqueeze(0)
+            else:
+                time_series_tensor = torch.FloatTensor(market_data.time_series[:10]).unsqueeze(0).unsqueeze(0)
+            
             gru_features = self.gru_network(time_series_tensor)
             
             additional_features = np.array([
@@ -342,7 +358,23 @@ class GatedPolicyGradientStrategy:
         
     def extract_gru_features(self, market_data: MarketData) -> np.ndarray:
         with torch.no_grad():
-            time_series_tensor = torch.FloatTensor(market_data.time_series).unsqueeze(0)
+            if len(market_data.time_series) < 10:
+                extended_features = np.array([
+                    market_data.price,
+                    market_data.volume / 1000000,  # Normalize volume
+                    market_data.volatility,
+                    market_data.sentiment_score,
+                    market_data.bid if hasattr(market_data, 'bid') else market_data.price * 0.999,
+                    market_data.ask if hasattr(market_data, 'ask') else market_data.price * 1.001,
+                    (market_data.ask - market_data.bid) / market_data.price if hasattr(market_data, 'ask') and hasattr(market_data, 'bid') else 0.001,
+                    market_data.price / (market_data.bid if hasattr(market_data, 'bid') else market_data.price) - 1,
+                    market_data.volume * market_data.price / 1000000,  # Dollar volume
+                    (market_data.timestamp % 86400) / 86400  # Time of day normalized
+                ])
+                time_series_tensor = torch.FloatTensor(extended_features).unsqueeze(0).unsqueeze(0)
+            else:
+                time_series_tensor = torch.FloatTensor(market_data.time_series[:10]).unsqueeze(0).unsqueeze(0)
+            
             gru_features = self.gru_network(time_series_tensor)
             
             additional_features = np.array([
@@ -1168,7 +1200,10 @@ class EnhancedCausalTradingModel:
             if not result.timestamp:
                 result.timestamp = datetime.now().isoformat()
             
-            self.kafka_integration.publish_trade_result(result)
+            if self.kafka_integration:
+                self.kafka_integration.publish_trade_result(result)
+            else:
+                self.logger.warning("Kafka integration not available - skipping trade result publication")
             
             try:
                 self.learning_queue.put_nowait((result, market_data))
@@ -1207,7 +1242,10 @@ class EnhancedCausalTradingModel:
         
         self.master_learning_engine.update_strategy_performance(optimal_strategy, result, market_data)
         
-        self.kafka_integration.publish_trade_result(result)
+        if self.kafka_integration:
+            self.kafka_integration.publish_trade_result(result)
+        else:
+            self.logger.warning("Kafka integration not available - skipping trade result publication")
         
         try:
             self.learning_queue.put_nowait((result, market_data))

@@ -67,6 +67,56 @@ class MevTradeExecutionRouter:
             'avg_execution_time_ms': 0.0,
             'total_tips_paid': 0
         }
+    
+    def route_trade(self, trade_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Route trade through MEV protection (synchronous wrapper for execute_trade)"""
+        try:
+            request = TradeExecutionRequest(
+                symbol=trade_data.get('symbol', 'UNKNOWN'),
+                quantity=float(trade_data.get('quantity', 100)),
+                action=trade_data.get('action', 'hold'),
+                order_type=trade_data.get('order_type', 'MARKET'),
+                limit_price=trade_data.get('limit_price'),
+                user_id=trade_data.get('user_id', 'default_user'),
+                strategy_id=trade_data.get('strategy_id', 'default_strategy'),
+                urgency_ms=trade_data.get('urgency_ms', 5000),
+                trade_value_usd=trade_data.get('trade_value_usd', 10000),
+                confidence=trade_data.get('confidence', 0.75),
+                source_engine=trade_data.get('source_engine', 'unknown')
+            )
+            
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(asyncio.run, self.execute_trade(request))
+                        result = future.result(timeout=30)
+                else:
+                    result = asyncio.run(self.execute_trade(request))
+            except RuntimeError:
+                result = asyncio.run(self.execute_trade(request))
+            
+            return {
+                'success': result.success,
+                'order_id': result.order_id,
+                'execution_time_ms': result.execution_time_ms,
+                'mev_protected': result.mev_protected,
+                'slippage_bps': result.slippage_bps,
+                'fill_price': result.fill_price,
+                'error_message': result.error_message,
+                'mev_metrics': result.mev_metrics
+            }
+            
+        except Exception as e:
+            self.logger.error(f"❌ Trade routing failed: {e}")
+            return {
+                'success': False,
+                'error_message': str(e),
+                'mev_protected': False,
+                'execution_time_ms': 0.0
+            }
         
     async def execute_trade(self, request: TradeExecutionRequest) -> TradeExecutionResponse:
         """Execute trade with MEV protection if available"""
