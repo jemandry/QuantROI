@@ -422,7 +422,7 @@ async def search_events(
 
 @app.get("/api/v2/events/performance", response_model=Dict[str, Any])
 async def get_event_processing_performance():
-    """Get performance statistics for event processing"""
+    """Get comprehensive performance statistics for event processing"""
     try:
         from .event_upload_processor import FastEventUploadProcessor
         event_processor = FastEventUploadProcessor(orchestrator.config if orchestrator else {})
@@ -431,15 +431,117 @@ async def get_event_processing_performance():
         
         return {
             "performance_stats": stats,
-            "latency_requirement_ms": 1.0,
-            "throughput_requirement_events_per_second": 20000,
-            "current_avg_latency_ms": stats.get('avg_processing_time_ms', 0),
-            "meets_latency_requirement": stats.get('avg_processing_time_ms', 0) < 1.0,
+            "requirements": {
+                "latency_requirement_ms": 1.0,
+                "throughput_requirement_events_per_second": 20000
+            },
+            "current_performance": {
+                "avg_latency_ms": stats.get('avg_processing_time_ms', 0),
+                "current_throughput_per_second": stats.get('current_throughput_per_second', 0),
+                "error_rate": stats.get('error_rate', 0),
+                "latency_violation_rate": stats.get('latency_violation_rate', 0)
+            },
+            "compliance": {
+                "meets_latency_requirement": stats.get('meets_latency_requirement', False),
+                "meets_throughput_requirement": stats.get('meets_throughput_requirement', False),
+                "overall_health": "healthy" if (stats.get('meets_latency_requirement', False) and 
+                                               stats.get('error_rate', 1) < 0.01) else "degraded"
+            },
+            "alerts": stats.get('performance_alerts', []),
             "timestamp": datetime.now().isoformat()
         }
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Performance stats failed: {str(e)}")
+
+@app.post("/api/v2/news/ingest", response_model=Dict[str, Any])
+async def start_news_ingestion():
+    """Start real-time news ingestion pipeline"""
+    try:
+        from .news_ingestion_pipeline import NewsIngestionPipeline
+        
+        pipeline_config = {
+            'news_providers': {
+                'finnhub_api_key': orchestrator.config.get('finnhub_api_key') if orchestrator else None,
+                'alphavantage_api_key': orchestrator.config.get('alphavantage_api_key') if orchestrator else None,
+                'cache_ttl': 300,
+                'fetch_interval': 60,
+                'sentiment_threshold': 0.3
+            }
+        }
+        
+        pipeline = NewsIngestionPipeline(pipeline_config)
+        await pipeline.initialize()
+        
+        asyncio.create_task(pipeline.start_real_time_ingestion())
+        
+        return {
+            "status": "started",
+            "pipeline_config": pipeline_config,
+            "provider_status": pipeline.news_adapter.get_provider_status(),
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"News ingestion start failed: {str(e)}")
+
+@app.post("/api/v2/news/historical", response_model=Dict[str, Any])
+async def process_historical_news(
+    start_date: str = Field(..., description="Start date (YYYY-MM-DD)"),
+    end_date: str = Field(..., description="End date (YYYY-MM-DD)")
+):
+    """Process historical news events for a date range"""
+    try:
+        from .news_ingestion_pipeline import NewsIngestionPipeline
+        
+        pipeline_config = {
+            'news_providers': {
+                'finnhub_api_key': orchestrator.config.get('finnhub_api_key') if orchestrator else None,
+                'alphavantage_api_key': orchestrator.config.get('alphavantage_api_key') if orchestrator else None
+            }
+        }
+        
+        pipeline = NewsIngestionPipeline(pipeline_config)
+        await pipeline.initialize()
+        
+        created_events = await pipeline.process_historical_events(start_date, end_date)
+        
+        return {
+            "status": "completed",
+            "date_range": {"start": start_date, "end": end_date},
+            "events_created": len(created_events),
+            "events": created_events,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Historical processing failed: {str(e)}")
+
+@app.get("/api/v2/providers/status", response_model=Dict[str, Any])
+async def get_provider_status():
+    """Get status of all news API providers"""
+    try:
+        from .api_provider_adapter import MultiProviderNewsAdapter
+        
+        adapter_config = {
+            'finnhub_api_key': orchestrator.config.get('finnhub_api_key') if orchestrator else None,
+            'alphavantage_api_key': orchestrator.config.get('alphavantage_api_key') if orchestrator else None
+        }
+        
+        adapter = MultiProviderNewsAdapter(adapter_config)
+        await adapter.initialize()
+        
+        status = adapter.get_provider_status()
+        
+        return {
+            "provider_status": status,
+            "total_providers": len(status),
+            "healthy_providers": sum(1 for p in status.values() if p.get('initialized', False)),
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Provider status check failed: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

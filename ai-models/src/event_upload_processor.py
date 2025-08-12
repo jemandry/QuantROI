@@ -318,11 +318,10 @@ class MacroLearningEngine:
                 macro_lessons.append(market_sentiment_lesson)
             
             return macro_lessons
-            
         except Exception as e:
             self.logger.error(f"Macro analysis failed: {e}")
             return []
-    
+
     async def _analyze_cross_sector_correlations(self, event_strand: EventStrand) -> Optional[Dict[str, Any]]:
         """Analyze correlations between affected sectors"""
         try:
@@ -340,7 +339,7 @@ class MacroLearningEngine:
         except Exception as e:
             self.logger.error(f"Cross-sector correlation analysis failed: {e}")
             return None
-    
+
     async def _analyze_volatility_regime_change(self, event_strand: EventStrand) -> Optional[Dict[str, Any]]:
         """Detect volatility regime changes during event"""
         try:
@@ -357,7 +356,7 @@ class MacroLearningEngine:
         except Exception as e:
             self.logger.error(f"Volatility regime analysis failed: {e}")
             return None
-    
+
     async def _analyze_market_sentiment_shift(self, event_strand: EventStrand) -> Optional[Dict[str, Any]]:
         """Analyze market sentiment shifts during event"""
         try:
@@ -374,6 +373,144 @@ class MacroLearningEngine:
         except Exception as e:
             self.logger.error(f"Market sentiment analysis failed: {e}")
             return None
+
+
+class EnhancedFastEventUploadProcessor(FastEventUploadProcessor):
+    """Enhanced version with API reliability features"""
+    
+    def __init__(self, config: Dict[str, Any]):
+        super().__init__(config)
+        self.logger = logging.getLogger(self.__class__.__name__)
+        
+        self.latency_violations = 0
+        self.throughput_samples = []
+        self.performance_alerts = []
+        self.last_performance_check = time.time()
+        
+        self.event_cache = {}
+        self.cache_ttl = config.get('cache_ttl', 300)  # 5 minutes
+    
+    async def get_event_lessons_fast(self, event_id: str) -> Dict[str, Any]:
+        """Fast retrieval of event lessons with caching"""
+        if event_id in self.event_cache:
+            cached_data = self.event_cache[event_id]
+            if time.time() - cached_data['timestamp'] < self.cache_ttl:
+                event_strand = cached_data['strand']
+                return {
+                    'macro_lessons': event_strand.macro_lessons,
+                    'micro_lessons': event_strand.micro_lessons,
+                    'confidence': 0.85
+                }
+        
+        self.logger.warning(f"Event {event_id} not found in cache")
+        return {'macro_lessons': [], 'micro_lessons': [], 'confidence': 0.0}
+    
+    async def search_events_fast(self, criteria: Dict[str, Any]) -> Dict[str, Any]:
+        """Fast search of cached events"""
+        results = []
+        
+        for event_id, cached_data in self.event_cache.items():
+            event_strand = cached_data['strand']
+            
+            if criteria.get('event_type') and event_strand.event_type != criteria['event_type']:
+                continue
+            if criteria.get('learning_scope') and event_strand.learning_scope != criteria['learning_scope']:
+                continue
+            
+            results.append({
+                'event_id': event_strand.strand_id,
+                'event_name': event_strand.event_name,
+                'event_type': event_strand.event_type,
+                'learning_scope': event_strand.learning_scope,
+                'upload_timestamp': event_strand.upload_timestamp_ns,
+                'impact_sectors': event_strand.impact_sectors
+            })
+        
+        results.sort(key=lambda x: x['upload_timestamp'], reverse=True)
+        
+        limit = criteria.get('limit', 100)
+        results = results[:limit]
+        
+        return {
+            'results': results,
+            'total_count': len(results),
+            'search_criteria': criteria
+        }
+    
+    def get_performance_stats(self) -> Dict[str, Any]:
+        """Get comprehensive performance statistics"""
+        current_time = time.time()
+        
+        recent_samples = [s for s in self.throughput_samples if current_time - s < 60]
+        throughput_per_second = len(recent_samples)
+        
+        stats = {
+            'processed_events': self.processed_events,
+            'processing_errors': self.processing_errors,
+            'error_rate': self.processing_errors / max(self.processed_events, 1),
+            'avg_processing_time_ns': self.avg_processing_time_ns,
+            'avg_processing_time_ms': self.avg_processing_time_ns / 1_000_000,
+            'latency_violations': self.latency_violations,
+            'latency_violation_rate': self.latency_violations / max(self.processed_events, 1),
+            'meets_latency_requirement': self.avg_processing_time_ns < 1_000_000,
+            'current_throughput_per_second': throughput_per_second,
+            'meets_throughput_requirement': throughput_per_second >= 20000,
+            'cached_events': len(self.event_cache),
+            'performance_alerts': self.performance_alerts[-10:],  # Last 10 alerts
+            'uptime_seconds': current_time - self.last_performance_check
+        }
+        
+        if stats['latency_violation_rate'] > 0.05:  # >5% violations
+            alert = f"High latency violation rate: {stats['latency_violation_rate']:.2%}"
+            self.performance_alerts.append({
+                'timestamp': current_time,
+                'type': 'latency_violation',
+                'message': alert
+            })
+        
+        if stats['error_rate'] > 0.01:  # >1% error rate
+            alert = f"High error rate: {stats['error_rate']:.2%}"
+            self.performance_alerts.append({
+                'timestamp': current_time,
+                'type': 'error_rate',
+                'message': alert
+            })
+        
+        return stats
+    
+    def _update_performance_stats(self, processing_time_ns: int):
+        """Update performance statistics with monitoring"""
+        self.processed_events += 1
+        
+        if self.avg_processing_time_ns == 0:
+            self.avg_processing_time_ns = processing_time_ns
+        else:
+            alpha = 0.1
+            self.avg_processing_time_ns = (alpha * processing_time_ns + 
+                                         (1 - alpha) * self.avg_processing_time_ns)
+        
+        current_time = time.time()
+        self.throughput_samples.append(current_time)
+        
+        self.throughput_samples = [s for s in self.throughput_samples if current_time - s < 300]
+        
+        if self.processed_events % 1000 == 0:
+            self._cleanup_cache()
+    
+    def _cleanup_cache(self):
+        """Clean up expired cache entries"""
+        current_time = time.time()
+        expired_keys = []
+        
+        for event_id, cached_data in self.event_cache.items():
+            if current_time - cached_data['timestamp'] > self.cache_ttl:
+                expired_keys.append(event_id)
+        
+        for key in expired_keys:
+            del self.event_cache[key]
+        
+        if expired_keys:
+            self.logger.info(f"Cleaned up {len(expired_keys)} expired cache entries")
 
 
 class MicroLearningEngine:
