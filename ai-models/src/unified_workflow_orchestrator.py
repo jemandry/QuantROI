@@ -69,6 +69,28 @@ class UnifiedWorkflowOrchestrator:
         
         self.ai_prediction_engine = AIArchitectStockPredictionEngine(config)
         
+        try:
+            from .predictive_compliance_engine import PredictiveComplianceEngine
+            compliance_config = {
+                'x_api_credentials': config.get('x_api_credentials', {}),
+                'nats_servers': config.get('nats_servers', ['nats://localhost:4222'])
+            }
+            self.compliance_engine = PredictiveComplianceEngine(compliance_config)
+        except Exception as e:
+            self.logger.warning(f"Compliance engine initialization failed: {e}")
+            self.compliance_engine = None
+        
+        # Add voice interface integration
+        try:
+            from .grok_voice_interface import GrokVoiceInterface
+            voice_config = {
+                'interaction_mode': config.get('voice_mode', 'text_only')
+            }
+            self.voice_interface = GrokVoiceInterface(voice_config)
+        except Exception as e:
+            self.logger.warning(f"Voice interface initialization failed: {e}")
+            self.voice_interface = None
+        
         cluster_config = ClusterScalingConfig(
             min_nodes=config.get('min_nodes', 3),
             max_nodes=config.get('max_nodes', 50),
