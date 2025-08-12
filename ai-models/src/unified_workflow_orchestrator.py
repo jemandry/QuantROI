@@ -6,6 +6,7 @@ Coordinates Jump Diffusion, Confidence Engine, Merkle audit, and Braided Cord sy
 
 import asyncio
 import logging
+import numpy as np
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timedelta
 from dataclasses import dataclass
@@ -18,6 +19,7 @@ from .braided_cord_data_engine import BraidedCordDataEngine
 from .zkp_audit_router import ZKPAuditRouter
 from .stream_based_audit_logger import StreamBasedAuditLogger
 from .enhanced_distributed_processor import EnhancedDistributedProcessor, ClusterScalingConfig
+from .ai_architect_stock_prediction_engine import AIArchitectStockPredictionEngine, PredictionResult
 
 @dataclass
 class SimulationRequest:
@@ -38,6 +40,19 @@ class IntegratedSimulationResult:
     cord_placement: Dict[str, Any]
     processing_time_ms: float
     timestamp: str
+    ai_prediction: Optional[PredictionResult] = None
+    market_regime: Optional[str] = None
+    regime_confidence: Optional[float] = None
+
+@dataclass
+class RegimeChangeEvent:
+    previous_regime: str
+    new_regime: str
+    confidence_score: float
+    trigger_factors: List[str]
+    timestamp: str
+    symbol: str
+    market_data_snapshot: Dict[str, Any]
 
 class UnifiedWorkflowOrchestrator:
     """Orchestrates integrated simulation workflow across all components"""
@@ -52,6 +67,8 @@ class UnifiedWorkflowOrchestrator:
         self.audit_router = ZKPAuditRouter()
         self.audit_logger = StreamBasedAuditLogger()
         
+        self.ai_prediction_engine = AIArchitectStockPredictionEngine(config)
+        
         cluster_config = ClusterScalingConfig(
             min_nodes=config.get('min_nodes', 3),
             max_nodes=config.get('max_nodes', 50),
@@ -62,15 +79,21 @@ class UnifiedWorkflowOrchestrator:
         
         self.health_bot = None
         
+        self.current_regimes = {}  # symbol -> regime
+        self.regime_history = {}   # symbol -> list of regime changes
+        self.regime_change_threshold = 0.7  # Confidence threshold for regime changes
+        
         self.processing_stats = {
             'total_requests': 0,
             'successful_requests': 0,
             'failed_requests': 0,
-            'average_processing_time_ms': 0.0
+            'average_processing_time_ms': 0.0,
+            'regime_changes_detected': 0,
+            'ai_predictions_generated': 0
         }
     
     async def initialize(self) -> bool:
-        """Initialize all orchestrator components with health monitoring"""
+        """Initialize all orchestrator components with health monitoring and AI prediction engine"""
         try:
             from .health_monitor_bot import HealthMonitorBot
             self.health_bot = HealthMonitorBot(self.config)
@@ -80,12 +103,14 @@ class UnifiedWorkflowOrchestrator:
                 self.logger.error("Health monitor boot sequence failed")
                 return False
             
+            await self.ai_prediction_engine.initialize()
+            
             success = await self.distributed_processor.initialize()
             if not success:
                 self.logger.error("Failed to initialize distributed processor")
                 return False
             
-            self.logger.info("Unified workflow orchestrator initialized successfully with health monitoring")
+            self.logger.info("Unified workflow orchestrator initialized successfully with health monitoring and AI prediction")
             return True
             
         except Exception as e:
@@ -93,22 +118,26 @@ class UnifiedWorkflowOrchestrator:
             return False
 
     async def process_integrated_simulation(self, request: SimulationRequest) -> IntegratedSimulationResult:
-        """Process complete integrated simulation workflow"""
+        """Process complete integrated simulation workflow with AI prediction and regime detection"""
         start_time = datetime.now()
         request_id = f"sim_{int(start_time.timestamp() * 1000000)}_{hash(request.symbol) % 10000}"
         
         try:
             cord_placement = await self._route_to_braided_cord(request, request_id)
             
+            regime_info = await self._detect_and_track_market_regime(request.symbol, request.market_data)
+            
+            ai_prediction = await self._generate_ai_prediction(request.symbol, request.market_data)
+            
             simulation_results = await self._run_jump_diffusion_simulation(request)
             
-            confidence_analysis = await self._calculate_confidence_scores(request, simulation_results)
+            confidence_analysis = await self._calculate_confidence_scores(request, simulation_results, ai_prediction)
             
             audit_trail = {}
             if request.audit_required:
-                audit_trail = await self._generate_audit_trail(request, simulation_results, confidence_analysis)
+                audit_trail = await self._generate_audit_trail(request, simulation_results, confidence_analysis, ai_prediction, regime_info)
             
-            await self._store_integrated_results(request_id, simulation_results, confidence_analysis, audit_trail)
+            await self._store_integrated_results(request_id, simulation_results, confidence_analysis, audit_trail, ai_prediction)
             
             processing_time = (datetime.now() - start_time).total_seconds() * 1000
             
@@ -124,7 +153,10 @@ class UnifiedWorkflowOrchestrator:
                 audit_trail=audit_trail,
                 cord_placement=cord_placement,
                 processing_time_ms=processing_time,
-                timestamp=start_time.isoformat()
+                timestamp=start_time.isoformat(),
+                ai_prediction=ai_prediction,
+                market_regime=regime_info.get('regime'),
+                regime_confidence=regime_info.get('confidence')
             )
             
         except Exception as e:
@@ -185,7 +217,8 @@ class UnifiedWorkflowOrchestrator:
             raise
     
     async def _calculate_confidence_scores(self, request: SimulationRequest, 
-                                         simulation_results: Dict[str, Any]) -> ConfidenceAnalysis:
+                                         simulation_results: Dict[str, Any], 
+                                         ai_prediction: Optional[PredictionResult] = None) -> ConfidenceAnalysis:
         """Calculate confidence scores for simulation results"""
         try:
             base_time = datetime.now() - timedelta(days=30)
@@ -222,6 +255,12 @@ class UnifiedWorkflowOrchestrator:
                 user_tags=request.user_tags
             )
             
+            if ai_prediction and hasattr(confidence_analysis, 'overall_confidence'):
+                ai_confidence_boost = min(ai_prediction.confidence_score * 0.2, 0.3)
+                confidence_analysis.overall_confidence = min(
+                    confidence_analysis.overall_confidence + ai_confidence_boost, 100.0
+                )
+            
             return confidence_analysis
             
         except Exception as e:
@@ -230,7 +269,9 @@ class UnifiedWorkflowOrchestrator:
     
     async def _generate_audit_trail(self, request: SimulationRequest, 
                                   simulation_results: Dict[str, Any],
-                                  confidence_analysis: ConfidenceAnalysis) -> Dict[str, Any]:
+                                  confidence_analysis: ConfidenceAnalysis,
+                                  ai_prediction: Optional[PredictionResult] = None,
+                                  regime_info: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Generate comprehensive audit trail"""
         try:
             audit_event = {
@@ -244,6 +285,26 @@ class UnifiedWorkflowOrchestrator:
                 'requires_zkp': confidence_analysis.overall_confidence < 50.0,
                 'privacy_sensitive': True
             }
+            
+            if ai_prediction:
+                audit_event['ai_prediction_metadata'] = {
+                    'prediction_value': ai_prediction.prediction_value,
+                    'confidence_score': ai_prediction.confidence_score,
+                    'market_regime': ai_prediction.market_regime,
+                    'processing_latency_ms': ai_prediction.latency_ms,
+                    'model_contributions': ai_prediction.model_contributions,
+                    'ensemble_weights': ai_prediction.ensemble_weights,
+                    'probability_distribution': ai_prediction.probability_distribution,
+                    'calibrated_probability': ai_prediction.calibrated_probability
+                }
+            
+            if regime_info:
+                audit_event['regime_metadata'] = {
+                    'detected_regime': regime_info.get('regime'),
+                    'regime_confidence': regime_info.get('confidence'),
+                    'regime_changed': regime_info.get('regime_changed'),
+                    'previous_regime': regime_info.get('previous_regime')
+                }
             
             zkp_result = await self.audit_router.route_audit_event(audit_event)
             
@@ -261,7 +322,8 @@ class UnifiedWorkflowOrchestrator:
             return {'error': str(e), 'audit_status': 'failed'}
     
     async def _store_integrated_results(self, request_id: str, simulation_results: Dict[str, Any],
-                                      confidence_analysis: ConfidenceAnalysis, audit_trail: Dict[str, Any]):
+                                      confidence_analysis: ConfidenceAnalysis, audit_trail: Dict[str, Any],
+                                      ai_prediction: Optional[PredictionResult] = None):
         """Store integrated results in appropriate cord tier"""
         try:
             integrated_data = {
@@ -277,6 +339,18 @@ class UnifiedWorkflowOrchestrator:
                 'audit_trail': audit_trail,
                 'storage_timestamp': datetime.now().isoformat()
             }
+            
+            if ai_prediction:
+                integrated_data['ai_prediction'] = {
+                    'prediction_value': ai_prediction.prediction_value,
+                    'confidence_score': ai_prediction.confidence_score,
+                    'market_regime': ai_prediction.market_regime,
+                    'probability_distribution': ai_prediction.probability_distribution,
+                    'model_contributions': ai_prediction.model_contributions,
+                    'ensemble_weights': ai_prediction.ensemble_weights,
+                    'processing_latency_ms': ai_prediction.latency_ms,
+                    'timestamp': ai_prediction.timestamp
+                }
             
             await self.braided_engine.route_data_to_cord(
                 integrated_data,
@@ -422,6 +496,215 @@ class UnifiedWorkflowOrchestrator:
             return psutil.cpu_percent(interval=0.1)
         except:
             return 0.0
+
+    async def _detect_and_track_market_regime(self, symbol: str, market_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Detect market regime and track regime changes with audit logging"""
+        try:
+            regime, confidence = self.ai_prediction_engine.regime_detector.detect_regime(market_data)
+            
+            previous_regime = self.current_regimes.get(symbol, 'unknown')
+            regime_changed = False
+            
+            if previous_regime != regime and confidence >= self.regime_change_threshold:
+                regime_changed = True
+                
+                regime_change_event = RegimeChangeEvent(
+                    previous_regime=previous_regime,
+                    new_regime=regime,
+                    confidence_score=confidence,
+                    trigger_factors=self._identify_regime_triggers(market_data, previous_regime, regime),
+                    timestamp=datetime.now().isoformat(),
+                    symbol=symbol,
+                    market_data_snapshot=market_data.copy()
+                )
+                
+                self.current_regimes[symbol] = regime
+                if symbol not in self.regime_history:
+                    self.regime_history[symbol] = []
+                self.regime_history[symbol].append(regime_change_event)
+                
+                await self._log_regime_change_audit(regime_change_event)
+                
+                self.processing_stats['regime_changes_detected'] += 1
+                self.logger.info(f"Regime change detected for {symbol}: {previous_regime} -> {regime} (confidence: {confidence:.3f})")
+            
+            return {
+                'regime': regime,
+                'confidence': confidence,
+                'regime_changed': regime_changed,
+                'previous_regime': previous_regime
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error in regime detection for {symbol}: {e}")
+            return {
+                'regime': 'unknown',
+                'confidence': 0.0,
+                'regime_changed': False,
+                'previous_regime': 'unknown'
+            }
+    
+    def _identify_regime_triggers(self, market_data: Dict[str, Any], previous_regime: str, new_regime: str) -> List[str]:
+        """Identify factors that triggered regime change"""
+        triggers = []
+        
+        try:
+            prices = market_data.get('prices', [])
+            volumes = market_data.get('volumes', [])
+            vix = market_data.get('vix', 20.0)
+            sentiment = market_data.get('sentiment_score', 0.0)
+            
+            if len(prices) >= 10:
+                recent_volatility = np.std(np.diff(prices[-10:]) / prices[-10:-1]) if len(prices) > 1 else 0
+                if recent_volatility > 0.03:
+                    triggers.append('high_volatility_spike')
+                
+                price_trend = (prices[-1] - prices[-5]) / prices[-5] if len(prices) >= 5 and prices[-5] != 0 else 0
+                if abs(price_trend) > 0.05:
+                    triggers.append('strong_price_trend')
+            
+            if vix > 30:
+                triggers.append('elevated_vix')
+            elif vix < 15:
+                triggers.append('low_vix')
+            
+            if abs(sentiment) > 0.7:
+                triggers.append('extreme_sentiment')
+            
+            if len(volumes) >= 3:
+                volume_spike = volumes[-1] / np.mean(volumes[-3:]) if np.mean(volumes[-3:]) > 0 else 1
+                if volume_spike > 2.0:
+                    triggers.append('volume_spike')
+            
+            if not triggers:
+                triggers.append('gradual_market_shift')
+            
+        except Exception as e:
+            self.logger.error(f"Error identifying regime triggers: {e}")
+            triggers = ['unknown_trigger']
+        
+        return triggers
+    
+    async def _generate_ai_prediction(self, symbol: str, market_data: Dict[str, Any]) -> PredictionResult:
+        """Generate AI architect ensemble prediction"""
+        try:
+            prediction = await self.ai_prediction_engine.predict(symbol, market_data)
+            self.processing_stats['ai_predictions_generated'] += 1
+            return prediction
+            
+        except Exception as e:
+            self.logger.error(f"Error generating AI prediction for {symbol}: {e}")
+            return PredictionResult(
+                symbol=symbol,
+                prediction_value=100.0,
+                confidence_score=0.1,
+                probability_distribution={'up': 0.4, 'down': 0.4, 'flat': 0.2},
+                model_contributions={},
+                market_regime='unknown',
+                latency_ms=1000.0,
+                timestamp=datetime.now().isoformat(),
+                calibrated_probability=0.1,
+                ensemble_weights={}
+            )
+    
+    async def _log_regime_change_audit(self, regime_change_event: RegimeChangeEvent):
+        """Log regime change event for audit compliance"""
+        try:
+            audit_data = {
+                'event_type': 'market_regime_change',
+                'symbol': regime_change_event.symbol,
+                'previous_regime': regime_change_event.previous_regime,
+                'new_regime': regime_change_event.new_regime,
+                'confidence_score': regime_change_event.confidence_score,
+                'trigger_factors': regime_change_event.trigger_factors,
+                'market_data_snapshot': regime_change_event.market_data_snapshot,
+                'timestamp': regime_change_event.timestamp,
+                'regulatory_significance': 'high' if regime_change_event.confidence_score > 0.8 else 'medium',
+                'automated_detection': True
+            }
+            
+            await self.audit_logger.log_event(audit_data)
+            
+        except Exception as e:
+            self.logger.error(f"Error logging regime change audit: {e}")
+    
+    def get_regime_history(self, symbol: str = None) -> Dict[str, Any]:
+        """Get market regime change history"""
+        if symbol:
+            return {
+                'symbol': symbol,
+                'current_regime': self.current_regimes.get(symbol, 'unknown'),
+                'regime_changes': [
+                    {
+                        'previous_regime': event.previous_regime,
+                        'new_regime': event.new_regime,
+                        'confidence_score': event.confidence_score,
+                        'trigger_factors': event.trigger_factors,
+                        'timestamp': event.timestamp
+                    }
+                    for event in self.regime_history.get(symbol, [])
+                ]
+            }
+        else:
+            return {
+                'all_symbols': {
+                    sym: {
+                        'current_regime': regime,
+                        'change_count': len(self.regime_history.get(sym, []))
+                    }
+                    for sym, regime in self.current_regimes.items()
+                },
+                'total_regime_changes': sum(len(changes) for changes in self.regime_history.values())
+            }
+    
+    async def get_comprehensive_performance_metrics(self) -> Dict[str, Any]:
+        """Get comprehensive performance metrics across all components"""
+        try:
+            ai_metrics = self.ai_prediction_engine.get_performance_metrics()
+            
+            return {
+                'orchestrator_stats': self.processing_stats,
+                'ai_prediction_metrics': ai_metrics,
+                'regime_tracking': {
+                    'total_symbols_tracked': len(self.current_regimes),
+                    'total_regime_changes': sum(len(changes) for changes in self.regime_history.values()),
+                    'current_regimes': self.current_regimes.copy()
+                },
+                'component_status': {
+                    'ai_prediction_engine': 'initialized' if self.ai_prediction_engine.initialized else 'not_initialized',
+                    'braided_engine': 'active',
+                    'audit_router': 'active',
+                    'distributed_processor': 'active'
+                },
+                'timestamp': datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error getting performance metrics: {e}")
+            return {'error': str(e), 'timestamp': datetime.now().isoformat()}
+    
+    async def update_ai_prediction_outcome(self, symbol: str, prediction_result: PredictionResult, 
+                                          actual_outcome: float):
+        """Update AI prediction engine with actual outcomes for learning"""
+        try:
+            current_regime = self.current_regimes.get(symbol, 'unknown')
+            await self.ai_prediction_engine.update_from_outcome(
+                symbol, prediction_result, actual_outcome, current_regime
+            )
+            
+            await self.audit_logger.log_event({
+                'event_type': 'ai_prediction_outcome_update',
+                'symbol': symbol,
+                'predicted_value': prediction_result.prediction_value,
+                'actual_outcome': actual_outcome,
+                'prediction_error': abs(prediction_result.prediction_value - actual_outcome),
+                'regime': current_regime,
+                'confidence_score': prediction_result.confidence_score,
+                'timestamp': datetime.now().isoformat()
+            })
+            
+        except Exception as e:
+            self.logger.error(f"Error updating AI prediction outcome: {e}")
 
     async def shutdown(self):
         """Graceful shutdown of orchestrator with health bot"""
