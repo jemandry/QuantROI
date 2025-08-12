@@ -15,6 +15,9 @@ from .scientific_rigor_enforcer import ScientificRigorFramework, RigorValidation
 from .dag_template_engine import DAGTemplateEngine, DAGValidationResult
 from .solana_execution_bridge import SolanaExecutionBridge, SolanaTransactionResult
 from .ipfs_anchor import IPFSAnchorSystem
+from .automated_strand_creator import AutomatedStrandCreator
+from .event_upload_processor import EventUploadProcessor
+from .braided_cord_data_engine import BraidedCordDataEngine
 
 @dataclass
 class OrchestrationResult:
@@ -40,9 +43,24 @@ class RegimeOrchestrator:
         self.dag_engine = DAGTemplateEngine()
         self.solana_bridge = SolanaExecutionBridge(solana_program_id, solana_rpc_url)
         self.ipfs_system = IPFSAnchorSystem(ipfs_api_url)
+        self.strand_creator = AutomatedStrandCreator()
+        self.event_processor = EventUploadProcessor()
+        self.data_engine = BraidedCordDataEngine()
         
         self.logger = logging.getLogger(__name__)
         self.processing_history = []
+        
+    async def initialize_strand_engines(self):
+        """Initialize strand creation engines"""
+        try:
+            await self.data_engine.initialize()
+            await self.event_processor.initialize()
+            await self.strand_creator.initialize()
+            await self.event_processor.start_processing()
+            self.logger.info("Strand creation engines initialized successfully")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize strand engines: {e}")
+            raise
         
     async def process_market_data(self, market_data: Dict[str, Any]) -> OrchestrationResult:
         """
@@ -90,6 +108,15 @@ class RegimeOrchestrator:
             
             enhanced_data = market_data.copy()
             enhanced_data['debiased_features'] = debiased_data
+            
+            events = self._convert_market_data_to_events(market_data)
+            if events:
+                strands = await self.strand_creator.create_strands_from_events(events, market_data)
+                enhanced_data['strand_data'] = {
+                    'strand_count': len(strands),
+                    'strand_ids': [s.strand_id for s in strands],
+                    'causal_correlations': [s.calculate_causal_correlations() for s in strands if hasattr(s, 'calculate_causal_correlations')]
+                }
             
             dag_validation = self.dag_engine.validate_template(dag_template, enhanced_data)
             
@@ -282,4 +309,62 @@ class RegimeOrchestrator:
             for key in health:
                 health[key] = False
         
+        try:
+            health["strand_creator"] = True
+            health["event_processor"] = True
+            health["data_engine"] = True
+            
+            strand_stats = self.strand_creator.get_library_statistics()
+            health["strand_creator"] = strand_stats.get("library_stats", {}).get("total_strands", 0) >= 0
+            
+            processor_health = self.event_processor.get_health_status()
+            health["event_processor"] = processor_health.get("healthy", False)
+            
+            engine_metrics = self.data_engine.get_performance_metrics()
+            health["data_engine"] = len(engine_metrics) > 0
+            
+        except Exception as e:
+            self.logger.error(f"Strand engine health check failed: {str(e)}")
+            health["strand_creator"] = False
+            health["event_processor"] = False
+            health["data_engine"] = False
+        
         return health
+    
+    def _convert_market_data_to_events(self, market_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Convert market data to events for strand creation"""
+        events = []
+        current_time_ns = time.time_ns()
+        
+        try:
+            base_event = {
+                'timestamp_ns': current_time_ns,
+                'source_id': hash('regime_orchestrator') % 1000000,
+                'type': 'market_data'
+            }
+            
+            for key, value in market_data.items():
+                if isinstance(value, (int, float)) and key not in ['force_regime']:
+                    event = base_event.copy()
+                    event.update({
+                        'type_id': hash(key) % 1000,
+                        'payload': {key: value},
+                        key: value
+                    })
+                    events.append(event)
+            
+            return events
+            
+        except Exception as e:
+            self.logger.error(f"Failed to convert market data to events: {e}")
+            return []
+    
+    async def cleanup_strand_engines(self):
+        """Cleanup strand creation engines"""
+        try:
+            await self.event_processor.stop_processing()
+            await self.strand_creator.cleanup()
+            await self.data_engine.cleanup()
+            self.logger.info("Strand creation engines cleanup completed")
+        except Exception as e:
+            self.logger.error(f"Strand engines cleanup failed: {e}")

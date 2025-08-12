@@ -112,3 +112,30 @@ performance_targets:
   throughput_events_per_second: 20000
   accuracy_improvement_pct: 25
   sharpe_uplift_target: 0.3
+
+strand_creation:
+  hot_tier_latency_target_ms: 1
+  warm_tier_latency_target_ms: 10
+  cold_tier_latency_target_ms: 100
+  throughput_events_per_second: 20000
+  batch_size: 1000
+  flush_interval_seconds: 5.0
+  max_concurrent_batches: 10
+  circuit_breaker_threshold: 100
+  enable_ml_clustering: true
+  causal_detection_threshold: 0.3
+  
+braided_cord_engine:
+  redis_url: "redis://localhost:6379"
+  postgres_url: "postgresql://localhost/quantroi"
+  timescale_url: "postgresql://localhost/quantroi_cold"
+  hot_cache_size: 10000
+  memory_map_size_mb: 100
+  
+  tier_routing:
+    hot_access_threshold: 10
+    hot_recency_threshold_minutes: 1
+    hot_size_threshold_mb: 1
+    warm_access_threshold: 2
+    warm_recency_threshold_hours: 1
+    warm_size_threshold_mb: 10
