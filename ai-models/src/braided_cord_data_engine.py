@@ -18,9 +18,12 @@ import hashlib
 
 try:
     import redis.asyncio as redis
+    import msgpack
     REDIS_AVAILABLE = True
+    MSGPACK_AVAILABLE = True
 except ImportError:
     REDIS_AVAILABLE = False
+    MSGPACK_AVAILABLE = False
 
 try:
     import asyncpg

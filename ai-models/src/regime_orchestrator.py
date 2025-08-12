@@ -18,6 +18,8 @@ from .ipfs_anchor import IPFSAnchorSystem
 from .automated_strand_creator import AutomatedStrandCreator
 from .event_upload_processor import EventUploadProcessor
 from .braided_cord_data_engine import BraidedCordDataEngine
+from .enhanced_event_router import EventDrivenDataRouter
+from .client_behavior_vector_store import ClientBehaviorVectorStore
 
 @dataclass
 class OrchestrationResult:
@@ -46,6 +48,8 @@ class RegimeOrchestrator:
         self.strand_creator = AutomatedStrandCreator()
         self.event_processor = EventUploadProcessor()
         self.data_engine = BraidedCordDataEngine()
+        self.event_router = EventDrivenDataRouter(['nats://localhost:4222'])
+        self.vector_store = ClientBehaviorVectorStore('http://localhost:8080')
         
         self.logger = logging.getLogger(__name__)
         self.processing_history = []
@@ -57,7 +61,11 @@ class RegimeOrchestrator:
             await self.event_processor.initialize()
             await self.strand_creator.initialize()
             await self.event_processor.start_processing()
-            self.logger.info("Strand creation engines initialized successfully")
+            
+            await self.event_router.connect()
+            await self.vector_store.initialize()
+            
+            self.logger.info("Strand creation engines and RIA components initialized successfully")
         except Exception as e:
             self.logger.error(f"Failed to initialize strand engines: {e}")
             raise
@@ -365,6 +373,8 @@ class RegimeOrchestrator:
             await self.event_processor.stop_processing()
             await self.strand_creator.cleanup()
             await self.data_engine.cleanup()
-            self.logger.info("Strand creation engines cleanup completed")
+            await self.event_router.disconnect()
+            await self.vector_store.cleanup()
+            self.logger.info("Strand creation engines and RIA components cleanup completed")
         except Exception as e:
             self.logger.error(f"Strand engines cleanup failed: {e}")
