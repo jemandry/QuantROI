@@ -1,0 +1,146 @@
+# ZKP Audit Router Dockerfile
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy ZKP router source code
+COPY src/zkp_audit_router.py ./src/
+COPY src/comprehensive_audit_integration.py ./src/
+COPY src/solana_audit_integration.py ./src/
+COPY src/stream_based_audit_logger.py ./src/
+
+# Create ZKP router server
+COPY <<EOF ./zkp_router_server.py
+#!/usr/bin/env python3
+"""
+ZKP Audit Router HTTP Server
+"""
+
+import asyncio
+import json
+import logging
+from datetime import datetime
+from typing import Dict, Any
+
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
+
+from src.zkp_audit_router import ZKPAuditRouter
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Initialize FastAPI app
+app = FastAPI(
+    title="QuantROI ZKP Audit Router",
+    description="Dual-chain audit event routing service",
+    version="1.0.0"
+)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Initialize ZKP router
+zkp_router = ZKPAuditRouter()
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "service": "zkp-audit-router"
+    }
+
+@app.get("/ready")
+async def readiness_check():
+    """Readiness check endpoint"""
+    return {
+        "status": "ready",
+        "timestamp": datetime.now().isoformat(),
+        "routing_stats": zkp_router.routing_stats
+    }
+
+@app.post("/api/route-audit-event")
+async def route_audit_event(event: Dict[str, Any]):
+    """Route audit event to appropriate blockchain"""
+    try:
+        result = await zkp_router.route_audit_event(event)
+        return result
+    except Exception as e:
+        logger.error(f"Error routing audit event: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/routing-stats")
+async def get_routing_stats():
+    """Get routing statistics"""
+    return zkp_router.routing_stats
+
+@app.get("/api/status")
+async def get_status():
+    """Get service status"""
+    return {
+        "service": "zkp-audit-router",
+        "version": "1.0.0",
+        "routing_rules": {
+            "strategy_commitment": "mina",
+            "performance_claim": "mina", 
+            "trade_execution": "solana",
+            "compliance_check": "solana",
+            "general_audit": "solana"
+        },
+        "performance_targets": {
+            "solana_execution_ms": 1,
+            "mina_zkp_generation_ms": 30,
+            "api_latency_ms": 10,
+            "event_processing_per_second": 20000
+        },
+        "timestamp": datetime.now().isoformat()
+    }
+
+if __name__ == "__main__":
+    uvicorn.run(
+        "zkp_router_server:app",
+        host="0.0.0.0",
+        port=8002,
+        log_level="info"
+    )
+EOF
+
+# Make the server executable
+RUN chmod +x zkp_router_server.py
+
+# Create non-root user
+RUN useradd --create-home --shell /bin/bash zkp_user
+RUN chown -R zkp_user:zkp_user /app
+USER zkp_user
+
+# Expose port
+EXPOSE 8002
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8002/health || exit 1
+
+# Start the ZKP router server
+CMD ["python", "zkp_router_server.py"]

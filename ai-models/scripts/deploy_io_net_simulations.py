@@ -254,7 +254,38 @@ async def main():
                     'SYMBOLS': 'AAPL,MSFT'
                 },
                 'estimated_duration_hours': 2.0,
-                'estimated_cost': 0.40
+                'estimated_cost': 0.40,
+                'container_specs': [
+                    {
+                        'name': 'trading-engine',
+                        'image': 'quantroi/trading-engine:enhanced-v1.0.0',
+                        'cpu_request': '500m',
+                        'memory_request': '512Mi',
+                        'gpu_required': False
+                    },
+                    {
+                        'name': 'gpu-inference',
+                        'image': 'quantroi/gpu-inference:v1.0.0',
+                        'cpu_request': '1000m',
+                        'memory_request': '2Gi',
+                        'gpu_required': True,
+                        'gpu_type': 'nvidia-t4'
+                    },
+                    {
+                        'name': 'mina-zkapp-service',
+                        'image': 'quantroi/mina-zkapp-service:v1.0.0',
+                        'cpu_request': '1000m',
+                        'memory_request': '1Gi',
+                        'gpu_required': False
+                    },
+                    {
+                        'name': 'zkp-audit-router',
+                        'image': 'quantroi/zkp-audit-router:v1.0.0',
+                        'cpu_request': '250m',
+                        'memory_request': '256Mi',
+                        'gpu_required': False
+                    }
+                ]
             }
         }
     ]

@@ -43,6 +43,31 @@ data:
       "cleanup_interval_hours": 6,
       "enable_integrity_verification": true
     }
+  
+  mina_config.json: |
+    {
+      "network": {
+        "mina": "https://proxy.berkeley.minaexplorer.com/graphql",
+        "archive": "https://archive.berkeley.minaexplorer.com"
+      },
+      "zkapp": {
+        "strategy_verification_address": "B62qkUqC8ZqnHQPmPnKdXDNqzqZqZqZqZqZqZqZqZqZqZqZqZqZq",
+        "performance_audit_address": "B62qkPerformanceAuditZkAppAddressHereZqZqZqZqZqZqZqZqZq",
+        "privacy_audit_address": "B62qkPrivacyPreservingAuditZkAppAddressZqZqZqZqZqZqZq",
+        "fee": "0.1",
+        "memo": "QuantROI Strategy Verification"
+      },
+      "performance": {
+        "proof_generation_timeout_ms": 30000,
+        "max_concurrent_proofs": 5,
+        "cache_proofs": true
+      },
+      "integration": {
+        "solana_fallback": true,
+        "dual_chain_verification": true,
+        "privacy_threshold": 0.8
+      }
+    }
 
 ---
 apiVersion: apps/v1
@@ -160,6 +185,86 @@ spec:
             memory: "512Mi"
             cpu: "500m"
       
+      - name: mina-zkapp-service
+        image: quantroi/mina-zkapp-service:v1.0.0
+        ports:
+        - containerPort: 3001
+          name: mina-http
+        env:
+        - name: NODE_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: MINA_ENDPOINT
+          value: "https://proxy.berkeley.minaexplorer.com/graphql"
+        - name: ARCHIVE_ENDPOINT
+          value: "https://archive.berkeley.minaexplorer.com"
+        - name: STRATEGY_VERIFICATION_ADDRESS
+          value: "B62qkUqC8ZqnHQPmPnKdXDNqzqZqZqZqZqZqZqZqZqZqZqZqZqZq"
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/config
+        - name: audit-logs
+          mountPath: /app/audit_logs
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 3001
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      
+      - name: zkp-audit-router
+        image: quantroi/zkp-audit-router:v1.0.0
+        ports:
+        - containerPort: 8002
+          name: zkp-http
+        env:
+        - name: NODE_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: SOLANA_RPC_URL
+          value: "https://api.mainnet-beta.solana.com"
+        - name: MINA_ZKAPP_SERVICE_URL
+          value: "http://localhost:3001"
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/config
+        - name: audit-logs
+          mountPath: /app/audit_logs
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8002
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8002
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      
       volumes:
       - name: config-volume
         configMap:
@@ -222,6 +327,18 @@ data:
             memory_request: "2Gi"
             gpu_required: true
             gpu_type: "nvidia-t4"
+            
+          - name: "mina-zkapp-service"
+            image: "quantroi/mina-zkapp-service:v1.0.0"
+            cpu_request: "1000m"
+            memory_request: "1Gi"
+            gpu_required: false
+            
+          - name: "zkp-audit-router"
+            image: "quantroi/zkp-audit-router:v1.0.0"
+            cpu_request: "250m"
+            memory_request: "256Mi"
+            gpu_required: false
         
         scaling_limits:
           min_replicas: 2
@@ -259,6 +376,12 @@ spec:
   - name: ipfs-logger
     port: 8082
     targetPort: 8082
+  - name: mina-zkapp
+    port: 3001
+    targetPort: 3001
+  - name: zkp-router
+    port: 8002
+    targetPort: 8002
   type: LoadBalancer
 
 ---

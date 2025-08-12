@@ -8,7 +8,7 @@ Integrates news, sentiment, and market data for historical decision snapshots
 import asyncio
 import logging
 from typing import Dict, Any, List, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 import numpy as np
 import hashlib
@@ -49,6 +49,21 @@ class MarketStrand:
     sentiment_scores: List[Dict[str, Any]]
     decision_context: Dict[str, Any]  # Historical snapshot for proof of work
     audit_trail: Dict[str, Any]
+
+@dataclass
+class EventStrand(MarketStrand):
+    """Extended strand for uploaded macro/micro learning events"""
+    event_name: str = ""
+    event_type: str = ""
+    learning_scope: str = "both"
+    first_occurrence_timestamp_ns: int = 0
+    upload_timestamp_ns: int = 0
+    duration_ns: Optional[int] = None
+    impact_sectors: List[str] = field(default_factory=list)
+    causal_triggers: List[Dict[str, Any]] = field(default_factory=list)
+    learning_objectives: Dict[str, Any] = field(default_factory=dict)
+    macro_lessons: List[Dict[str, Any]] = field(default_factory=list)
+    micro_lessons: List[Dict[str, Any]] = field(default_factory=list)
 
 class AutomatedStrandCreator:
     """

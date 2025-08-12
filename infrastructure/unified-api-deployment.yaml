@@ -32,6 +32,14 @@ spec:
           value: "50"
         - name: TARGET_CPU_UTILIZATION
           value: "70"
+        - name: MINA_ZKAPP_SERVICE_URL
+          value: "http://quantroi-trading-service:3001"
+        - name: ZKP_AUDIT_ROUTER_URL
+          value: "http://quantroi-trading-service:8002"
+        - name: ENABLE_DUAL_CHAIN
+          value: "true"
+        - name: MINA_NETWORK
+          value: "berkeley"
         resources:
           requests:
             memory: "512Mi"
