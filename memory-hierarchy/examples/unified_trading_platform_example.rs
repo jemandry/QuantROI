@@ -1,6 +1,6 @@
 use memory_hierarchy::*;
 use memory_hierarchy::voting_system::{ProposalStatus, ProposalType};
-use memory_hierarchy::dip_switch_system::BankType;
+use memory_hierarchy::dip_switch_system::{BankType, ConstraintValue, ValidationRule, ValidationRuleType, RiskParameters};
 use memory_hierarchy::money_disbursement_system::{DisbursementStatus, DisbursementPriority, DisbursementType};
 use memory_hierarchy::inspector_verification_system::{Inspector, InspectorSpecialization, InspectorStatus};
 use std::sync::Arc;
@@ -98,6 +98,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         hardware_address: "0x1000".to_string(),
         last_modified: Utc::now(),
         description: "Primary trading parameter configuration bank".to_string(),
+        version: 1,
+        constraints: vec![],
     };
     
     let risk_management_bank = DipSwitchBank {
@@ -109,6 +111,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         hardware_address: "0x2000".to_string(),
         last_modified: Utc::now(),
         description: "Risk management and compliance controls".to_string(),
+        version: 1,
+        constraints: vec![],
     };
     
     dip_system.register_switch_bank(trading_params_bank).await?;
@@ -131,6 +135,70 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     ).await?;
     
     println!("✅ Configured DIP switches for trading parameters");
+    
+    println!("\n🔧 Demo: Client-Configurable Constraints and Versioning");
+    
+    let confidence_constraint = SwitchConstraint {
+        constraint_id: "min_confidence_70".to_string(),
+        constraint_type: ConstraintType::MinConfidenceScore,
+        constraint_value: ConstraintValue::Numeric(70.0),
+        error_message: "Confidence score must be at least 70%".to_string(),
+        is_client_configurable: true,
+        created_at: Utc::now(),
+        created_by: "risk_manager".to_string(),
+    };
+    
+    dip_system.add_constraint("trading_params_main", confidence_constraint, "risk_manager").await?;
+    println!("✅ Added client-configurable confidence constraint");
+    
+    let profile_questions = vec![
+        ProfileQuestion {
+            question_id: "risk_tolerance".to_string(),
+            question_text: "What is your risk tolerance level?".to_string(),
+            question_type: QuestionType::Scale { min: 1, max: 10 },
+            required: true,
+            validation_rules: vec![
+                ValidationRule {
+                    rule_type: ValidationRuleType::Range,
+                    rule_value: "1-10".to_string(),
+                    error_message: "Risk tolerance must be between 1 and 10".to_string(),
+                }
+            ],
+            default_answer: Some("5".to_string()),
+            created_at: Utc::now(),
+            created_by: "system_admin".to_string(),
+        }
+    ];
+    
+    let mut switch_configs = HashMap::new();
+    switch_configs.insert("trading_params_main".to_string(), vec![true, false, true, false, false, false, false, false]);
+    
+    let demo_profile = ConfigurationProfile {
+        profile_id: "demo_profile".to_string(),
+        profile_name: "Demo Profile".to_string(),
+        description: "Profile for demonstrating versioning".to_string(),
+        switch_configurations: switch_configs,
+        trading_mode: TradingMode::Moderate,
+        risk_parameters: RiskParameters {
+            max_position_size: 100000.0,
+            stop_loss_threshold: 0.03,
+            daily_loss_limit: 5000.0,
+            volatility_threshold: 0.2,
+            correlation_limit: 0.6,
+        },
+        created_at: Utc::now(),
+        created_by: "system_admin".to_string(),
+        version: 1,
+        profile_questions: vec![],
+        constraint_overrides: HashMap::new(),
+    };
+    
+    dip_system.create_configuration_profile(demo_profile).await?;
+    dip_system.update_profile_questions("demo_profile", profile_questions, "system_admin").await?;
+    println!("✅ Updated profile questions - new version created automatically");
+    
+    let version_history = dip_system.get_version_history("trading_params_main").await;
+    println!("✅ Retrieved version history: {} versions", version_history.len());
     
     println!("\n🔍 Demo 3: Inspector Verification for Money Disbursement");
     

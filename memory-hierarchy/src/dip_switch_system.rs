@@ -14,6 +14,8 @@ pub struct DipSwitchBank {
     pub hardware_address: String,
     pub last_modified: DateTime<Utc>,
     pub description: String,
+    pub version: u32,
+    pub constraints: Vec<SwitchConstraint>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,6 +28,9 @@ pub struct ConfigurationProfile {
     pub risk_parameters: RiskParameters,
     pub created_at: DateTime<Utc>,
     pub created_by: String,
+    pub version: u32,
+    pub profile_questions: Vec<ProfileQuestion>,
+    pub constraint_overrides: HashMap<String, Vec<SwitchConstraint>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,6 +73,107 @@ pub struct RiskParameters {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SwitchConstraint {
+    pub constraint_id: String,
+    pub constraint_type: ConstraintType,
+    pub constraint_value: ConstraintValue,
+    pub error_message: String,
+    pub is_client_configurable: bool,
+    pub created_at: DateTime<Utc>,
+    pub created_by: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ConstraintType {
+    MinConfidenceScore,
+    MaxPositionSize,
+    RequiredSwitchState,
+    MutualExclusion,
+    TimeWindow,
+    UserPermission,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ConstraintValue {
+    Numeric(f64),
+    Boolean(bool),
+    String(String),
+    SwitchIndices(Vec<u8>),
+    TimeRange { start: DateTime<Utc>, end: DateTime<Utc> },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProfileQuestion {
+    pub question_id: String,
+    pub question_text: String,
+    pub question_type: QuestionType,
+    pub required: bool,
+    pub validation_rules: Vec<ValidationRule>,
+    pub default_answer: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub created_by: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum QuestionType {
+    MultipleChoice { options: Vec<String> },
+    Numeric { min: Option<f64>, max: Option<f64> },
+    Text { max_length: Option<usize> },
+    Boolean,
+    Scale { min: u8, max: u8 },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidationRule {
+    pub rule_type: ValidationRuleType,
+    pub rule_value: String,
+    pub error_message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ValidationRuleType {
+    Range,
+    Pattern,
+    Required,
+    Custom,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VersionHistory {
+    pub version_id: String,
+    pub entity_id: String,
+    pub entity_type: EntityType,
+    pub version_number: u32,
+    pub changes: Vec<VersionChange>,
+    pub created_at: DateTime<Utc>,
+    pub created_by: String,
+    pub change_reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum EntityType {
+    SwitchBank,
+    ConfigurationProfile,
+    Constraint,
+    ProfileQuestion,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VersionChange {
+    pub field_name: String,
+    pub old_value: Option<String>,
+    pub new_value: String,
+    pub change_type: ChangeType,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ChangeType {
+    Added,
+    Modified,
+    Removed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ConfigurationStatus {
     Active,
     Inactive,
@@ -94,6 +200,7 @@ pub struct DipSwitchSystem {
     configuration_profiles: Arc<RwLock<HashMap<String, ConfigurationProfile>>>,
     active_configurations: Arc<RwLock<HashMap<String, ActiveConfiguration>>>,
     change_history: Arc<RwLock<Vec<SwitchChangeEvent>>>,
+    version_history: Arc<RwLock<Vec<VersionHistory>>>,
     solana_integration: Arc<crate::solana_event_logger::SolanaEventLogger>,
 }
 
@@ -106,6 +213,7 @@ impl DipSwitchSystem {
             configuration_profiles: Arc::new(RwLock::new(HashMap::new())),
             active_configurations: Arc::new(RwLock::new(HashMap::new())),
             change_history: Arc::new(RwLock::new(Vec::new())),
+            version_history: Arc::new(RwLock::new(Vec::new())),
             solana_integration,
         }
     }
@@ -136,6 +244,10 @@ impl DipSwitchSystem {
         changed_by: &str,
         reason: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        self.validate_constraints(bank_id, switch_index, state, changed_by).await?;
+        
+        self.increment_bank_version(bank_id, changed_by, reason).await?;
+        
         let old_state = {
             let mut banks = self.switch_banks.write().await;
             if let Some(bank) = banks.get_mut(bank_id) {
@@ -340,6 +452,194 @@ impl DipSwitchSystem {
 
         Ok(())
     }
+
+    pub async fn validate_constraints(
+        &self,
+        bank_id: &str,
+        switch_index: u8,
+        new_state: bool,
+        user_id: &str,
+    ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+        let banks = self.switch_banks.read().await;
+        if let Some(bank) = banks.get(bank_id) {
+            for constraint in &bank.constraints {
+                match constraint.constraint_type {
+                    ConstraintType::RequiredSwitchState => {
+                        if let ConstraintValue::Boolean(required_state) = constraint.constraint_value {
+                            if new_state != required_state {
+                                return Err(constraint.error_message.clone().into());
+                            }
+                        }
+                    },
+                    ConstraintType::UserPermission => {
+                        if let ConstraintValue::String(required_user) = &constraint.constraint_value {
+                            if user_id != required_user {
+                                return Err(constraint.error_message.clone().into());
+                            }
+                        }
+                    },
+                    ConstraintType::MutualExclusion => {
+                        if let ConstraintValue::SwitchIndices(excluded_switches) = &constraint.constraint_value {
+                            if new_state && excluded_switches.contains(&switch_index) {
+                                return Err(constraint.error_message.clone().into());
+                            }
+                        }
+                    },
+                    ConstraintType::TimeWindow => {
+                        if let ConstraintValue::TimeRange { start, end } = &constraint.constraint_value {
+                            let now = Utc::now();
+                            if now < *start || now > *end {
+                                return Err(constraint.error_message.clone().into());
+                            }
+                        }
+                    },
+                    _ => {} // Handle other constraint types as needed
+                }
+            }
+        }
+        Ok(true)
+    }
+
+    pub async fn add_constraint(
+        &self,
+        bank_id: &str,
+        constraint: SwitchConstraint,
+        user_id: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        self.increment_bank_version(bank_id, user_id, "Added constraint").await?;
+        
+        {
+            let mut banks = self.switch_banks.write().await;
+            if let Some(bank) = banks.get_mut(bank_id) {
+                bank.constraints.push(constraint.clone());
+            }
+        }
+
+        self.solana_integration
+            .log_sip_event(bank_id, "constraint_added", &serde_json::to_string(&constraint)?)
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn update_profile_questions(
+        &self,
+        profile_id: &str,
+        questions: Vec<ProfileQuestion>,
+        user_id: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        self.increment_profile_version(profile_id, user_id, "Updated profile questions").await?;
+        
+        {
+            let mut profiles = self.configuration_profiles.write().await;
+            if let Some(profile) = profiles.get_mut(profile_id) {
+                profile.profile_questions = questions.clone();
+            }
+        }
+
+        self.solana_integration
+            .log_sip_event(profile_id, "profile_questions_updated", &serde_json::to_string(&questions)?)
+            .await?;
+
+        Ok(())
+    }
+
+    async fn increment_bank_version(
+        &self,
+        bank_id: &str,
+        user_id: &str,
+        reason: &str,
+    ) -> Result<u32, Box<dyn std::error::Error + Send + Sync>> {
+        let new_version = {
+            let mut banks = self.switch_banks.write().await;
+            if let Some(bank) = banks.get_mut(bank_id) {
+                bank.version += 1;
+                bank.last_modified = Utc::now();
+                bank.version
+            } else {
+                return Err("Bank not found".into());
+            }
+        };
+
+        let version_history = VersionHistory {
+            version_id: format!("version_{}", uuid::Uuid::new_v4()),
+            entity_id: bank_id.to_string(),
+            entity_type: EntityType::SwitchBank,
+            version_number: new_version,
+            changes: vec![], // Would be populated with actual changes in production
+            created_at: Utc::now(),
+            created_by: user_id.to_string(),
+            change_reason: reason.to_string(),
+        };
+
+        {
+            let mut history = self.version_history.write().await;
+            history.push(version_history);
+        }
+
+        Ok(new_version)
+    }
+
+    async fn increment_profile_version(
+        &self,
+        profile_id: &str,
+        user_id: &str,
+        reason: &str,
+    ) -> Result<u32, Box<dyn std::error::Error + Send + Sync>> {
+        let new_version = {
+            let mut profiles = self.configuration_profiles.write().await;
+            if let Some(profile) = profiles.get_mut(profile_id) {
+                profile.version += 1;
+                profile.version
+            } else {
+                return Err("Profile not found".into());
+            }
+        };
+
+        let version_history = VersionHistory {
+            version_id: format!("version_{}", uuid::Uuid::new_v4()),
+            entity_id: profile_id.to_string(),
+            entity_type: EntityType::ConfigurationProfile,
+            version_number: new_version,
+            changes: vec![], // Would be populated with actual changes in production
+            created_at: Utc::now(),
+            created_by: user_id.to_string(),
+            change_reason: reason.to_string(),
+        };
+
+        {
+            let mut history = self.version_history.write().await;
+            history.push(version_history);
+        }
+
+        Ok(new_version)
+    }
+
+    pub async fn get_version_history(&self, entity_id: &str) -> Vec<VersionHistory> {
+        let history = self.version_history.read().await;
+        history.iter()
+            .filter(|h| h.entity_id == entity_id)
+            .cloned()
+            .collect()
+    }
+
+    pub async fn get_bank_constraints(&self, bank_id: &str) -> Vec<SwitchConstraint> {
+        let banks = self.switch_banks.read().await;
+        if let Some(bank) = banks.get(bank_id) {
+            bank.constraints.clone()
+        } else {
+            vec![]
+        }
+    }
+
+    pub async fn get_profile_questions(&self, profile_id: &str) -> Vec<ProfileQuestion> {
+        let profiles = self.configuration_profiles.read().await;
+        if let Some(profile) = profiles.get(profile_id) {
+            profile.profile_questions.clone()
+        } else {
+            vec![]
+        }
+    }
 }
 
 #[cfg(test)]
@@ -372,6 +672,8 @@ mod tests {
             hardware_address: "0x1000".to_string(),
             last_modified: Utc::now(),
             description: "Main trading parameter configuration".to_string(),
+            version: 1,
+            constraints: vec![],
         };
 
         let result = dip_system.register_switch_bank(bank.clone()).await;
@@ -397,6 +699,8 @@ mod tests {
             hardware_address: "0x2000".to_string(),
             last_modified: Utc::now(),
             description: "Test bank for switch operations".to_string(),
+            version: 1,
+            constraints: vec![],
         };
 
         dip_system.register_switch_bank(bank).await.unwrap();
@@ -442,6 +746,9 @@ mod tests {
             },
             created_at: Utc::now(),
             created_by: "risk_manager".to_string(),
+            version: 1,
+            profile_questions: vec![],
+            constraint_overrides: HashMap::new(),
         };
 
         let result = dip_system.create_configuration_profile(profile).await;
@@ -449,5 +756,161 @@ mod tests {
 
         let profiles = dip_system.get_configuration_profiles().await;
         assert!(profiles.contains_key("aggressive_trading"));
+    }
+
+    #[tokio::test]
+    async fn test_constraint_validation() {
+        let braided_engine = Arc::new(BraidedCordDataEngine::new().await);
+        let solana_logger = Arc::new(crate::solana_event_logger::SolanaEventLogger::new(braided_engine).await);
+        let dip_system = DipSwitchSystem::new(solana_logger).await;
+
+        let bank = DipSwitchBank {
+            bank_id: "test_bank".to_string(),
+            bank_name: "Test Bank".to_string(),
+            switch_count: 4,
+            current_state: vec![false; 4],
+            bank_type: BankType::TradingParameters,
+            hardware_address: "0x2000".to_string(),
+            last_modified: Utc::now(),
+            description: "Test bank for constraint validation".to_string(),
+            version: 1,
+            constraints: vec![
+                SwitchConstraint {
+                    constraint_id: "required_state".to_string(),
+                    constraint_type: ConstraintType::RequiredSwitchState,
+                    constraint_value: ConstraintValue::Boolean(true),
+                    error_message: "Switch must be enabled".to_string(),
+                    is_client_configurable: true,
+                    created_at: Utc::now(),
+                    created_by: "admin".to_string(),
+                }
+            ],
+        };
+
+        dip_system.register_switch_bank(bank).await.unwrap();
+
+        let result = dip_system.validate_constraints("test_bank", 0, false, "user").await;
+        assert!(result.is_err());
+
+        let result = dip_system.validate_constraints("test_bank", 0, true, "user").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_versioning() {
+        let braided_engine = Arc::new(BraidedCordDataEngine::new().await);
+        let solana_logger = Arc::new(crate::solana_event_logger::SolanaEventLogger::new(braided_engine).await);
+        let dip_system = DipSwitchSystem::new(solana_logger).await;
+
+        let bank = DipSwitchBank {
+            bank_id: "version_test".to_string(),
+            bank_name: "Version Test Bank".to_string(),
+            switch_count: 2,
+            current_state: vec![false; 2],
+            bank_type: BankType::TradingParameters,
+            hardware_address: "0x3000".to_string(),
+            last_modified: Utc::now(),
+            description: "Bank for version testing".to_string(),
+            version: 1,
+            constraints: vec![],
+        };
+
+        dip_system.register_switch_bank(bank).await.unwrap();
+
+        let initial_version = {
+            let banks = dip_system.switch_banks.read().await;
+            banks.get("version_test").unwrap().version
+        };
+
+        let constraint = SwitchConstraint {
+            constraint_id: "test_constraint".to_string(),
+            constraint_type: ConstraintType::MinConfidenceScore,
+            constraint_value: ConstraintValue::Numeric(80.0),
+            error_message: "Test constraint".to_string(),
+            is_client_configurable: true,
+            created_at: Utc::now(),
+            created_by: "admin".to_string(),
+        };
+
+        dip_system.add_constraint("version_test", constraint, "admin").await.unwrap();
+
+        let new_version = {
+            let banks = dip_system.switch_banks.read().await;
+            banks.get("version_test").unwrap().version
+        };
+
+        assert_eq!(new_version, initial_version + 1);
+
+        let history = dip_system.get_version_history("version_test").await;
+        assert!(!history.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_profile_questions() {
+        let braided_engine = Arc::new(BraidedCordDataEngine::new().await);
+        let solana_logger = Arc::new(crate::solana_event_logger::SolanaEventLogger::new(braided_engine).await);
+        let dip_system = DipSwitchSystem::new(solana_logger).await;
+
+        let mut switch_configs = HashMap::new();
+        switch_configs.insert("bank1".to_string(), vec![true, false]);
+
+        let profile = ConfigurationProfile {
+            profile_id: "test_profile".to_string(),
+            profile_name: "Test Profile".to_string(),
+            description: "Profile for testing questions".to_string(),
+            switch_configurations: switch_configs,
+            trading_mode: TradingMode::Conservative,
+            risk_parameters: RiskParameters {
+                max_position_size: 10000.0,
+                stop_loss_threshold: 0.02,
+                daily_loss_limit: 1000.0,
+                volatility_threshold: 0.1,
+                correlation_limit: 0.5,
+            },
+            created_at: Utc::now(),
+            created_by: "test_user".to_string(),
+            version: 1,
+            profile_questions: vec![],
+            constraint_overrides: HashMap::new(),
+        };
+
+        dip_system.create_configuration_profile(profile).await.unwrap();
+
+        let questions = vec![
+            ProfileQuestion {
+                question_id: "risk_tolerance".to_string(),
+                question_text: "What is your risk tolerance level?".to_string(),
+                question_type: QuestionType::Scale { min: 1, max: 10 },
+                required: true,
+                validation_rules: vec![
+                    ValidationRule {
+                        rule_type: ValidationRuleType::Range,
+                        rule_value: "1-10".to_string(),
+                        error_message: "Risk tolerance must be between 1 and 10".to_string(),
+                    }
+                ],
+                default_answer: Some("5".to_string()),
+                created_at: Utc::now(),
+                created_by: "system_admin".to_string(),
+            }
+        ];
+
+        let initial_version = {
+            let profiles = dip_system.configuration_profiles.read().await;
+            profiles.get("test_profile").unwrap().version
+        };
+
+        dip_system.update_profile_questions("test_profile", questions.clone(), "system_admin").await.unwrap();
+
+        let new_version = {
+            let profiles = dip_system.configuration_profiles.read().await;
+            profiles.get("test_profile").unwrap().version
+        };
+
+        assert_eq!(new_version, initial_version + 1);
+
+        let retrieved_questions = dip_system.get_profile_questions("test_profile").await;
+        assert_eq!(retrieved_questions.len(), 1);
+        assert_eq!(retrieved_questions[0].question_id, "risk_tolerance");
     }
 }

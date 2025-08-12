@@ -1,4 +1,4 @@
-use memory_hierarchy::{MemoryHierarchy, CausalDataAgent, TradingWealthEngine, QuantumMode, QuantumAuditEngine, QuantumSimulationEngine, BraidedCordDataEngine, SolanaEventLogger, SolanaEventData, MertonJumpParams, EnhancedConfidenceEngine, CrossSourceResolver, AICausalGraphBuilder, WasmEdgeClient, ComplianceReportGenerator, EventSourceData, ConflictAnalysis, EdgeDeduplicationRequest, EdgeDeduplicationResult, WasmModuleConfig, ComplianceReport, ReportType, DipSwitchSystem};
+use memory_hierarchy::{MemoryHierarchy, CausalDataAgent, TradingWealthEngine, QuantumMode, QuantumAuditEngine, QuantumSimulationEngine, BraidedCordDataEngine, SolanaEventLogger, SolanaEventData, MertonJumpParams, EnhancedConfidenceEngine, CrossSourceResolver, AICausalGraphBuilder, WasmEdgeClient, ComplianceReportGenerator, EventSourceData, ConflictAnalysis, EdgeDeduplicationRequest, EdgeDeduplicationResult, WasmModuleConfig, ComplianceReport, ReportType, DipSwitchSystem, SwitchConstraint, ProfileQuestion};
 use memory_hierarchy::causal_data_agent::CausalInsights;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -136,6 +136,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/dip/profiles/:profile_id/apply", post(apply_dip_configuration_profile))
         .route("/dip/banks/:bank_id", get(get_dip_bank_status))
         .route("/dip/banks/:bank_id/reset", post(reset_dip_bank))
+        .route("/dip/banks/:bank_id/constraints", post(add_bank_constraint))
+        .route("/dip/banks/:bank_id/constraints", get(get_bank_constraints))
+        .route("/dip/profiles/:profile_id/questions", put(update_profile_questions))
+        .route("/dip/profiles/:profile_id/questions", get(get_profile_questions))
+        .route("/dip/version-history/:entity_id", get(get_entity_version_history))
+        .route("/dip/banks/:bank_id/validate", post(validate_switch_constraints))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
         .with_state(state);
@@ -832,5 +838,90 @@ async fn reset_dip_bank(
     Ok(Json(serde_json::json!({
         "status": "success",
         "message": "DIP bank reset endpoint - implementation pending"
+    })))
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct AddConstraintRequest {
+    constraint: SwitchConstraint,
+    user_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct UpdateQuestionsRequest {
+    questions: Vec<ProfileQuestion>,
+    user_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct ValidateConstraintRequest {
+    switch_index: u8,
+    new_state: bool,
+    user_id: String,
+}
+
+async fn add_bank_constraint(
+    State(_state): State<Arc<AppState>>,
+    Path(_bank_id): Path<String>,
+    Json(_request): Json<AddConstraintRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    Ok(Json(serde_json::json!({
+        "status": "success",
+        "message": "Bank constraint addition endpoint - implementation pending"
+    })))
+}
+
+async fn get_bank_constraints(
+    State(_state): State<Arc<AppState>>,
+    Path(_bank_id): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    Ok(Json(serde_json::json!({
+        "status": "success",
+        "message": "Get bank constraints endpoint - implementation pending"
+    })))
+}
+
+async fn update_profile_questions(
+    State(_state): State<Arc<AppState>>,
+    Path(_profile_id): Path<String>,
+    Json(_request): Json<UpdateQuestionsRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    Ok(Json(serde_json::json!({
+        "status": "success",
+        "message": "Profile questions update endpoint - implementation pending"
+    })))
+}
+
+async fn get_profile_questions(
+    State(_state): State<Arc<AppState>>,
+    Path(_profile_id): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    Ok(Json(serde_json::json!({
+        "status": "success",
+        "message": "Get profile questions endpoint - implementation pending"
+    })))
+}
+
+async fn get_entity_version_history(
+    State(_state): State<Arc<AppState>>,
+    Path(_entity_id): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    Ok(Json(serde_json::json!({
+        "status": "success",
+        "message": "Version history endpoint - implementation pending"
+    })))
+}
+
+async fn validate_switch_constraints(
+    State(_state): State<Arc<AppState>>,
+    Path(_bank_id): Path<String>,
+    Json(_request): Json<ValidateConstraintRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    Ok(Json(serde_json::json!({
+        "status": "success",
+        "message": "Constraint validation endpoint - implementation pending"
     })))
 }

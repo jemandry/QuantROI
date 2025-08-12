@@ -35,7 +35,11 @@ pub use ai_causal_graph_builder::AICausalGraphBuilder;
 pub use wasm_edge_client::WasmEdgeClient;
 pub use compliance_report_generator::ComplianceReportGenerator;
 pub use voting_system::{VotingSystem, Proposal, Vote, VoteChoice, ProposalType};
-pub use dip_switch_system::{DipSwitchSystem, DipSwitchBank, ConfigurationProfile, TradingMode};
+pub use dip_switch_system::{
+    DipSwitchSystem, DipSwitchBank, ConfigurationProfile, TradingMode,
+    SwitchConstraint, ConstraintType, ProfileQuestion, QuestionType,
+    VersionHistory, EntityType
+};
 pub use mina_zkp_integration::{MinaZkpIntegration, ZkCircuit, ZkProof, ProofType};
 pub use inspector_verification_system::{InspectorVerificationSystem, Inspector, VerificationRequest};
 pub use money_disbursement_system::{MoneyDisbursementSystem, DisbursementRequest, DisbursementType};
