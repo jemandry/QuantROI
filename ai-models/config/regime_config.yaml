@@ -1,0 +1,114 @@
+
+regime_detection:
+  confidence_threshold: 0.6
+  lookback_window: 50
+  change_point_sensitivity: 0.8
+
+scientific_rigor:
+  e_value_threshold: 2.0
+  p_value_threshold: 0.05
+  min_effect_size: 0.1
+  min_statistical_power: 0.8
+
+bias_handling:
+  phase_1:
+    target_bias_reduction: 0.1
+    e_value_compliance: 2.0
+    rigor_validation_required: true
+  
+  phase_2:
+    regime_invariance_threshold: 0.6
+    counterfactual_quality_threshold: 0.7
+    pc_fci_min_edges: 1
+  
+  phase_3:
+    target_sharpe_uplift: 0.15
+    min_test_pass_rate: 0.8
+    min_bias_reduction: 0.2
+
+regimes:
+  low_volatility_stable:
+    detection_thresholds:
+      vix_max: 15
+      realized_vol_max: 0.15
+      spread_max: 0.001
+    execution_params:
+      position_multiplier: 1.2
+      leverage_cap_pct: 10
+      order_type: "LIMIT"
+      slippage_tol_pct: 0.1
+      min_confidence: 0.70
+    
+  high_volatility_turbulent:
+    detection_thresholds:
+      vix_min: 25
+      realized_vol_min: 0.35
+      spread_min: 0.005
+    execution_params:
+      position_multiplier: 0.4
+      leverage_cap_pct: 0
+      order_type: "PAUSE_OR_MARKET_IF_CRITICAL"
+      slippage_tol_pct: 2.0
+      hedge_allocation_pct: 30
+      requires_multisig: true
+  
+  bull_market:
+    detection_thresholds:
+      earnings_growth_min: 0.05
+      gdp_growth_min: 0.02
+      sentiment_min: 0.1
+    execution_params:
+      position_multiplier: 1.5
+      leverage_cap_pct: 20
+      order_type: "LIMIT"
+      slippage_tol_pct: 0.2
+  
+  bear_market:
+    detection_thresholds:
+      eps_decline_max: -0.1
+      sentiment_max: -0.1
+      gdp_decline_max: -0.02
+    execution_params:
+      position_multiplier: 0.5
+      leverage_cap_pct: 0
+      max_short_pct: 25
+      hedge_allocation_pct: 40
+      cash_buffer_pct: 20
+  
+  crisis_correlation:
+    detection_thresholds:
+      correlation_min: 0.8
+      vix_min: 30
+    execution_params:
+      position_multiplier: 0.2
+      leverage_cap_pct: 0
+      auto_halt: true
+      requires_multisig: true
+      cash_buffer_pct: 50
+
+dag_templates:
+  validation_gates:
+    brier_calibration: 0.8
+    e_value: 2.0
+    placebo_test: 0.05
+    counterfactual_recovery: 0.8
+    counterfactual_stress: 0.9
+    negative_control: 0.8
+
+solana_integration:
+  program_id: "quantroi_regime_program"
+  rpc_url: "https://api.mainnet-beta.solana.com"
+  gas_limit: 30000
+  confirmation_timeout: 30
+
+ipfs_integration:
+  api_url: "http://localhost:5001"
+  pin_content: true
+  gateway_url: "https://ipfs.io/ipfs/"
+
+performance_targets:
+  regime_detection_latency_ms: 30
+  orchestration_latency_ms: 100
+  throughput_events_per_second: 20000
+  accuracy_improvement_pct: 25
+  sharpe_uplift_target: 0.3
