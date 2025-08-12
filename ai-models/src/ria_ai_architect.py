@@ -15,6 +15,7 @@ from .regime_orchestrator import RegimeOrchestrator
 from .market_regime_detector import MarketRegime, RegimeDetectionResult
 from .client_behavior_vector_store import ClientBehaviorVectorStore, ClientProfile
 from .enhanced_event_router import EventDrivenDataRouter, AgentEvent, EventType
+from .specialized_agents import AgentOrchestrator
 
 class RIADecisionType(Enum):
     PORTFOLIO_REBALANCE = "portfolio_rebalance"
@@ -74,6 +75,8 @@ class RIAIntelligentAdvisor:
         self.client_profiler = ClientProfilingSystem()
         self.advisory_engine = AdvisoryEngine()
         
+        self.agent_orchestrator = AgentOrchestrator(event_router)
+        
         self.compliance_engine = ComplianceEngine()
         self.audit_trail = []
         
@@ -88,6 +91,8 @@ class RIAIntelligentAdvisor:
             await self.client_profiler.initialize()
             await self.advisory_engine.initialize()
             await self.compliance_engine.initialize()
+            
+            await self.agent_orchestrator.initialize_agents()
             
             await self._setup_event_subscriptions()
             
@@ -452,6 +457,7 @@ class RIAIntelligentAdvisor:
         await self.client_profiler.cleanup()
         await self.advisory_engine.cleanup()
         await self.compliance_engine.cleanup()
+        await self.agent_orchestrator.shutdown_agents()
         self.logger.info("RIA AI Architect cleanup completed")
 
 
