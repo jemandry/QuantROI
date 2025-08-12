@@ -300,6 +300,7 @@ impl MetaLearningModelSelector {
 }
 
 #[allow(dead_code)]
+#[derive(Debug)]
 pub struct EnhancedSimulationEngine {
     query_cache: QueryOptimizationCache,
     model_selector: MetaLearningModelSelector,
@@ -397,10 +398,10 @@ impl EnhancedSimulationEngine {
                 
                 let fbm_increments = self.generate_fbm_increments(*hurst, num_steps, parameters.dt).await?;
                 
-                for i in 0..num_steps {
+                for &increment in fbm_increments.iter().take(num_steps) {
                     let current_value = *path.last().unwrap();
                     let drift_term = mu * parameters.dt;
-                    let diffusion_term = sigma * fbm_increments[i];
+                    let diffusion_term = sigma * increment;
                     
                     let next_value = current_value * (1.0 + drift_term + diffusion_term);
                     path.push(next_value.max(0.001));
@@ -530,10 +531,10 @@ impl EnhancedSimulationEngine {
             StochasticModelType::FractionalBrownianMotion { mu, sigma, hurst } => {
                 let fbm_increments = self.generate_fbm_increments(*hurst, num_steps, parameters.dt).await?;
                 
-                for i in 0..num_steps {
+                for &increment in fbm_increments.iter().take(num_steps) {
                     let current_value = *path.last().unwrap();
                     let drift_term = mu * parameters.dt;
-                    let diffusion_term = sigma * fbm_increments[i];
+                    let diffusion_term = sigma * increment;
                     
                     let next_value = current_value * (1.0 + drift_term + diffusion_term);
                     path.push(next_value.max(0.001));
@@ -667,6 +668,7 @@ pub struct CompactionStats {
 }
 
 #[allow(dead_code)]
+#[derive(Debug)]
 pub struct TieredStorageManager {
     config: TieredStorageConfig,
     hot_tier: Arc<RwLock<HashMap<String, VolatilitySimulationRecord>>>,

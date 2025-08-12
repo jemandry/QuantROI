@@ -29,6 +29,11 @@ pub enum SolanaEventType {
     NFTMarketplace,
     AICompetition,
     KnowledgeVerification,
+    GovernanceVoting,
+    SIPSwitch,
+    ZKPVerification,
+    InspectorVerification,
+    MoneyDisbursement,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,6 +52,7 @@ pub struct MertonJumpParams {
     pub jump_sigma: f64,
 }
 
+#[derive(Debug)]
 #[allow(dead_code)]
 pub struct SolanaEventLogger {
     braided_engine: Arc<BraidedCordDataEngine>,
@@ -141,5 +147,88 @@ impl SolanaEventLogger {
     
     async fn get_current_block_height(&self) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
         Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs())
+    }
+
+    pub async fn log_governance_event(&self, proposal_id: &str, event_type: &str, event_data: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        let event_data = SolanaEventData {
+            transaction_signature: format!("governance_{}_{}", event_type, SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()),
+            program_id: "GovernanceProgram1111111111111111111111111".to_string(),
+            instruction_data: event_data.as_bytes().to_vec(),
+            accounts: vec![proposal_id.to_string()],
+            timestamp_ns: SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos() as u64,
+            block_height: self.get_current_block_height().await?,
+            event_type: SolanaEventType::GovernanceVoting,
+            volatility_impact: None,
+        };
+        
+        self.store_event_in_braided_cord(event_data).await
+    }
+
+    pub async fn log_sip_event(&self, session_id: &str, event_type: &str, event_data: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        let event_data = SolanaEventData {
+            transaction_signature: format!("sip_{}_{}", event_type, SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()),
+            program_id: "SIPSwitchProgram1111111111111111111111111".to_string(),
+            instruction_data: event_data.as_bytes().to_vec(),
+            accounts: vec![session_id.to_string()],
+            timestamp_ns: SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos() as u64,
+            block_height: self.get_current_block_height().await?,
+            event_type: SolanaEventType::SIPSwitch,
+            volatility_impact: None,
+        };
+        
+        self.store_event_in_braided_cord(event_data).await
+    }
+
+    pub async fn log_zkp_event(&self, proof_id: &str, event_type: &str, event_data: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        let event_data = SolanaEventData {
+            transaction_signature: format!("zkp_{}_{}", event_type, SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()),
+            program_id: "ZKPVerificationProgram111111111111111111111".to_string(),
+            instruction_data: event_data.as_bytes().to_vec(),
+            accounts: vec![proof_id.to_string()],
+            timestamp_ns: SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos() as u64,
+            block_height: self.get_current_block_height().await?,
+            event_type: SolanaEventType::ZKPVerification,
+            volatility_impact: None,
+        };
+        
+        self.store_event_in_braided_cord(event_data).await
+    }
+
+    pub async fn log_inspector_verification(&self, verification_id: &str, inspector_id: &str, verification_data: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        let event_data = SolanaEventData {
+            transaction_signature: format!("inspector_{}_{}", verification_id, SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()),
+            program_id: "InspectorVerificationProgram11111111111111".to_string(),
+            instruction_data: verification_data.as_bytes().to_vec(),
+            accounts: vec![verification_id.to_string(), inspector_id.to_string()],
+            timestamp_ns: SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos() as u64,
+            block_height: self.get_current_block_height().await?,
+            event_type: SolanaEventType::InspectorVerification,
+            volatility_impact: None,
+        };
+        
+        self.store_event_in_braided_cord(event_data).await
+    }
+
+    pub async fn log_money_disbursement(&self, disbursement_id: &str, amount: u64, recipient: &str, verification_hash: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        let disbursement_data = serde_json::json!({
+            "disbursement_id": disbursement_id,
+            "amount": amount,
+            "recipient": recipient,
+            "verification_hash": verification_hash,
+            "timestamp": SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs()
+        });
+
+        let event_data = SolanaEventData {
+            transaction_signature: format!("disbursement_{}_{}", disbursement_id, SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()),
+            program_id: "MoneyDisbursementProgram1111111111111111111".to_string(),
+            instruction_data: disbursement_data.to_string().as_bytes().to_vec(),
+            accounts: vec![disbursement_id.to_string(), recipient.to_string()],
+            timestamp_ns: SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos() as u64,
+            block_height: self.get_current_block_height().await?,
+            event_type: SolanaEventType::MoneyDisbursement,
+            volatility_impact: None,
+        };
+        
+        self.store_event_in_braided_cord(event_data).await
     }
 }

@@ -86,6 +86,7 @@ pub struct DataEngineMetrics {
     pub compaction_savings_percent: f64,
 }
 
+#[derive(Debug)]
 #[allow(dead_code)]
 pub struct BraidedCordDataEngine {
     tiered_storage: Arc<TieredStorageManager>,
@@ -496,8 +497,8 @@ impl BraidedCordDataEngine {
     pub async fn query_strands_by_decision_criteria(
         &self,
         confidence_threshold: f64,
-        event_types: Vec<String>,
-        time_range_ns: (u64, u64),
+        _event_types: Vec<String>,
+        _time_range_ns: (u64, u64),
     ) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
         let mut strand_ids = Vec::new();
         let confidence_filter = (confidence_threshold * 100.0) as i32;

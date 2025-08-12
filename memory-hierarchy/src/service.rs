@@ -1,4 +1,4 @@
-use memory_hierarchy::{MemoryHierarchy, CausalDataAgent, TradingWealthEngine, QuantumMode, QuantumAuditEngine, QuantumSimulationEngine, BraidedCordDataEngine, SolanaEventLogger, SolanaEventData, MertonJumpParams, EnhancedConfidenceEngine, CrossSourceResolver, AICausalGraphBuilder, WasmEdgeClient, ComplianceReportGenerator, EventSourceData, ConflictAnalysis, EdgeDeduplicationRequest, EdgeDeduplicationResult, WasmModuleConfig, ComplianceReport, ReportType};
+use memory_hierarchy::{MemoryHierarchy, CausalDataAgent, TradingWealthEngine, QuantumMode, QuantumAuditEngine, QuantumSimulationEngine, BraidedCordDataEngine, SolanaEventLogger, SolanaEventData, MertonJumpParams, EnhancedConfidenceEngine, CrossSourceResolver, AICausalGraphBuilder, WasmEdgeClient, ComplianceReportGenerator, EventSourceData, ConflictAnalysis, EdgeDeduplicationRequest, EdgeDeduplicationResult, WasmModuleConfig, ComplianceReport, ReportType, DipSwitchSystem};
 use memory_hierarchy::causal_data_agent::CausalInsights;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -8,7 +8,7 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::Json,
-    routing::{get, post, delete},
+    routing::{get, post, delete, put},
     Router,
 };
 use tower_http::cors::CorsLayer;
@@ -53,6 +53,7 @@ struct AppState {
     ai_causal_builder: Arc<AICausalGraphBuilder>,
     wasm_client: Arc<WasmEdgeClient>,
     compliance_generator: Arc<ComplianceReportGenerator>,
+    dip_switch_system: Arc<DipSwitchSystem>,
     start_time: std::time::Instant,
 }
 
@@ -77,6 +78,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ai_causal_builder = Arc::new(AICausalGraphBuilder::new());
     let wasm_client = Arc::new(WasmEdgeClient::new());
     let compliance_generator = Arc::new(ComplianceReportGenerator::new());
+    let dip_switch_system = Arc::new(DipSwitchSystem::new(solana_event_logger.clone()).await);
 
     let state = Arc::new(AppState {
         hierarchy,
@@ -89,6 +91,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ai_causal_builder,
         wasm_client,
         compliance_generator,
+        dip_switch_system,
         start_time: std::time::Instant::now(),
     });
 
@@ -127,6 +130,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/edge/wasm_modules", post(register_wasm_module))
         .route("/compliance/generate_report", post(generate_compliance_report))
         .route("/compliance/reports/:report_id", get(get_compliance_report))
+        .route("/dip/banks", post(register_dip_switch_bank))
+        .route("/dip/switches/:bank_id/:switch_index", put(set_dip_switch_state))
+        .route("/dip/profiles", post(create_dip_configuration_profile))
+        .route("/dip/profiles/:profile_id/apply", post(apply_dip_configuration_profile))
+        .route("/dip/banks/:bank_id", get(get_dip_bank_status))
+        .route("/dip/banks/:bank_id/reset", post(reset_dip_bank))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
         .with_state(state);
@@ -725,4 +734,103 @@ async fn get_compliance_report(
         Some(report) => Ok(Json(serde_json::json!(report))),
         None => Err(StatusCode::NOT_FOUND),
     }
+}
+
+#[derive(Deserialize)]
+#[allow(dead_code)]
+struct DipSwitchBankRequest {
+    bank_id: String,
+    bank_name: String,
+    switch_count: u8,
+    bank_type: String,
+    hardware_address: String,
+    description: String,
+}
+
+#[derive(Deserialize)]
+#[allow(dead_code)]
+struct DipSwitchStateRequest {
+    state: bool,
+    changed_by: String,
+    reason: String,
+}
+
+#[derive(Deserialize)]
+#[allow(dead_code)]
+struct DipConfigurationProfileRequest {
+    profile_id: String,
+    profile_name: String,
+    description: String,
+    switch_configurations: HashMap<String, Vec<bool>>,
+    trading_mode: String,
+    created_by: String,
+}
+
+#[derive(Deserialize)]
+#[allow(dead_code)]
+struct ApplyConfigurationRequest {
+    activated_by: String,
+}
+
+async fn register_dip_switch_bank(
+    State(_state): State<Arc<AppState>>,
+    Json(_request): Json<DipSwitchBankRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    Ok(Json(serde_json::json!({
+        "status": "success",
+        "message": "DIP switch bank registration endpoint - implementation pending"
+    })))
+}
+
+async fn set_dip_switch_state(
+    State(_state): State<Arc<AppState>>,
+    Path((_bank_id, _switch_index)): Path<(String, u8)>,
+    Json(_request): Json<DipSwitchStateRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    Ok(Json(serde_json::json!({
+        "status": "success",
+        "message": "DIP switch state change endpoint - implementation pending"
+    })))
+}
+
+async fn create_dip_configuration_profile(
+    State(_state): State<Arc<AppState>>,
+    Json(_request): Json<DipConfigurationProfileRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    Ok(Json(serde_json::json!({
+        "status": "success",
+        "message": "DIP configuration profile creation endpoint - implementation pending"
+    })))
+}
+
+async fn apply_dip_configuration_profile(
+    State(_state): State<Arc<AppState>>,
+    Path(_profile_id): Path<String>,
+    Json(_request): Json<ApplyConfigurationRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    Ok(Json(serde_json::json!({
+        "status": "success",
+        "message": "DIP configuration profile application endpoint - implementation pending"
+    })))
+}
+
+async fn get_dip_bank_status(
+    State(_state): State<Arc<AppState>>,
+    Path(_bank_id): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    Ok(Json(serde_json::json!({
+        "status": "success",
+        "message": "DIP bank status endpoint - implementation pending"
+    })))
+}
+
+async fn reset_dip_bank(
+    State(_state): State<Arc<AppState>>,
+    Path(_bank_id): Path<String>,
+    Json(_request): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    Ok(Json(serde_json::json!({
+        "status": "success",
+        "message": "DIP bank reset endpoint - implementation pending"
+    })))
 }
