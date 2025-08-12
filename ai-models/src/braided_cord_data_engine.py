@@ -151,6 +151,38 @@ class BraidedCordDataEngine:
                 storage_backend="postgresql_partitioned",
                 compression_enabled=True,
                 quantization_level="FP16"
+            ),
+            CordPlacementRule(
+                data_type="event_learning",
+                latency_threshold_ms=1.0,
+                cord_tier="hot_path",
+                storage_backend="redis_memory_mapped",
+                compression_enabled=False,
+                quantization_level="FP32"
+            ),
+            CordPlacementRule(
+                data_type="macro_lessons",
+                latency_threshold_ms=5.0,
+                cord_tier="warm_path",
+                storage_backend="postgresql_partitioned",
+                compression_enabled=True,
+                quantization_level="FP16"
+            ),
+            CordPlacementRule(
+                data_type="micro_lessons",
+                latency_threshold_ms=1.0,
+                cord_tier="hot_path",
+                storage_backend="redis_memory_mapped",
+                compression_enabled=False,
+                quantization_level="FP32"
+            ),
+            CordPlacementRule(
+                data_type="event_strands",
+                latency_threshold_ms=2.0,
+                cord_tier="warm_path",
+                storage_backend="postgresql_partitioned",
+                compression_enabled=True,
+                quantization_level="FP16"
             )
         ]
 
