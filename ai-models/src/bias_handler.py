@@ -24,7 +24,7 @@ try:
 except ImportError:
     ECONML_AVAILABLE = False
 
-from .market_regime_detector import MarketRegime
+from market_regime_detector import MarketRegime
 
 class BiasHandler:
     def __init__(self):

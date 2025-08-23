@@ -12,10 +12,10 @@ from dataclasses import dataclass
 import time
 import logging
 
-from .market_regime_detector import MarketRegime
-from .bias_handler import BiasHandler
-from .scientific_rigor_enforcer import ScientificRigorFramework
-from .pearls_ladder_enhanced import PearlsLadderEnhanced
+from market_regime_detector import MarketRegime
+from bias_handler import BiasHandler
+from scientific_rigor_enforcer import ScientificRigorFramework
+from pearls_ladder_enhanced import PearlsLadderEnhanced
 
 @dataclass
 class PhaseResult:

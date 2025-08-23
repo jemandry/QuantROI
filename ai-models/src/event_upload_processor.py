@@ -14,8 +14,8 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 import threading
 
-from .strand_types import EventStrand, MarketStrand
-from .braided_cord_data_engine import BraidedCordDataEngine, StorageTier, StrandMetadata
+from strand_types import EventStrand, MarketStrand
+from braided_cord_data_engine import BraidedCordDataEngine, StorageTier, StrandMetadata
 
 @dataclass
 class ProcessingMetrics:
@@ -319,33 +319,44 @@ class EventUploadProcessor:
         return False
     
     async def _create_market_strands(self, events: List[Dict[str, Any]]) -> List[MarketStrand]:
-        """Create market strands from market events"""
+        """Create market strands from market events with optimized processing"""
         try:
-            time_window_ns = 60 * 1e9  # 1 minute windows
+            time_window_ns = 5 * 1e9  # 5 second windows for faster processing
             
+            # Vectorized timestamp processing
+            timestamps = np.array([event.get('timestamp_ns', time.time_ns()) for event in events])
+            window_keys = (timestamps // time_window_ns).astype(int)
+            
+            unique_windows = np.unique(window_keys)
             events_by_window = {}
-            for event in events:
-                timestamp_ns = event.get('timestamp_ns', time.time_ns())
-                window_key = int(timestamp_ns // time_window_ns)
-                
-                if window_key not in events_by_window:
-                    events_by_window[window_key] = []
-                events_by_window[window_key].append(event)
             
-            strands = []
+            for window_key in unique_windows:
+                mask = window_keys == window_key
+                window_events = [events[i] for i in np.where(mask)[0]]
+                events_by_window[window_key] = window_events
+            
+            strand_tasks = []
             for window_events in events_by_window.values():
                 if len(window_events) >= 2:  # Minimum events for meaningful strand
-                    strand = MarketStrand.create_from_market_events(
-                        window_events, 
-                        regime_context="market_processing"
-                    )
-                    strands.append(strand)
+                    task = asyncio.create_task(self._create_single_market_strand(window_events))
+                    strand_tasks.append(task)
             
-            return strands
+            if strand_tasks:
+                strands = await asyncio.gather(*strand_tasks, return_exceptions=True)
+                return [s for s in strands if not isinstance(s, Exception)]
+            
+            return []
             
         except Exception as e:
             self.logger.error(f"Failed to create market strands: {e}")
             return []
+    
+    async def _create_single_market_strand(self, events: List[Dict[str, Any]]) -> MarketStrand:
+        """Create a single market strand asynchronously"""
+        return MarketStrand.create_from_market_events(
+            events, 
+            regime_context="market_processing"
+        )
     
     async def _create_general_strands(self, events: List[Dict[str, Any]]) -> List[EventStrand]:
         """Create general event strands from non-market events"""

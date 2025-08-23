@@ -11,8 +11,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 
-from .market_regime_detector import MarketRegime
-from .ria_ai_architect import ClientSuitabilityProfile, PortfolioAllocation
+from market_regime_detector import MarketRegime
+from ria_ai_architect import ClientSuitabilityProfile, PortfolioAllocation
 
 class TaxLotMethod(Enum):
     FIFO = "first_in_first_out"

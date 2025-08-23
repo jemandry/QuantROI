@@ -253,11 +253,14 @@ class BayesianRegimeDetector:
             feature_count = 3
             
         elif regime == MarketRegime.CRISIS_CORRELATION:
-            if causal_features['correlation_matrix'] > thresholds['correlation_high']:
-                score += 0.6
-            if causal_features['vix'] > 30:
-                score += 0.3
-            feature_count = 2
+            # Crisis requires extreme conditions - higher thresholds
+            if causal_features['correlation_matrix'] > 0.8:  # Very high correlation
+                score += 0.4
+            if causal_features['vix'] > 40:  # Extreme volatility
+                score += 0.4
+            if causal_features['sentiment_score'] < -0.6:  # Very negative sentiment
+                score += 0.4
+            feature_count = 3
             
         elif regime == MarketRegime.HIGH_LATENCY_DATA_GAPS:
             if causal_features['latency_ms'] > thresholds['latency_high']:
@@ -268,7 +271,24 @@ class BayesianRegimeDetector:
             score = 0.1
             feature_count = 1
         
-        return score / max(feature_count, 1) if feature_count > 0 else 0.0
+        base_score = score / max(feature_count, 1) if feature_count > 0 else 0.0
+        
+        if regime == MarketRegime.LOW_VOLATILITY_STABLE and causal_features['vix'] < 15:
+            base_score = min(0.9, base_score + 0.4)
+        elif regime == MarketRegime.HIGH_VOLATILITY_TURBULENT and causal_features['vix'] > 30:
+            base_score = min(0.9, base_score + 0.3)
+        elif regime == MarketRegime.BULL_MARKET and causal_features['sentiment_score'] > 0.3:
+            base_score = min(0.9, base_score + 0.4)
+        elif regime == MarketRegime.CRISIS_CORRELATION:
+            extreme_conditions = sum([
+                causal_features['vix'] > 40,
+                causal_features['correlation_matrix'] > 0.8,
+                causal_features['sentiment_score'] < -0.6
+            ])
+            if extreme_conditions >= 2:
+                base_score = min(0.9, base_score + 0.5)
+        
+        return base_score
     
     def _detect_change_point(self, market_data: Dict[str, Any]) -> float:
         if len(self.regime_history) < 5:

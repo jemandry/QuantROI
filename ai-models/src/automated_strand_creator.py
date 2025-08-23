@@ -21,11 +21,11 @@ try:
 except ImportError:
     SKLEARN_AVAILABLE = False
 
-from .strand_types import EventStrand, MarketStrand
-from .event_upload_processor import EventUploadProcessor
-from .market_regime_detector import BayesianRegimeDetector, MarketRegime
-from .braided_cord_data_engine import BraidedCordDataEngine
-from .dag_template_engine import DAGTemplateEngine
+from strand_types import EventStrand, MarketStrand
+from event_upload_processor import EventUploadProcessor
+from market_regime_detector import BayesianRegimeDetector, MarketRegime
+from braided_cord_data_engine import BraidedCordDataEngine
+from dag_template_engine import DAGTemplateEngine
 
 @dataclass
 class StrandCreationRule:
@@ -172,7 +172,7 @@ class AutomatedStrandCreator:
     async def create_strands_from_events(self, 
                                        events: List[Dict[str, Any]],
                                        market_data: Dict[str, Any]) -> List[EventStrand]:
-        """Automatically create optimized strands from raw events using ML and causal analysis"""
+        """Automatically create optimized strands from raw events using ML and causal analysis with parallel processing"""
         start_time = time.perf_counter()
         
         try:
@@ -188,24 +188,26 @@ class AutomatedStrandCreator:
             
             self.logger.info(f"Creating strands for regime {current_regime.value} with {len(events)} events")
             
+            if len(events) > 1000:
+                return await self._create_strands_parallel(events, rules, current_regime)
+            
             event_groups = await self._group_events_intelligently(events, rules)
             
-            strands = []
+            strand_tasks = []
             for group in event_groups:
                 if len(group) >= rules.min_events_per_strand:
-                    if self._is_market_data_group(group):
-                        strand = MarketStrand.create_from_market_events(group, current_regime.value)
-                        self.library_stats.market_strands += 1
-                    else:
-                        strand = EventStrand.create_from_events(group, current_regime.value)
-                        self.library_stats.general_strands += 1
-                    
-                    await self._enhance_strand_with_causal_features(strand, rules)
-                    strands.append(strand)
+                    task = asyncio.create_task(self._create_strand_from_group(group, rules, current_regime))
+                    strand_tasks.append(task)
             
-            await self._update_causal_patterns(strands, current_regime)
+            if strand_tasks:
+                strand_results = await asyncio.gather(*strand_tasks, return_exceptions=True)
+                strands = [s for s in strand_results if s and not isinstance(s, Exception)]
+            else:
+                strands = []
             
-            await self._store_strands_in_library(strands)
+            if strands:
+                asyncio.create_task(self._update_causal_patterns(strands, current_regime))
+                asyncio.create_task(self._store_strands_in_library(strands))
             
             self._update_performance_metrics(start_time, len(strands))
             
@@ -216,6 +218,56 @@ class AutomatedStrandCreator:
         except Exception as e:
             self.logger.error(f"Failed to create strands from events: {e}")
             return []
+    
+    async def _create_strands_parallel(self, events: List[Dict[str, Any]], 
+                                     rules: StrandCreationRule, 
+                                     current_regime: MarketRegime) -> List[EventStrand]:
+        """Create strands using parallel processing for large datasets"""
+        chunk_size = 500  # Process in chunks for better memory management
+        chunks = [events[i:i + chunk_size] for i in range(0, len(events), chunk_size)]
+        
+        chunk_tasks = []
+        for chunk in chunks:
+            task = asyncio.create_task(self._process_event_chunk(chunk, rules, current_regime))
+            chunk_tasks.append(task)
+        
+        chunk_results = await asyncio.gather(*chunk_tasks, return_exceptions=True)
+        
+        all_strands = []
+        for result in chunk_results:
+            if not isinstance(result, Exception) and result:
+                all_strands.extend(result)
+        
+        return all_strands
+    
+    async def _process_event_chunk(self, events: List[Dict[str, Any]], 
+                                 rules: StrandCreationRule,
+                                 current_regime: MarketRegime) -> List[EventStrand]:
+        """Process a chunk of events into strands"""
+        event_groups = await self._group_events_intelligently(events, rules)
+        
+        strands = []
+        for group in event_groups:
+            if len(group) >= rules.min_events_per_strand:
+                strand = await self._create_strand_from_group(group, rules, current_regime)
+                if strand:
+                    strands.append(strand)
+        
+        return strands
+    
+    async def _create_strand_from_group(self, group: List[Dict[str, Any]], 
+                                      rules: StrandCreationRule,
+                                      current_regime: MarketRegime) -> EventStrand:
+        """Create a single strand from an event group"""
+        if self._is_market_data_group(group):
+            strand = MarketStrand.create_from_market_events(group, current_regime.value)
+            self.library_stats.market_strands += 1
+        else:
+            strand = EventStrand.create_from_events(group, current_regime.value)
+            self.library_stats.general_strands += 1
+        
+        await self._enhance_strand_with_causal_features(strand, rules)
+        return strand
     
     async def _group_events_intelligently(self, 
                                         events: List[Dict[str, Any]], 
@@ -316,44 +368,54 @@ class AutomatedStrandCreator:
     def _extract_feature_matrix(self, 
                                events: List[Dict[str, Any]], 
                                causal_features: List[str]) -> np.ndarray:
-        """Extract feature matrix for ML clustering"""
+        """Extract feature matrix for ML clustering with vectorized operations"""
         try:
-            feature_matrix = []
+            if not events:
+                return np.array([])
             
-            for event in events:
-                feature_vector = []
-                
-                feature_vector.append(event.get('timestamp_ns', 0) / 1e9)  # Timestamp in seconds
-                feature_vector.append(event.get('type_id', 0))
-                feature_vector.append(event.get('source_id', 0))
-                
-                for feature_name in causal_features:
+            n_events = len(events)
+            n_base_features = 3 + len(causal_features) + 4  # timestamp, type_id, source_id + causal + payload features
+            feature_matrix = np.zeros((n_events, n_base_features), dtype=np.float64)
+            
+            timestamps = np.array([event.get('timestamp_ns', 0) / 1e9 for event in events])
+            type_ids = np.array([event.get('type_id', 0) for event in events])
+            source_ids = np.array([event.get('source_id', 0) for event in events])
+            
+            feature_matrix[:, 0] = timestamps
+            feature_matrix[:, 1] = type_ids
+            feature_matrix[:, 2] = source_ids
+            
+            for i, feature_name in enumerate(causal_features):
+                feature_values = []
+                for event in events:
                     if feature_name in event:
                         value = event[feature_name]
                         if isinstance(value, (int, float)):
-                            feature_vector.append(float(value))
+                            feature_values.append(float(value))
                         elif isinstance(value, list) and value and isinstance(value[0], (int, float)):
-                            feature_vector.append(float(value[0]))
+                            feature_values.append(float(value[0]))
                         else:
-                            feature_vector.append(0.0)
+                            feature_values.append(0.0)
                     else:
-                        feature_vector.append(0.0)
-                
-                payload = event.get('payload', {})
-                if isinstance(payload, dict):
-                    for key in ['price', 'volume', 'sentiment', 'volatility']:
-                        if key in payload:
-                            value = payload[key]
-                            if isinstance(value, (int, float)):
-                                feature_vector.append(float(value))
-                            else:
-                                feature_vector.append(0.0)
-                        else:
-                            feature_vector.append(0.0)
-                
-                feature_matrix.append(feature_vector)
+                        feature_values.append(0.0)
+                feature_matrix[:, 3 + i] = feature_values
             
-            return np.array(feature_matrix, dtype=np.float64)
+            payload_features = ['price', 'volume', 'sentiment', 'volatility']
+            for i, key in enumerate(payload_features):
+                payload_values = []
+                for event in events:
+                    payload = event.get('payload', {})
+                    if isinstance(payload, dict) and key in payload:
+                        value = payload[key]
+                        if isinstance(value, (int, float)):
+                            payload_values.append(float(value))
+                        else:
+                            payload_values.append(0.0)
+                    else:
+                        payload_values.append(0.0)
+                feature_matrix[:, 3 + len(causal_features) + i] = payload_values
+            
+            return feature_matrix
             
         except Exception as e:
             self.logger.error(f"Feature extraction failed: {e}")

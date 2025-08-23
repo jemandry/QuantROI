@@ -9,17 +9,24 @@ from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 import logging
 
-from .market_regime_detector import BayesianRegimeDetector, MarketRegime, RegimeDetectionResult
-from .bias_handler import BiasHandler
-from .scientific_rigor_enforcer import ScientificRigorFramework, RigorValidationResult
-from .dag_template_engine import DAGTemplateEngine, DAGValidationResult
-from .solana_execution_bridge import SolanaExecutionBridge, SolanaTransactionResult
-from .ipfs_anchor import IPFSAnchorSystem
-from .automated_strand_creator import AutomatedStrandCreator
-from .event_upload_processor import EventUploadProcessor
-from .braided_cord_data_engine import BraidedCordDataEngine
-from .enhanced_event_router import EventDrivenDataRouter
-from .client_behavior_vector_store import ClientBehaviorVectorStore
+from market_regime_detector import BayesianRegimeDetector, MarketRegime, RegimeDetectionResult
+from bias_handler import BiasHandler
+from scientific_rigor_enforcer import ScientificRigorFramework, RigorValidationResult
+from dag_template_engine import DAGTemplateEngine, DAGValidationResult
+from solana_execution_bridge import SolanaExecutionBridge, SolanaTransactionResult
+from ipfs_anchor import IPFSAnchorSystem
+from automated_strand_creator import AutomatedStrandCreator
+from event_upload_processor import EventUploadProcessor
+from braided_cord_data_engine import BraidedCordDataEngine
+from enhanced_event_router import EventDrivenDataRouter
+from client_behavior_vector_store import ClientBehaviorVectorStore
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from specialized_agents import AgentOrchestrator
+else:
+    AgentOrchestrator = None
+from performance_optimizer import PerformanceOptimizer
 
 @dataclass
 class OrchestrationResult:
@@ -50,6 +57,12 @@ class RegimeOrchestrator:
         self.data_engine = BraidedCordDataEngine()
         self.event_router = EventDrivenDataRouter(['nats://localhost:4222'])
         self.vector_store = ClientBehaviorVectorStore('http://localhost:8080')
+        from specialized_agents import AgentOrchestrator
+        self.agent_orchestrator = AgentOrchestrator(self.event_router)
+        self.performance_optimizer = PerformanceOptimizer({
+            'target_latency_ms': 1.0,
+            'target_throughput_eps': 20000
+        })
         
         self.logger = logging.getLogger(__name__)
         self.processing_history = []
@@ -64,6 +77,7 @@ class RegimeOrchestrator:
             
             await self.event_router.connect()
             await self.vector_store.initialize()
+            await self.agent_orchestrator.start_agents()
             
             self.logger.info("Strand creation engines and RIA components initialized successfully")
         except Exception as e:
@@ -119,7 +133,12 @@ class RegimeOrchestrator:
             
             events = self._convert_market_data_to_events(market_data)
             if events:
-                strands = await self.strand_creator.create_strands_from_events(events, market_data)
+                optimized_result = await self.performance_optimizer.optimize_event_processing(
+                    self.event_processor, events
+                )
+                strands = await self.performance_optimizer.optimize_strand_creation(
+                    self.strand_creator, events, "EventStrand"
+                )
                 enhanced_data['strand_data'] = {
                     'strand_count': len(strands),
                     'strand_ids': [s.strand_id for s in strands],
@@ -370,11 +389,18 @@ class RegimeOrchestrator:
     async def cleanup_strand_engines(self):
         """Cleanup strand creation engines"""
         try:
-            await self.event_processor.stop_processing()
-            await self.strand_creator.cleanup()
-            await self.data_engine.cleanup()
-            await self.event_router.disconnect()
-            await self.vector_store.cleanup()
+            if hasattr(self, 'event_processor'):
+                await self.event_processor.stop_processing()
+            if hasattr(self, 'strand_creator'):
+                await self.strand_creator.cleanup()
+            if hasattr(self, 'data_engine'):
+                await self.data_engine.cleanup()
+            if hasattr(self, 'event_router'):
+                await self.event_router.disconnect()
+            if hasattr(self, 'vector_store'):
+                await self.vector_store.cleanup()
+            if hasattr(self, 'agent_orchestrator'):
+                await self.agent_orchestrator.stop_agents()
             self.logger.info("Strand creation engines and RIA components cleanup completed")
         except Exception as e:
             self.logger.error(f"Strand engines cleanup failed: {e}")

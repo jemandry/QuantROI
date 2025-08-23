@@ -444,8 +444,15 @@ class MarketStrand(EventStrand):
         recent_highs = np.max(self.price_data[-10:]) if len(self.price_data) >= 10 else self.price_data[-1]
         recent_lows = np.min(self.price_data[-10:]) if len(self.price_data) >= 10 else self.price_data[-1]
         
-        patterns['near_recent_high'] = abs(self.price_data[-1] - recent_highs) / recent_highs < 0.01
-        patterns['near_recent_low'] = abs(self.price_data[-1] - recent_lows) / recent_lows < 0.01
+        if recent_highs != 0:
+            patterns['near_recent_high'] = abs(self.price_data[-1] - recent_highs) / recent_highs < 0.01
+        else:
+            patterns['near_recent_high'] = False
+            
+        if recent_lows != 0:
+            patterns['near_recent_low'] = abs(self.price_data[-1] - recent_lows) / recent_lows < 0.01
+        else:
+            patterns['near_recent_low'] = False
         
         return patterns
     

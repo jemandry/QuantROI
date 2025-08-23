@@ -8,9 +8,9 @@ import json
 import subprocess
 import hashlib
 from dataclasses import dataclass, asdict
-from .market_regime_detector import MarketRegime
-from .dag_template_engine import DAGTemplate
-from .scientific_rigor_enforcer import RigorValidationResult
+from market_regime_detector import MarketRegime
+from dag_template_engine import DAGTemplate
+from scientific_rigor_enforcer import RigorValidationResult
 
 @dataclass
 class SolanaExecutionProfile:
@@ -457,7 +457,7 @@ class SolanaExecutionBridge:
         
         for regime in MarketRegime:
             try:
-                from .dag_template_engine import DAGTemplateEngine
+                from dag_template_engine import DAGTemplateEngine
                 dag_engine = DAGTemplateEngine()
                 template = dag_engine.get_template(regime)
                 

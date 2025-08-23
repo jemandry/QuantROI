@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import json
 import hashlib
 import numpy as np
-from .market_regime_detector import MarketRegime
+from market_regime_detector import MarketRegime
 
 @dataclass
 class DAGTemplate:

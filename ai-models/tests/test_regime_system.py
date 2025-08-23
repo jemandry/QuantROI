@@ -3,6 +3,7 @@ Comprehensive test suite for regime-based DAG template system
 """
 
 import pytest
+import pytest_asyncio
 import numpy as np
 import pandas as pd
 from typing import Dict, Any
