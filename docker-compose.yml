@@ -1,0 +1,108 @@
+version: '3.8'
+
+services:
+  # Kafka for data pipelines
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  # TimescaleDB for time-series data
+  timescaledb:
+    image: timescale/timescaledb:latest-pg14
+    environment:
+      POSTGRES_DB: fintech_platform
+      POSTGRES_USER: platform_user
+      POSTGRES_PASSWORD: secure_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+
+  # Redis for caching
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  mlflow-server:
+    image: python:3.11-slim
+    container_name: mlflow_server
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlflow_data:/mlflow
+    environment:
+      - MLFLOW_BACKEND_STORE_URI=sqlite:///mlflow/mlflow.db
+      - MLFLOW_DEFAULT_ARTIFACT_ROOT=/mlflow/artifacts
+    command: >
+      bash -c "pip install mlflow==2.8.1 && 
+               mlflow server 
+               --backend-store-uri sqlite:///mlflow/mlflow.db 
+               --default-artifact-root /mlflow/artifacts 
+               --host 0.0.0.0 
+               --port 5000"
+    networks:
+      - quantroi-network
+    restart: unless-stopped
+
+  voice-interface:
+    build:
+      context: ./ux/voice-interface
+      dockerfile: Dockerfile
+    container_name: voice_interface
+    ports:
+      - "8001:8000"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - GROK_API_KEY=${GROK_API_KEY}
+      - CAUSAL_AI_URL=http://causal-ai-engine:8000
+    depends_on:
+      - redis
+    networks:
+      - quantroi-network
+    restart: unless-stopped
+
+  react-voting-ui:
+    build: 
+      context: ./ux/react-voting-ui
+      dockerfile: Dockerfile
+    container_name: react_voting_ui
+    ports:
+      - "3001:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+      - REACT_APP_VOICE_API_URL=http://localhost:8001
+      - REACT_APP_SOLANA_RPC_URL=${SOLANA_RPC_URL}
+    depends_on:
+      - voice-interface
+    networks:
+      - quantroi-network
+    restart: unless-stopped
+
+volumes:
+  timescale_data:
+  redis_data:
+  mlflow_data:
+  voice_data:
+
+networks:
+  quantroi-network:
+    driver: bridge

@@ -1,0 +1,27 @@
+[package]
+name = "payment-system"
+version = "0.1.0"
+description = "Payment system with periodic payments, billing, and profit distribution"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "payment_system"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+
+[dependencies]
+anchor-lang = { workspace = true }
+anchor-spl = { workspace = true }
+spl-token = { workspace = true }
+spl-memo = { workspace = true }
+solana-program = { workspace = true }
+sha3 = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rand = { workspace = true }

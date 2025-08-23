@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  batch-simulation-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile.batch-simulation
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - TIMESCALE_HOST=timescaledb
+      - TIMESCALE_PORT=5432
+      - TIMESCALE_DB=fintech_db
+      - BATCH_SIZE=100
+      - MAX_WORKERS=8
+      - LOG_LEVEL=INFO
+    depends_on:
+      - redis
+      - timescaledb
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - quantroi-network
+    restart: unless-stopped
+    
+  batch-scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile.batch-scheduler
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - TIMESCALE_HOST=timescaledb
+      - TIMESCALE_PORT=5432
+      - SCHEDULE_DAILY_BATCH=02:00
+      - SCHEDULE_WEEKLY_BATCH=01:00
+      - LOG_LEVEL=INFO
+    depends_on:
+      - redis
+      - timescaledb
+      - batch-simulation-engine
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - quantroi-network
+    restart: unless-stopped
+    
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - quantroi-network
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 2gb --maxmemory-policy allkeys-lru
+    
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    environment:
+      - POSTGRES_DB=${TIMESCALE_DB:-fintech_db}
+      - POSTGRES_USER=${TIMESCALE_USER:-postgres}
+      - POSTGRES_PASSWORD=${TIMESCALE_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescale-data:/var/lib/postgresql/data
+    networks:
+      - quantroi-network
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+  timescale-data:
+
+networks:
+  quantroi-network:
+    driver: bridge

@@ -1,0 +1,55 @@
+FROM nvidia/cuda:12.2-devel-ubuntu22.04 as builder
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    pkg-config \
+    libssl-dev \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Copy Cargo files
+COPY Cargo.toml Cargo.lock ./
+
+# Copy source code
+COPY src/ ./src/
+COPY examples/ ./examples/
+
+# Build with CUDA support
+RUN cargo build --release --features cuda
+
+# Runtime stage
+FROM nvidia/cuda:12.2-runtime-ubuntu22.04
+
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    curl \
+    python3 \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install PyTorch for braided Brownian processing
+RUN pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+# Copy the binary from builder stage
+COPY --from=builder /app/target/release/braided-brownian-processor /usr/local/bin/braided-brownian-processor
+
+# Create app user
+RUN useradd -r -s /bin/false appuser && \
+    mkdir -p /app/models /app/logs /app/braided_data && \
+    chown -R appuser:appuser /app
+
+USER appuser
+
+EXPOSE 8081
+
+CMD ["braided-brownian-processor"]

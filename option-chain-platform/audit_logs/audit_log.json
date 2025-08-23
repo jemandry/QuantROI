@@ -1,0 +1,22 @@
+{
+  "root": "24ef2c48341051d43f7eae066abc0f6a3d6c569404e955aee8c313f381f7744e",
+  "proof": [
+    "7b22696d706c696564566f6c6174696c697479223a20302e32352c20226c6173745072696365223a20352e352c20226f70656e496e746572657374223a20353030302c2022737472696b65223a203130302c2022766f6c756d65223a20313230307d",
+    "c1939756e978ec689d3af1ea2a2f3e30ad6107601bcd85cd8243958fc88aab64"
+  ],
+  "entry": {
+    "strike": 105,
+    "openInterest": 3000,
+    "impliedVolatility": 0.245,
+    "volume": 800,
+    "lastPrice": 3.2
+  },
+  "index": 1,
+  "timestamp": "2025-08-03T22:51:31.338823",
+  "ticker": "AAPL",
+  "features": {
+    "total_open_interest": 10000,
+    "avg_implied_volatility": 0.25166666666666665,
+    "total_volume": 2600
+  }
+}

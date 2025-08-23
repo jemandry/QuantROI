@@ -1,0 +1,116 @@
+version: '3.8'
+
+networks:
+  option_chain_network:
+    driver: bridge
+
+volumes:
+  ipfs_data:
+  audit_logs:
+  wasm_build:
+  web_ui_node_modules:
+
+services:
+  ipfs:
+    image: ipfs/kubo:v0.23.0
+    container_name: ipfs_node
+    ports:
+      - "5001:5001"  # API
+      - "4001:4001"  # Swarm
+      - "8080:8080"  # Gateway
+    volumes:
+      - ipfs_data:/data/ipfs
+    command: daemon --enable-pubsub-experiment
+    healthcheck:
+      test: ["CMD", "ipfs", "id"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - option_chain_network
+
+  audit_backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: audit_backend
+    depends_on:
+      ipfs:
+        condition: service_healthy
+    volumes:
+      - .:/audit
+      - audit_logs:/audit/audit_logs
+      - ${SOLANA_WALLET:-./wallet.json}:/wallet.json:ro
+    environment:
+      - IPFS_API=http://ipfs:5001
+      - SOLANA_RPC=${SOLANA_RPC:-https://api.mainnet-beta.solana.com}
+      - SOLANA_WALLET=/wallet.json
+      - SOLANA_PROGRAM_ID=${SOLANA_PROGRAM_ID}
+      - NEO4J_URI=${NEO4J_URI:-bolt://localhost:7687}
+      - NEO4J_USER=${NEO4J_USER:-neo4j}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-password}
+    command: bash -c "python run_full_audit.py && tail -f /dev/null"
+    ports:
+      - "8001:8001"
+    networks:
+      - option_chain_network
+
+  fastapi_api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fastapi_api
+    depends_on:
+      - audit_backend
+      - ipfs
+    volumes:
+      - .:/audit
+      - audit_logs:/audit/audit_logs
+      - ${SOLANA_WALLET:-./wallet.json}:/wallet.json:ro
+    environment:
+      - IPFS_API=http://ipfs:5001
+      - SOLANA_RPC=${SOLANA_RPC:-https://api.mainnet-beta.solana.com}
+      - SOLANA_WALLET=/wallet.json
+      - SOLANA_PROGRAM_ID=${SOLANA_PROGRAM_ID}
+      - NEO4J_URI=${NEO4J_URI:-bolt://localhost:7687}
+      - NEO4J_USER=${NEO4J_USER:-neo4j}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-password}
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    networks:
+      - option_chain_network
+
+  wasm_verifier:
+    build:
+      context: ./wasm_verifier
+      dockerfile: Dockerfile
+    container_name: wasm_verifier
+    volumes:
+      - wasm_build:/wasm_verifier/pkg
+    command: bash -c "wasm-pack build --target web && python -m http.server 8080"
+    ports:
+      - "8081:8080"
+    networks:
+      - option_chain_network
+
+  web_ui:
+    build:
+      context: ./web_ui
+      dockerfile: Dockerfile
+    container_name: web_ui
+    depends_on:
+      - fastapi_api
+      - ipfs
+      - wasm_verifier
+    volumes:
+      - web_ui_node_modules:/web_ui/node_modules
+    environment:
+      - REACT_APP_API_URL=http://fastapi_api:8000
+      - REACT_APP_IPFS_GATEWAY=http://ipfs:8080
+      - REACT_APP_WASM_URL=http://wasm_verifier:8080/pkg/merkle_verifier_bg.wasm
+    ports:
+      - "3000:3000"
+    command: npm start
+    networks:
+      - option_chain_network

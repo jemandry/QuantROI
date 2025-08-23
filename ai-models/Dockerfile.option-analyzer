@@ -1,0 +1,43 @@
+FROM python:3.9-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Copy requirements
+COPY requirements.txt .
+
+# Install Python dependencies with GPU support
+RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install torch --index-url https://download.pytorch.org/whl/cu121
+
+# Install additional performance dependencies
+RUN pip install \
+    numba \
+    ray[default] \
+    prometheus-client \
+    psutil \
+    aiohttp-retry \
+    cryptography \
+    structlog
+
+# Copy source code
+COPY src/ ./src/
+COPY tests/ ./tests/
+
+# Set environment variables
+ENV PYTHONPATH=/app/src
+ENV CUDA_VISIBLE_DEVICES=0
+ENV RAY_DISABLE_IMPORT_WARNING=1
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import torch; print('Health check passed')"
+
+# Run the option analyzer
+CMD ["python", "src/high_performance_option_analyzer.py"]

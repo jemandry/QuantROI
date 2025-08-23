@@ -1,0 +1,99 @@
+[workspace]
+members = [
+    "programs/delegation-management",
+    "programs/knowledge-verification",
+    "programs/ria-compliance", 
+    "programs/payment-system",
+    "programs/ai-competition",
+    "programs/nft-marketplace",
+    "programs/zkp-strategy-verification"
+]
+resolver = "2"
+
+[workspace.dependencies]
+anchor-lang = "0.28.0"
+anchor-spl = "0.28.0"
+spl-token = { version = "3.5.0", features = ["no-entrypoint"] }
+spl-memo = { version = "3.0.1", features = ["no-entrypoint"] }
+solana-program = "~1.16.0"
+sha3 = "0.10.8"
+rand = "0.8.5"
+mpl-token-metadata = "3.2.0"
+mpl-core = "0.7.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+[workspace.lints.clippy]
+# Strict linting for fintech security and code quality
+pedantic = "warn"
+nursery = "warn"
+cargo = "warn"
+complexity = "warn"
+correctness = "deny"
+suspicious = "deny"
+style = "warn"
+perf = "warn"
+
+# Quantum security and fintech-specific rules
+unsafe_code = "forbid"
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+unimplemented = "deny"
+todo = "deny"
+unreachable = "deny"
+missing_docs_in_private_items = "warn"
+missing_safety_doc = "deny"
+undocumented_unsafe_blocks = "deny"
+
+# Memory safety for quantum-resistant operations
+mem_forget = "deny"
+mem_replace_with_default = "deny"
+rc_buffer = "deny"
+rc_mutex = "deny"
+
+# Fintech compliance and audit requirements
+print_stdout = "deny"
+print_stderr = "deny"
+dbg_macro = "deny"
+empty_structs_with_brackets = "deny"
+enum_glob_use = "deny"
+exit = "deny"
+float_cmp = "deny"
+lossy_float_literal = "deny"
+string_slice = "deny"
+
+# Performance for high-frequency trading
+inefficient_to_string = "deny"
+large_enum_variant = "warn"
+large_stack_arrays = "warn"
+linkedlist = "deny"
+mutex_atomic = "warn"
+needless_collect = "deny"
+or_fun_call = "deny"
+redundant_allocation = "deny"
+single_char_lifetime_names = "deny"
+trivially_copy_pass_by_ref = "warn"
+unnecessary_wraps = "warn"
+unused_self = "deny"
+use_self = "warn"
+useless_conversion = "deny"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+rust_2018_idioms = "warn"
+trivial_casts = "warn"
+trivial_numeric_casts = "warn"
+unused_import_braces = "warn"
+unused_qualifications = "warn"
+
+
+[profile.release]
+overflow-checks = true
+lto = "fat"
+codegen-units = 1
+
+[profile.release.build-override]
+opt-level = 3
+incremental = false
+codegen-units = 1

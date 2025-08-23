@@ -1,0 +1,118 @@
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "quantroi-ai"
+version = "0.1.0"
+description = "Ethical AI-Driven Fintech Trading Platform"
+authors = ["QuantROI Team <team@quantroi.com>"]
+repository = "https://github.com/Synergy-Cloud-System-LlLC/quantroi"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+tensorflow = "^2.13.0"
+causalnex = "^0.12.0"
+dowhy = "^0.9.0"
+
+[tool.poetry.group.dev.dependencies]
+flake8 = "^7.0.0"
+pylint = "^3.0.0"
+mypy = "^1.0.0"
+black = "^23.0.0"
+
+[tool.flake8]
+max-line-length = 88
+extend-ignore = ["E203", "W503"]
+exclude = [".git", "__pycache__", "build", "dist", ".venv", "node_modules", "test-samples"]
+per-file-ignores = [
+    "__init__.py:F401",
+]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "C",   # mccabe complexity
+    "B",   # flake8-bugbear
+    "S",   # flake8-bandit (security)
+    "I",   # isort
+    "N",   # pep8-naming
+]
+# Enhanced security and compliance checks
+enable-extensions = ["G", "C90"]
+# Quantum security and fintech compliance
+ban-relative-imports = "all"
+max-complexity = 10
+max-doc-length = 88
+docstring-convention = "google"
+# Function logging requirement for compliance
+require-return-annotation = true
+require-parameter-annotation = true
+
+[tool.pylint.messages_control]
+disable = [
+    "C0114",  # missing-module-docstring (fintech speed priority)
+]
+enable = [
+    "W0613",  # unused-argument
+    "W0622",  # redefined-builtin
+    "W0631",  # undefined-loop-variable
+    "E1101",  # no-member
+    "E1102",  # not-callable
+    "E1111",  # assignment-from-no-return
+    "R0201",  # no-self-use
+    "R0902",  # too-many-instance-attributes
+    "R0903",  # too-few-public-methods
+    "R0904",  # too-many-public-methods
+    "R0911",  # too-many-return-statements
+    "R0912",  # too-many-branches
+    "R0913",  # too-many-arguments
+    "R0914",  # too-many-locals
+    "R0915",  # too-many-statements
+    "C0103",  # invalid-name
+    "C0111",  # missing-docstring
+    "C0301",  # line-too-long
+    "C0302",  # too-many-lines
+    "C0321",  # multiple-statements
+]
+
+[tool.pylint.format]
+max-line-length = 88
+
+[tool.pylint.design]
+max-args = 7
+max-locals = 15
+max-branches = 12
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+[tool.black]
+line-length = 88
+target-version = ['py311']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''

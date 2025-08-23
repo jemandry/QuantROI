@@ -1,0 +1,27 @@
+[package]
+name = "zkp-strategy-verification"
+version = "0.1.0"
+description = "ZKP-alternative strategy verification and trade copying"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "zkp_strategy_verification"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+
+[dependencies]
+anchor-lang = { workspace = true }
+anchor-spl = { workspace = true }
+solana-program = { workspace = true }
+sha3 = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { version = "0.6", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid", "bigdecimal"] }
+tokio = { version = "1.0", features = ["full"] }
+bigdecimal = "0.3"

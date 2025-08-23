@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: voice-interface
+  namespace: quantroi
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: voice-interface
+  template:
+    metadata:
+      labels:
+        app: voice-interface
+    spec:
+      containers:
+      - name: voice-interface
+        image: quantroi/voice-interface:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: REDIS_HOST
+          value: "redis-service"
+        - name: REDIS_PORT
+          value: "6379"
+        - name: GROK_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: grok-config
+              key: api_key
+        - name: CAUSAL_AI_URL
+          value: "http://causal-ai-service:8000"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "250m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: voice-interface-service
+  namespace: quantroi
+spec:
+  selector:
+    app: voice-interface
+  ports:
+  - port: 8001
+    targetPort: 8000
