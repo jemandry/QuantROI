@@ -1,0 +1,9 @@
+/home/ubuntu/repos/quantroi/solana-contracts/target/debug/deps/libspl_transfer_hook_interface-45a83c5b3cd5f9fc.rmeta: /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/spl-transfer-hook-interface-0.3.0/src/lib.rs /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/spl-transfer-hook-interface-0.3.0/src/error.rs /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/spl-transfer-hook-interface-0.3.0/src/instruction.rs /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/spl-transfer-hook-interface-0.3.0/src/offchain.rs /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/spl-transfer-hook-interface-0.3.0/src/onchain.rs
+
+/home/ubuntu/repos/quantroi/solana-contracts/target/debug/deps/spl_transfer_hook_interface-45a83c5b3cd5f9fc.d: /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/spl-transfer-hook-interface-0.3.0/src/lib.rs /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/spl-transfer-hook-interface-0.3.0/src/error.rs /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/spl-transfer-hook-interface-0.3.0/src/instruction.rs /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/spl-transfer-hook-interface-0.3.0/src/offchain.rs /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/spl-transfer-hook-interface-0.3.0/src/onchain.rs
+
+/home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/spl-transfer-hook-interface-0.3.0/src/lib.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/spl-transfer-hook-interface-0.3.0/src/error.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/spl-transfer-hook-interface-0.3.0/src/instruction.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/spl-transfer-hook-interface-0.3.0/src/offchain.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/spl-transfer-hook-interface-0.3.0/src/onchain.rs:

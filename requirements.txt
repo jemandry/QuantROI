@@ -126,3 +126,26 @@ pyo3>=1.8.0
 redis>=4.6.0
 sqlx>=0.7.0
 tokio>=1.0.0
+
+# Pearl's Ladder microservices additions
+kubernetes==31.0.0
+scipy==1.11.4
+matplotlib==3.10.5
+seaborn==0.13.2
+timescaledb==0.0.4
+alpha-vantage==2.3.1
+structlog==23.2.0
+pytest-benchmark==4.0.0
+httpx==0.23.3
+python-jose[cryptography]==3.3.0
+langchain-community==0.2.16
+langchain-core==0.2.38
+pydantic-core>=2.14.0
+typing-extensions>=4.8.0
+ecdsa>=0.18.0
+arch>=5.3.0
+pmdarima>=2.0.0
+yfinance>=0.2.0
+pyarrow>=21.0.0
+polars>=0.20.0
+ta-lib>=0.4.0

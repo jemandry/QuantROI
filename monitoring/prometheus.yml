@@ -5,12 +5,15 @@ global:
 rule_files:
   # - "first_rules.yml"
   # - "second_rules.yml"
+  - "/etc/prometheus/rules/*.yml"
 
 scrape_configs:
+  # Prometheus itself
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
 
+  # QuantROI AI Services
   - job_name: 'quantroi-vix-regime'
     static_configs:
       - targets: ['vix-regime-detection:8005']
@@ -23,14 +26,54 @@ scrape_configs:
     metrics_path: /metrics
     scrape_interval: 10s
 
+  # Pearl's Ladder Microservices
+  - job_name: 'ladder-escalator'
+    static_configs:
+      - targets: ['ladder-escalator:8001']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+    scrape_timeout: 3s
+
+  - job_name: 'benchmark-validator'
+    static_configs:
+      - targets: ['benchmark-validator:8002']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+    scrape_timeout: 5s
+
+  - job_name: 'kafka-router'
+    static_configs:
+      - targets: ['kafka-router:8003']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+    scrape_timeout: 3s
+
+  # Infrastructure Services
   - job_name: 'redis'
     static_configs:
       - targets: ['redis:6379']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  - job_name: 'postgresql'
+    static_configs:
+      - targets: ['postgresql:5432']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
 
   - job_name: 'neo4j'
     static_configs:
       - targets: ['neo4j:7474']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
 
+  - job_name: 'kafka'
+    static_configs:
+      - targets: ['kafka:9092']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # Kubernetes Pod Discovery
   - job_name: 'kubernetes-pods'
     kubernetes_sd_configs:
       - role: pod
@@ -58,3 +101,10 @@ scrape_configs:
       - source_labels: [__meta_kubernetes_pod_name]
         action: replace
         target_label: kubernetes_pod_name
+
+# Alerting rules for Pearl's Ladder performance targets
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          # - alertmanager:9093
