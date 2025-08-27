@@ -223,6 +223,8 @@ class ScenarioSimulationEngine:
         self.num_simulations = num_simulations
         self.scenario_generator = ScenarioGenerator()
         self.stress_test_engine = StressTestEngine()
+        self.delay_mode_enabled = False
+        self.delay_simulator = None
         
     async def run_comprehensive_testing(
         self, 
@@ -378,3 +380,25 @@ class ScenarioSimulationEngine:
                 portfolio_values.append(current_portfolio_value)
         
         return np.array(portfolio_values)
+    
+    def enable_delay_mode(self, delay_params: Dict[str, Any] = None):
+        """Enable delay forecasting mode for simulations"""
+        try:
+            from delay_forecast import DelayStochasticSimulator, DelayStochasticParameters
+            
+            if delay_params is None:
+                delay_params = {
+                    'tau': 5.0,
+                    'p': 0.5,
+                    'model_type': 'SDSM',
+                    'estimation_method': 'likelihood'
+                }
+            
+            params = DelayStochasticParameters(**delay_params)
+            self.delay_simulator = DelayStochasticSimulator(params)
+            self.delay_mode_enabled = True
+            
+        except ImportError:
+            import logging
+            logging.warning("Delay forecasting module not available")
+            self.delay_mode_enabled = False

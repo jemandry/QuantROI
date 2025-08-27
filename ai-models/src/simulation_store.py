@@ -718,3 +718,57 @@ class TimescaleSimulationStore:
         except Exception as e:
             self.logger.error(f"Error querying enhanced simulations: {e}")
             return []
+    
+    async def store_delay_forecast_results(self, symbol: str, delay_results: Dict[str, Any]) -> bool:
+        """Store delay forecasting results in TimescaleDB"""
+        try:
+            async with self.pool.acquire() as connection:
+                await connection.execute("""
+                    CREATE TABLE IF NOT EXISTS delay_forecasts (
+                        id SERIAL PRIMARY KEY,
+                        symbol VARCHAR(10) NOT NULL,
+                        timestamp TIMESTAMPTZ NOT NULL,
+                        tau_estimate FLOAT NOT NULL,
+                        p_estimate FLOAT NOT NULL,
+                        efficiency_score FLOAT NOT NULL,
+                        liquidity_proxy FLOAT NOT NULL,
+                        model_type VARCHAR(10) NOT NULL,
+                        estimation_method VARCHAR(20) NOT NULL,
+                        log_likelihood FLOAT,
+                        aic FLOAT,
+                        bic FLOAT,
+                        processing_time_ms FLOAT,
+                        created_at TIMESTAMPTZ DEFAULT NOW()
+                    );
+                    
+                    CREATE INDEX IF NOT EXISTS idx_delay_forecasts_symbol_timestamp 
+                    ON delay_forecasts(symbol, timestamp);
+                """)
+                
+                await connection.execute("""
+                    INSERT INTO delay_forecasts (
+                        symbol, timestamp, tau_estimate, p_estimate, efficiency_score,
+                        liquidity_proxy, model_type, estimation_method, log_likelihood,
+                        aic, bic, processing_time_ms
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                """, 
+                symbol,
+                datetime.fromisoformat(delay_results.get('simulation_timestamp', datetime.now().isoformat())),
+                delay_results.get('estimation_results', {}).get('tau_estimate', 0),
+                delay_results.get('estimation_results', {}).get('p_estimate', 0),
+                delay_results.get('risk_metrics', {}).get('efficiency_score', 0),
+                delay_results.get('risk_metrics', {}).get('liquidity_proxy', 0),
+                delay_results.get('parameters', {}).get('model_type', 'SDSM'),
+                delay_results.get('parameters', {}).get('estimation_method', 'likelihood'),
+                delay_results.get('estimation_results', {}).get('log_likelihood'),
+                delay_results.get('estimation_results', {}).get('aic'),
+                delay_results.get('estimation_results', {}).get('bic'),
+                delay_results.get('processing_time_ms', 0)
+                )
+                
+                self.logger.info(f"Stored delay forecast results for {symbol}")
+                return True
+                
+        except Exception as e:
+            self.logger.error(f"Failed to store delay forecast results: {e}")
+            return False
