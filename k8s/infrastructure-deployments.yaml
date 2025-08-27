@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: neo4j
+  namespace: quantroi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: neo4j
+  template:
+    metadata:
+      labels:
+        app: neo4j
+    spec:
+      containers:
+      - name: neo4j
+        image: neo4j:5.13
+        ports:
+        - containerPort: 7474
+        - containerPort: 7687
+        env:
+        - name: NEO4J_AUTH
+          value: "neo4j/password"
+        - name: NEO4J_PLUGINS
+          value: '["apoc"]'
+        volumeMounts:
+        - name: neo4j-data
+          mountPath: /data
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+      volumes:
+      - name: neo4j-data
+        persistentVolumeClaim:
+          claimName: neo4j-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neo4j-service
+  namespace: quantroi
+spec:
+  selector:
+    app: neo4j
+  ports:
+  - name: http
+    protocol: TCP
+    port: 7474
+    targetPort: 7474
+  - name: bolt
+    protocol: TCP
+    port: 7687
+    targetPort: 7687
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: quantroi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+  namespace: quantroi
+spec:
+  selector:
+    app: redis
+  ports:
+  - protocol: TCP
+    port: 6379
+    targetPort: 6379
+  type: ClusterIP

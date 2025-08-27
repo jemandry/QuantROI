@@ -1,0 +1,63 @@
+
+cluster_name: quantroi-gpu-cluster
+
+max_workers: 4
+
+upscaling_speed: 1.0
+idle_timeout_minutes: 5
+
+provider:
+    type: external
+    module: ray.autoscaler._private.ionet.node_provider
+    
+head_node:
+    ray_node_type: head_node
+    
+available_node_types:
+    head_node:
+        min_workers: 0
+        max_workers: 0
+        node_config:
+            InstanceType: h100-head
+            ImageId: quantroi/vix-regime-detection:latest
+            
+    gpu_worker:
+        min_workers: 1
+        max_workers: 4
+        node_config:
+            InstanceType: h100-worker
+            ImageId: quantroi/vix-regime-detection:latest
+            Resources:
+                GPU: 1
+                CPU: 8
+                memory: 32000000000
+
+head_node_type: head_node
+
+file_mounts: {
+    "/tmp/quantroi": "./enhanced-ria-features",
+}
+
+initialization_commands:
+    - echo 'export PATH="$HOME/anaconda3/envs/quantroi/bin:$PATH"' >> ~/.bashrc
+    - pip install --upgrade pip
+    - pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+setup_commands:
+    - pip install -r /tmp/quantroi/requirements.txt
+    - cd /tmp/quantroi && python -m pytest tests/test_advanced_regime_detection.py -v
+
+head_setup_commands:
+    - pip install jupyter
+    - pip install ray[default]
+
+worker_setup_commands:
+    - pip install ray[default]
+
+head_start_ray_commands:
+    - ray stop
+    - ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
+
+worker_start_ray_commands:
+    - ray stop
+    - ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076

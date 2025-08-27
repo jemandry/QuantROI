@@ -5,3 +5,5 @@ metadata:
   labels:
     name: quantroi
     environment: production
+    app.kubernetes.io/name: quantroi
+    app.kubernetes.io/version: "1.0.0"

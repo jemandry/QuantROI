@@ -1,0 +1,6 @@
+[package]
+name = "noir_voting_circuits"
+type = "bin"
+authors = ["Enhanced RIA Team"]
+
+[dependencies]

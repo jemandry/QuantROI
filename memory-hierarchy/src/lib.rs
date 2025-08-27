@@ -3,6 +3,8 @@ use std::time::{Duration, Instant};
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 use tokio::time::sleep;
+use serde::{Serialize, Deserialize};
+use async_trait::async_trait;
 
 pub mod ai_optimization;
 pub mod causal_data_agent;
@@ -34,7 +36,7 @@ pub use quantum_ml::{QuantumMLPredictor, RegulatoryPattern};
 pub use ai_architect_enhancements::{EnhancedSimulationEngine, TieredStorageManager, TieredStorageConfig, StochasticModelType, NumericalScheme, EnhancedSimulationParameters, DistributedProcessingManager, WorkerNode};
 pub use microservices_orchestrator::{MicroservicesOrchestrator, ServiceRegistry};
 pub use enhanced_braided_processor::{EnhancedAppState, create_enhanced_router, EnhancedBraidedRequest, EnhancedBraidedResponse};
-pub use braided_cord_data_engine::{BraidedCordDataEngine, DataType, DataTier, DataPlacementRule, CausalDataRequest, DataEngineMetrics};
+pub use braided_cord_data_engine::{BraidedCordDataEngine, DataType, DataTier as BraidedDataTier, DataPlacementRule, CausalDataRequest, DataEngineMetrics};
 pub use solana_event_logger::{SolanaEventLogger, SolanaEventData, SolanaEventType, MertonJumpParams};
 pub use enhanced_confidence_engine::{EnhancedConfidenceEngine, EventSource, EventSourceData, SourceType, MultiSourceEvent};
 pub use cross_source_resolver::{CrossSourceResolver, ConflictAnalysis, ConflictSeverity, ResolutionStrategy};
@@ -558,3 +560,466 @@ impl MemoryHierarchy {
         CausalDataAgent::new_with_quantum_engine(Some(quantum_engine))
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DataItem {
+    pub key: String,
+    pub value: Vec<u8>,
+    pub timestamp: Instant,
+    pub access_count: u64,
+    pub tier: DataTier,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DataTier {
+    Hot,    // Redis, <10ns access
+    Warm,   // PostgreSQL, 100μs-10ms
+    Cold,   // TimescaleDB, >10ms
+}
+
+#[async_trait]
+pub trait TierStorage: Send + Sync {
+    async fn get(&self, key: &str) -> Result<Option<DataItem>, Box<dyn std::error::Error>>;
+    async fn put(&self, item: DataItem) -> Result<(), Box<dyn std::error::Error>>;
+    async fn delete(&self, key: &str) -> Result<(), Box<dyn std::error::Error>>;
+    fn tier(&self) -> DataTier;
+    fn target_latency(&self) -> Duration;
+}
+
+pub struct EnhancedMemoryHierarchy {
+    registers: Arc<Mutex<Cache>>,
+    l1_cache: Arc<Mutex<Cache>>,
+    l2_cache: Arc<Mutex<Cache>>,
+    l3_cache: Arc<Mutex<Cache>>,
+    main_memory: Arc<RwLock<Cache>>,
+    ssd_storage: Arc<RwLock<Cache>>,
+    hdd_storage: Arc<RwLock<Cache>>,
+    network_storage: Arc<RwLock<HashMap<String, Vec<u8>>>>,
+    archival_storage: Arc<RwLock<HashMap<String, Vec<u8>>>>,
+    
+    hot_tier: Option<Box<dyn TierStorage>>,
+    warm_tier: Option<Box<dyn TierStorage>>,
+    cold_tier: Option<Box<dyn TierStorage>>,
+    
+    access_stats: Arc<Mutex<AccessStats>>,
+    ai_optimizer: Arc<AIModelOptimizer>,
+    tier_access_stats: RwLock<HashMap<String, TierAccessStats>>,
+}
+
+#[derive(Debug, Clone)]
+struct TierAccessStats {
+    access_count: u64,
+    last_access: Instant,
+    promotion_score: f64,
+}
+
+impl EnhancedMemoryHierarchy {
+    pub fn new() -> Self {
+        Self {
+            registers: Arc::new(Mutex::new(Cache::new(MemoryLevel::Register, ReplacementPolicy::LRU))),
+            l1_cache: Arc::new(Mutex::new(Cache::new(MemoryLevel::L1Cache, ReplacementPolicy::LRU))),
+            l2_cache: Arc::new(Mutex::new(Cache::new(MemoryLevel::L2Cache, ReplacementPolicy::LRU))),
+            l3_cache: Arc::new(Mutex::new(Cache::new(MemoryLevel::L3Cache, ReplacementPolicy::LRU))),
+            main_memory: Arc::new(RwLock::new(Cache::new(MemoryLevel::MainMemory, ReplacementPolicy::LFU))),
+            ssd_storage: Arc::new(RwLock::new(Cache::new(MemoryLevel::SSD, ReplacementPolicy::LFU))),
+            hdd_storage: Arc::new(RwLock::new(Cache::new(MemoryLevel::HDD, ReplacementPolicy::FIFO))),
+            network_storage: Arc::new(RwLock::new(HashMap::new())),
+            archival_storage: Arc::new(RwLock::new(HashMap::new())),
+            hot_tier: None,
+            warm_tier: None,
+            cold_tier: None,
+            access_stats: Arc::new(Mutex::new(AccessStats::default())),
+            ai_optimizer: Arc::new(AIModelOptimizer::new()),
+            tier_access_stats: RwLock::new(HashMap::new()),
+        }
+    }
+
+    pub fn with_tiers(
+        hot_tier: Box<dyn TierStorage>,
+        warm_tier: Box<dyn TierStorage>,
+        cold_tier: Box<dyn TierStorage>,
+    ) -> Self {
+        let mut hierarchy = Self::new();
+        hierarchy.hot_tier = Some(hot_tier);
+        hierarchy.warm_tier = Some(warm_tier);
+        hierarchy.cold_tier = Some(cold_tier);
+        hierarchy
+    }
+
+    pub async fn get_tiered(&self, key: &str) -> Result<Option<DataItem>, Box<dyn std::error::Error>> {
+        if let Some(ref hot_tier) = self.hot_tier {
+            if let Some(item) = hot_tier.get(key).await? {
+                self.update_tier_access_stats(key).await;
+                return Ok(Some(item));
+            }
+        }
+
+        if let Some(ref warm_tier) = self.warm_tier {
+            if let Some(item) = warm_tier.get(key).await? {
+                self.update_tier_access_stats(key).await;
+                if self.should_promote_tier(key).await {
+                    if let Some(ref hot_tier) = self.hot_tier {
+                        let mut promoted_item = item.clone();
+                        promoted_item.tier = DataTier::Hot;
+                        let _ = hot_tier.put(promoted_item).await;
+                    }
+                }
+                return Ok(Some(item));
+            }
+        }
+
+        if let Some(ref cold_tier) = self.cold_tier {
+            if let Some(item) = cold_tier.get(key).await? {
+                self.update_tier_access_stats(key).await;
+                return Ok(Some(item));
+            }
+        }
+
+        Ok(None)
+    }
+
+    async fn update_tier_access_stats(&self, key: &str) {
+        let mut stats = self.tier_access_stats.write().await;
+        let entry = stats.entry(key.to_string()).or_insert(TierAccessStats {
+            access_count: 0,
+            last_access: Instant::now(),
+            promotion_score: 0.0,
+        });
+        entry.access_count += 1;
+        entry.last_access = Instant::now();
+        entry.promotion_score = self.calculate_tier_promotion_score(entry);
+    }
+
+    fn calculate_tier_promotion_score(&self, stats: &TierAccessStats) -> f64 {
+        let recency_factor = 1.0 / (stats.last_access.elapsed().as_secs() as f64 + 1.0);
+        let frequency_factor = (stats.access_count as f64).ln();
+        recency_factor * frequency_factor
+    }
+
+    async fn should_promote_tier(&self, key: &str) -> bool {
+        let stats = self.tier_access_stats.read().await;
+        if let Some(stat) = stats.get(key) {
+            stat.promotion_score > 5.0 // Configurable threshold
+        } else {
+            false
+        }
+    }
+
+    pub async fn get_stats(&self) -> AccessStats {
+        self.access_stats.lock().await.clone()
+    }
+
+    pub async fn get_performance_report(&self) -> String {
+        let stats = self.get_stats().await;
+        let hit_rate = if stats.total_accesses > 0 {
+            stats.cache_hits as f64 / stats.total_accesses as f64 * 100.0
+        } else {
+            0.0
+        };
+
+        let avg_latency = if stats.total_accesses > 0 {
+            stats.total_latency.as_nanos() as f64 / stats.total_accesses as f64
+        } else {
+            0.0
+        };
+
+        let ai_report = self.ai_optimizer.generate_report().await;
+        
+        format!(
+            "Enhanced Memory Hierarchy Performance Report\n\
+             ==========================================\n\
+             Total Accesses: {}\n\
+             Cache Hit Rate: {:.2}%\n\
+             Average Latency: {:.2} ns\n\
+             \n\
+             Access Distribution:\n\
+             - Register: {}\n\
+             - L1 Cache: {}\n\
+             - L2 Cache: {}\n\
+             - L3 Cache: {}\n\
+             - Main Memory: {}\n\
+             - SSD Storage: {}\n\
+             - HDD Storage: {}\n\
+             - Network Storage: {}\n\
+             - Archival Storage: {}\n\
+             \n\
+             {}\n",
+            stats.total_accesses,
+            hit_rate,
+            avg_latency,
+            stats.level_accesses.get(&MemoryLevel::Register).unwrap_or(&0),
+            stats.level_accesses.get(&MemoryLevel::L1Cache).unwrap_or(&0),
+            stats.level_accesses.get(&MemoryLevel::L2Cache).unwrap_or(&0),
+            stats.level_accesses.get(&MemoryLevel::L3Cache).unwrap_or(&0),
+            stats.level_accesses.get(&MemoryLevel::MainMemory).unwrap_or(&0),
+            stats.level_accesses.get(&MemoryLevel::SSD).unwrap_or(&0),
+            stats.level_accesses.get(&MemoryLevel::HDD).unwrap_or(&0),
+            stats.level_accesses.get(&MemoryLevel::NetworkStorage).unwrap_or(&0),
+            stats.level_accesses.get(&MemoryLevel::ArchivalStorage).unwrap_or(&0),
+            ai_report
+        )
+    }
+
+    pub fn ai_optimizer(&self) -> Arc<AIModelOptimizer> {
+        self.ai_optimizer.clone()
+    }
+
+    pub async fn register_braided_model(&self, model: BraidedBrownianModel) {
+        self.ai_optimizer.register_braided_model(model).await;
+    }
+
+    pub async fn generate_braided_paths(&self, num_paths: usize, time_steps: usize) -> Vec<Vec<f64>> {
+        self.ai_optimizer.generate_braided_paths(num_paths, time_steps).await
+    }
+
+    pub async fn calculate_risk_moments(&self, paths: &[Vec<f64>]) -> (f64, f64, f64, f64) {
+        self.ai_optimizer.calculate_risk_moments(paths).await
+    }
+
+    pub async fn create_causal_agent(&self) -> CausalDataAgent {
+        CausalDataAgent::new()
+    }
+
+    pub async fn create_quantum_causal_agent(&self) -> CausalDataAgent {
+        let _quantum_engine = QuantumAuditEngine::new(
+            QuantumMode::Simulation,
+            "quantum_causal_analysis".to_string(),
+        );
+        
+        CausalDataAgent::new()
+    }
+}
+
+pub struct RedisHotTier {
+    connection_pool: redis::aio::ConnectionManager,
+}
+
+impl RedisHotTier {
+    pub async fn new(redis_url: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        let client = redis::Client::open(redis_url)?;
+        let connection_pool = redis::aio::ConnectionManager::new(client).await?;
+        Ok(Self { connection_pool })
+    }
+}
+
+#[async_trait]
+impl TierStorage for RedisHotTier {
+    async fn get(&self, key: &str) -> Result<Option<DataItem>, Box<dyn std::error::Error>> {
+        use redis::AsyncCommands;
+        let mut conn = self.connection_pool.clone();
+        
+        let value: Option<Vec<u8>> = conn.get(key).await?;
+        
+        if let Some(data) = value {
+            Ok(Some(DataItem {
+                key: key.to_string(),
+                value: data,
+                timestamp: Instant::now(),
+                access_count: 1,
+                tier: DataTier::Hot,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn put(&self, item: DataItem) -> Result<(), Box<dyn std::error::Error>> {
+        use redis::AsyncCommands;
+        let mut conn = self.connection_pool.clone();
+        
+        conn.set_ex(&item.key, &item.value, 3600).await?; // 1 hour TTL
+        Ok(())
+    }
+
+    async fn delete(&self, key: &str) -> Result<(), Box<dyn std::error::Error>> {
+        use redis::AsyncCommands;
+        let mut conn = self.connection_pool.clone();
+        
+        conn.del(key).await?;
+        Ok(())
+    }
+
+    fn tier(&self) -> DataTier {
+        DataTier::Hot
+    }
+
+    fn target_latency(&self) -> Duration {
+        Duration::from_nanos(10) // <10ns target
+    }
+}
+
+pub struct PostgresWarmTier {
+    pool: sqlx::PgPool,
+}
+
+impl PostgresWarmTier {
+    pub async fn new(database_url: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        let pool = sqlx::PgPool::connect(database_url).await?;
+        
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS warm_tier_data (
+                key VARCHAR PRIMARY KEY,
+                value BYTEA NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                access_count BIGINT DEFAULT 1
+            )
+            "#
+        )
+        .execute(&pool)
+        .await?;
+        
+        Ok(Self { pool })
+    }
+}
+
+#[async_trait]
+impl TierStorage for PostgresWarmTier {
+    async fn get(&self, key: &str) -> Result<Option<DataItem>, Box<dyn std::error::Error>> {
+        let row = sqlx::query!(
+            "SELECT value, access_count FROM warm_tier_data WHERE key = $1",
+            key
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+        
+        if let Some(record) = row {
+            sqlx::query!(
+                "UPDATE warm_tier_data SET access_count = access_count + 1 WHERE key = $1",
+                key
+            )
+            .execute(&self.pool)
+            .await?;
+            
+            Ok(Some(DataItem {
+                key: key.to_string(),
+                value: record.value,
+                timestamp: Instant::now(),
+                access_count: record.access_count as u64 + 1,
+                tier: DataTier::Warm,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn put(&self, item: DataItem) -> Result<(), Box<dyn std::error::Error>> {
+        sqlx::query!(
+            r#"
+            INSERT INTO warm_tier_data (key, value, access_count)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (key) DO UPDATE SET
+                value = EXCLUDED.value,
+                access_count = EXCLUDED.access_count
+            "#,
+            item.key,
+            item.value,
+            item.access_count as i64
+        )
+        .execute(&self.pool)
+        .await?;
+        
+        Ok(())
+    }
+
+    async fn delete(&self, key: &str) -> Result<(), Box<dyn std::error::Error>> {
+        sqlx::query!("DELETE FROM warm_tier_data WHERE key = $1", key)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    fn tier(&self) -> DataTier {
+        DataTier::Warm
+    }
+
+    fn target_latency(&self) -> Duration {
+        Duration::from_micros(100) // 100μs-10ms range
+    }
+}
+
+pub struct TimescaleColdTier {
+    pool: sqlx::PgPool,
+}
+
+impl TimescaleColdTier {
+    pub async fn new(database_url: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        let pool = sqlx::PgPool::connect(database_url).await?;
+        
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS cold_tier_data (
+                time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                key VARCHAR NOT NULL,
+                value BYTEA NOT NULL,
+                access_count BIGINT DEFAULT 1
+            )
+            "#
+        )
+        .execute(&pool)
+        .await?;
+        
+        let _ = sqlx::query(
+            "SELECT create_hypertable('cold_tier_data', 'time', if_not_exists => TRUE)"
+        )
+        .execute(&pool)
+        .await;
+        
+        Ok(Self { pool })
+    }
+}
+
+#[async_trait]
+impl TierStorage for TimescaleColdTier {
+    async fn get(&self, key: &str) -> Result<Option<DataItem>, Box<dyn std::error::Error>> {
+        let row = sqlx::query!(
+            "SELECT value, access_count FROM cold_tier_data WHERE key = $1 ORDER BY time DESC LIMIT 1",
+            key
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+        
+        if let Some(record) = row {
+            Ok(Some(DataItem {
+                key: key.to_string(),
+                value: record.value,
+                timestamp: Instant::now(),
+                access_count: record.access_count as u64,
+                tier: DataTier::Cold,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn put(&self, item: DataItem) -> Result<(), Box<dyn std::error::Error>> {
+        sqlx::query!(
+            "INSERT INTO cold_tier_data (key, value, access_count) VALUES ($1, $2, $3)",
+            item.key,
+            item.value,
+            item.access_count as i64
+        )
+        .execute(&self.pool)
+        .await?;
+        
+        Ok(())
+    }
+
+    async fn delete(&self, key: &str) -> Result<(), Box<dyn std::error::Error>> {
+        sqlx::query!("DELETE FROM cold_tier_data WHERE key = $1", key)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    fn tier(&self) -> DataTier {
+        DataTier::Cold
+    }
+
+    fn target_latency(&self) -> Duration {
+        Duration::from_millis(10) // >10ms acceptable
+    }
+}
+
+pub type LegacyMemoryHierarchy = MemoryHierarchy;
+pub type MemoryHierarchy = EnhancedMemoryHierarchy;
