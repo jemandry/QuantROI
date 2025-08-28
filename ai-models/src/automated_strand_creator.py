@@ -18,10 +18,26 @@ try:
     from .nanosecond_timing import get_ns_timestamp, ClockType, NanosecondTimer
 except ImportError:
     from nanosecond_timing import get_ns_timestamp, ClockType, NanosecondTimer
-from .hardware_timestamping import HardwareTimestampSocket, NetworkTimestamp
-from .braided_cord_data_engine import BraidedCordDataEngine, CordPlacementRule
-from .news_ingestion import NewsIngestionEngine, NewsItem
-from .news_sentiment_analyzer import NewsSentimentAnalyzer
+
+try:
+    from .hardware_timestamping import HardwareTimestampSocket, NetworkTimestamp
+except ImportError:
+    from hardware_timestamping import HardwareTimestampSocket, NetworkTimestamp
+
+try:
+    from .braided_cord_data_engine import BraidedCordDataEngine, CordPlacementRule
+except ImportError:
+    from braided_cord_data_engine import BraidedCordDataEngine, CordPlacementRule
+
+try:
+    from .news_ingestion import NewsIngestionEngine, NewsItem
+except ImportError:
+    from news_ingestion import NewsIngestionEngine, NewsItem
+
+try:
+    from .news_sentiment_analyzer import NewsSentimentAnalyzer
+except ImportError:
+    from news_sentiment_analyzer import NewsSentimentAnalyzer
 from .stream_based_audit_logger import StreamBasedAuditLogger
 from .comprehensive_audit_integration import ComprehensiveAuditIntegration
 
