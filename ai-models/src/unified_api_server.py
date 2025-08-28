@@ -9,7 +9,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from typing import Dict, List, Any, Optional
+from dataclasses import dataclass
 import asyncio
+import numpy as np
 import logging
 import time
 from datetime import datetime
@@ -63,7 +65,28 @@ class EventUploadResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     timestamp: str
-    components: Dict[str, Any]
+@dataclass
+class SimulationStoreRequest:
+    symbol: str
+    simulation_type: str
+    simulation_result: Dict[str, Any]
+    news_context: str = ""
+    market_indicators: Dict[str, float] = None
+
+@dataclass
+class AnalogyRequest:
+    current_features: Dict[str, float]
+    perturbations: Dict[str, float] = None
+    symbol: str = None
+
+@dataclass
+class DelayForecastRequest:
+    symbol: str
+    model_type: str = "SDSM"
+    forecast_horizon: int = 10
+    max_tau: int = 50
+    returns_data: Optional[List[float]] = None
+    price_data: Optional[List[float]] = None
 
 orchestrator = None
 monitor = None
@@ -542,6 +565,92 @@ async def get_provider_status():
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Provider status check failed: {str(e)}")
+
+@app.post("/api/v2/simulations/store")
+async def store_simulation_result(request: SimulationStoreRequest):
+    """Store simulation result with contextual data using binary format"""
+    if not orchestrator:
+        raise HTTPException(status_code=503, detail="Orchestrator not initialized")
+    
+    try:
+        from .simulation_storage_engine import SimulationStorageEngine
+        storage_engine = SimulationStorageEngine(orchestrator.config)
+        await storage_engine.initialize()
+        
+        strand = await storage_engine.store_simulation_result(
+            symbol=request.symbol,
+            simulation_type=request.simulation_type,
+            simulation_result=request.simulation_result,
+            news_context=request.news_context,
+            market_indicators=request.market_indicators or {}
+        )
+        
+        return {
+            "simulation_id": strand.simulation_id,
+            "strand_id": strand.strand_id,
+            "storage_tier": strand.storage_tier,
+            "binary_format": True,
+            "status": "stored",
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Storage failed: {str(e)}")
+
+@app.post("/api/v2/simulations/analogy")
+async def apply_forward_analogy(request: AnalogyRequest):
+    """Apply forward analogy for trading prediction"""
+    if not orchestrator:
+        raise HTTPException(status_code=503, detail="Orchestrator not initialized")
+    
+    try:
+        from .simulation_storage_engine import SimulationStorageEngine
+        storage_engine = SimulationStorageEngine(orchestrator.config)
+        await storage_engine.initialize()
+        
+        analogy_result = await storage_engine.apply_forward_analogy(
+            current_features=request.current_features,
+            perturbations=request.perturbations,
+            symbol=request.symbol
+        )
+        
+        return {
+            "base_prediction": analogy_result.base_prediction,
+            "perturbed_prediction": analogy_result.perturbed_prediction,
+            "confidence": analogy_result.confidence,
+            "matches_count": len(analogy_result.matches),
+            "perturbation_impact": analogy_result.perturbation_impact,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Analogy failed: {str(e)}")
+
+@app.post("/api/v2/forecasting/delay")
+async def delay_forecast(request: DelayForecastRequest):
+    """Generate delay-based forecasts using DSM/SDSM models"""
+    if not orchestrator:
+        raise HTTPException(status_code=503, detail="Orchestrator not initialized")
+    
+    try:
+        from .delay_forecast import DelayForecastAPI
+        delay_api = DelayForecastAPI(orchestrator.config)
+        await delay_api.initialize()
+        
+        result = await delay_api.forecast_with_delay_model(
+            symbol=request.symbol,
+            price_data=request.price_data,
+            forecast_horizon=request.forecast_horizon,
+            model_type=request.model_type,
+            volume_data=request.volume_data,
+            news_context=request.news_context
+        )
+        
+        return result
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Delay forecast failed: {str(e)}")
+
 
 if __name__ == "__main__":
     import uvicorn

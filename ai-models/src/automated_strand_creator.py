@@ -65,6 +65,28 @@ class EventStrand(MarketStrand):
     macro_lessons: List[Dict[str, Any]] = field(default_factory=list)
     micro_lessons: List[Dict[str, Any]] = field(default_factory=list)
 
+@dataclass
+class SimulationResultStrand(MarketStrand):
+    """Strand for storing simulation results with contextual market data using binary format"""
+    simulation_id: str = ""
+    simulation_type: str = ""
+    simulation_result: Dict[str, Any] = field(default_factory=dict)
+    news_context: str = ""
+    market_impact: float = 0.0
+    sentiment_score: float = 0.0
+    vix_level: float = 20.0
+    rsi_value: float = 50.0
+    momentum_indicator: float = 0.0
+    other_indicators: Dict[str, Any] = field(default_factory=dict)
+    event_chain_id: Optional[str] = None
+    forward_analogy_features: List[float] = field(default_factory=list)
+    base_scenario_id: Optional[str] = None
+    perturbation_deltas: Dict[str, float] = field(default_factory=dict)
+    analogy_confidence: float = 0.0
+    storage_tier: str = "hot_path"
+
+
+
 class AutomatedStrandCreator:
     """
     Robot-like system that automatically creates strands from nanosecond market data
