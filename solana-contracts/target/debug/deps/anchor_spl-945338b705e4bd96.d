@@ -1,0 +1,10 @@
+/home/ubuntu/repos/quantroi/solana-contracts/target/debug/deps/libanchor_spl-945338b705e4bd96.rmeta: /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/anchor-spl-0.28.0/src/lib.rs /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/anchor-spl-0.28.0/src/associated_token.rs /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/anchor-spl-0.28.0/src/mint.rs /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/anchor-spl-0.28.0/src/token.rs /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/anchor-spl-0.28.0/src/token_2022.rs /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/anchor-spl-0.28.0/src/token_interface.rs
+
+/home/ubuntu/repos/quantroi/solana-contracts/target/debug/deps/anchor_spl-945338b705e4bd96.d: /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/anchor-spl-0.28.0/src/lib.rs /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/anchor-spl-0.28.0/src/associated_token.rs /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/anchor-spl-0.28.0/src/mint.rs /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/anchor-spl-0.28.0/src/token.rs /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/anchor-spl-0.28.0/src/token_2022.rs /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/anchor-spl-0.28.0/src/token_interface.rs
+
+/home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/anchor-spl-0.28.0/src/lib.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/anchor-spl-0.28.0/src/associated_token.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/anchor-spl-0.28.0/src/mint.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/anchor-spl-0.28.0/src/token.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/anchor-spl-0.28.0/src/token_2022.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/anchor-spl-0.28.0/src/token_interface.rs:
