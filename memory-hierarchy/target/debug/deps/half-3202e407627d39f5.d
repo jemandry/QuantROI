@@ -1,0 +1,12 @@
+/home/ubuntu/repos/quantroi/memory-hierarchy/target/debug/deps/libhalf-3202e407627d39f5.rmeta: /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/half-2.6.0/src/lib.rs /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/half-2.6.0/src/bfloat.rs /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/half-2.6.0/src/bfloat/convert.rs /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/half-2.6.0/src/binary16.rs /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/half-2.6.0/src/binary16/arch.rs /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/half-2.6.0/src/binary16/arch/x86.rs /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/half-2.6.0/src/leading_zeros.rs /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/half-2.6.0/src/slice.rs
+
+/home/ubuntu/repos/quantroi/memory-hierarchy/target/debug/deps/half-3202e407627d39f5.d: /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/half-2.6.0/src/lib.rs /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/half-2.6.0/src/bfloat.rs /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/half-2.6.0/src/bfloat/convert.rs /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/half-2.6.0/src/binary16.rs /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/half-2.6.0/src/binary16/arch.rs /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/half-2.6.0/src/binary16/arch/x86.rs /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/half-2.6.0/src/leading_zeros.rs /home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/half-2.6.0/src/slice.rs
+
+/home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/half-2.6.0/src/lib.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/half-2.6.0/src/bfloat.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/half-2.6.0/src/bfloat/convert.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/half-2.6.0/src/binary16.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/half-2.6.0/src/binary16/arch.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/half-2.6.0/src/binary16/arch/x86.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/half-2.6.0/src/leading_zeros.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-6f17d22bba15001f/half-2.6.0/src/slice.rs:

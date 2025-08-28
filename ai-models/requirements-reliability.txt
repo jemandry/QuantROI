@@ -1,0 +1,8 @@
+# API Reliability Enhancement Dependencies
+tenacity>=8.2.0          # Retry mechanisms with exponential backoff
+ratelimit>=2.2.1         # Rate limiting for API calls
+structlog>=23.1.0        # Structured logging for monitoring
+opentelemetry-api>=1.20.0  # Observability and tracing
+aiohttp>=3.8.0           # Async HTTP client for API calls
+prometheus-client>=0.17.0  # Metrics collection
+sentry-sdk>=1.32.0       # Error tracking and alerting
