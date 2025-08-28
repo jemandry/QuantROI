@@ -876,26 +876,26 @@ impl PostgresWarmTier {
 #[async_trait]
 impl TierStorage for PostgresWarmTier {
     async fn get(&self, key: &str) -> Result<Option<DataItem>, Box<dyn std::error::Error>> {
-        let row = sqlx::query!(
-            "SELECT value, access_count FROM warm_tier_data WHERE key = $1",
-            key
+        let row = sqlx::query_as::<_, (Vec<u8>, i64)>(
+            "SELECT value, access_count FROM warm_tier_data WHERE key = $1"
         )
+        .bind(key)
         .fetch_optional(&self.pool)
         .await?;
         
-        if let Some(record) = row {
-            sqlx::query!(
-                "UPDATE warm_tier_data SET access_count = access_count + 1 WHERE key = $1",
-                key
+        if let Some((value, access_count)) = row {
+            sqlx::query(
+                "UPDATE warm_tier_data SET access_count = access_count + 1 WHERE key = $1"
             )
+            .bind(key)
             .execute(&self.pool)
             .await?;
             
             Ok(Some(DataItem {
                 key: key.to_string(),
-                value: record.value,
+                value,
                 timestamp: SystemTime::now(),
-                access_count: record.access_count as u64 + 1,
+                access_count: access_count as u64 + 1,
                 tier: DataTier::Warm,
             }))
         } else {
@@ -904,18 +904,18 @@ impl TierStorage for PostgresWarmTier {
     }
 
     async fn put(&self, item: DataItem) -> Result<(), Box<dyn std::error::Error>> {
-        sqlx::query!(
+        sqlx::query(
             r#"
             INSERT INTO warm_tier_data (key, value, access_count)
             VALUES ($1, $2, $3)
             ON CONFLICT (key) DO UPDATE SET
                 value = EXCLUDED.value,
                 access_count = EXCLUDED.access_count
-            "#,
-            item.key,
-            item.value,
-            item.access_count as i64
+            "#
         )
+        .bind(item.key)
+        .bind(item.value)
+        .bind(item.access_count as i64)
         .execute(&self.pool)
         .await?;
         
@@ -923,7 +923,8 @@ impl TierStorage for PostgresWarmTier {
     }
 
     async fn delete(&self, key: &str) -> Result<(), Box<dyn std::error::Error>> {
-        sqlx::query!("DELETE FROM warm_tier_data WHERE key = $1", key)
+        sqlx::query("DELETE FROM warm_tier_data WHERE key = $1")
+            .bind(key)
             .execute(&self.pool)
             .await?;
         Ok(())
@@ -972,19 +973,19 @@ impl TimescaleColdTier {
 #[async_trait]
 impl TierStorage for TimescaleColdTier {
     async fn get(&self, key: &str) -> Result<Option<DataItem>, Box<dyn std::error::Error>> {
-        let row = sqlx::query!(
-            "SELECT value, access_count FROM cold_tier_data WHERE key = $1 ORDER BY time DESC LIMIT 1",
-            key
+        let row = sqlx::query_as::<_, (Vec<u8>, i64)>(
+            "SELECT value, access_count FROM cold_tier_data WHERE key = $1 ORDER BY time DESC LIMIT 1"
         )
+        .bind(key)
         .fetch_optional(&self.pool)
         .await?;
         
-        if let Some(record) = row {
+        if let Some((value, access_count)) = row {
             Ok(Some(DataItem {
                 key: key.to_string(),
-                value: record.value,
+                value,
                 timestamp: SystemTime::now(),
-                access_count: record.access_count as u64,
+                access_count: access_count as u64,
                 tier: DataTier::Cold,
             }))
         } else {
@@ -993,12 +994,12 @@ impl TierStorage for TimescaleColdTier {
     }
 
     async fn put(&self, item: DataItem) -> Result<(), Box<dyn std::error::Error>> {
-        sqlx::query!(
-            "INSERT INTO cold_tier_data (key, value, access_count) VALUES ($1, $2, $3)",
-            item.key,
-            item.value,
-            item.access_count as i64
+        sqlx::query(
+            "INSERT INTO cold_tier_data (key, value, access_count) VALUES ($1, $2, $3)"
         )
+        .bind(item.key)
+        .bind(item.value)
+        .bind(item.access_count as i64)
         .execute(&self.pool)
         .await?;
         
@@ -1006,7 +1007,8 @@ impl TierStorage for TimescaleColdTier {
     }
 
     async fn delete(&self, key: &str) -> Result<(), Box<dyn std::error::Error>> {
-        sqlx::query!("DELETE FROM cold_tier_data WHERE key = $1", key)
+        sqlx::query("DELETE FROM cold_tier_data WHERE key = $1")
+            .bind(key)
             .execute(&self.pool)
             .await?;
         Ok(())
