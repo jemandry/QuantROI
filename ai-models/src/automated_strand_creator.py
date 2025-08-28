@@ -14,7 +14,10 @@ import numpy as np
 import hashlib
 import json
 
-from .nanosecond_timing import get_ns_timestamp, ClockType, NanosecondTimer
+try:
+    from .nanosecond_timing import get_ns_timestamp, ClockType, NanosecondTimer
+except ImportError:
+    from nanosecond_timing import get_ns_timestamp, ClockType, NanosecondTimer
 from .hardware_timestamping import HardwareTimestampSocket, NetworkTimestamp
 from .braided_cord_data_engine import BraidedCordDataEngine, CordPlacementRule
 from .news_ingestion import NewsIngestionEngine, NewsItem
