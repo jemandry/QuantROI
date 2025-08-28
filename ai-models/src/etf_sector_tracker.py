@@ -3,9 +3,28 @@ import numpy as np
 from typing import Dict, List, Any, Optional, Tuple
 import asyncio
 import time
+import logging
 from datetime import datetime, timedelta
+from dataclasses import dataclass
 import yfinance as yf
-from simulation_engine_bridge import SimulationEngineBridge, SimulationRequest
+
+try:
+    from simulation_engine_bridge import SimulationEngineBridge, SimulationRequest, BrownianMotionParams
+    from enhanced_confidence_engine import EnhancedConfidenceEngine
+except ImportError:
+    from .simulation_engine_bridge import SimulationEngineBridge, BrownianMotionParams
+    from .enhanced_confidence_engine import EnhancedConfidenceEngine
+
+@dataclass
+class ETFSectorData:
+    symbol: str
+    sector: str
+    performance: float
+    volatility: float
+    volume_change: float
+    causal_drivers: List[str]
+    confidence_score: float
+    brownian_path: Optional[List[float]] = None
 
 class ETFSectorTracker:
     """

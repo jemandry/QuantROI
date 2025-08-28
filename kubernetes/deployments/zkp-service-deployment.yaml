@@ -1,0 +1,155 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zkp-service
+  namespace: quantroi
+  labels:
+    app: zkp-service
+    component: dual-protocol
+    version: v1.0.0
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: zkp-service
+      component: dual-protocol
+  template:
+    metadata:
+      labels:
+        app: zkp-service
+        component: dual-protocol
+        version: v1.0.0
+    spec:
+      containers:
+      - name: zkp-router
+        image: quantroi/zkp-service:latest
+        ports:
+        - containerPort: 8002
+          name: grpc
+        - containerPort: 8003
+          name: http
+        - containerPort: 9092
+          name: metrics
+        env:
+        - name: ZKP_ENVIRONMENT
+          value: "production"
+        - name: MINA_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              name: zkp-secrets
+              key: mina-endpoint
+        - name: SOLANA_RPC_URL
+          valueFrom:
+            secretKeyRef:
+              name: zkp-secrets
+              key: solana-rpc-url
+        - name: PROOF_CACHE_SIZE
+          value: "1000"
+        - name: RECURSIVE_DEPTH_LIMIT
+          value: "10"
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8003
+          initialDelaySeconds: 30
+          periodSeconds: 15
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8003
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        volumeMounts:
+        - name: proof-cache
+          mountPath: /app/cache
+        - name: circuit-keys
+          mountPath: /app/circuits
+          readOnly: true
+      volumes:
+      - name: proof-cache
+        emptyDir:
+          sizeLimit: 10Gi
+      - name: circuit-keys
+        secret:
+          secretName: zkp-circuit-keys
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zkp-service
+  namespace: quantroi
+  labels:
+    app: zkp-service
+    component: dual-protocol
+spec:
+  selector:
+    app: zkp-service
+    component: dual-protocol
+  ports:
+  - name: grpc
+    port: 8002
+    targetPort: 8002
+  - name: http
+    port: 8003
+    targetPort: 8003
+  - name: metrics
+    port: 9092
+    targetPort: 9092
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: zkp-service-hpa
+  namespace: quantroi
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: zkp-service
+  minReplicas: 3
+  maxReplicas: 15
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 75
+  - type: Pods
+    pods:
+      metric:
+        name: proof_generation_time_ms
+      target:
+        type: AverageValue
+        averageValue: "150"
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 30
+      - type: Pods
+        value: 3
+        periodSeconds: 30
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 25
+        periodSeconds: 60

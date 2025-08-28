@@ -12,9 +12,14 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 import logging
 from datetime import datetime, timedelta
-import matplotlib.pyplot as plt
-import seaborn as sns
-from scipy import stats
+try:
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    from scipy import stats
+    VISUALIZATION_LIBS_AVAILABLE = True
+except ImportError:
+    VISUALIZATION_LIBS_AVAILABLE = False
+    logging.warning("Matplotlib/Seaborn/Scipy not available - visualization features disabled")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

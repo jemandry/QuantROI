@@ -17,6 +17,13 @@ from datetime import datetime
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
+try:
+    from .mev_trade_execution_router import get_mev_trade_router, TradeExecutionRequest
+    MEV_ROUTER_AVAILABLE = True
+except ImportError:
+    MEV_ROUTER_AVAILABLE = False
+    logging.warning("MEV trade router not available for Kafka consumer")
+
 from .enhanced_causal_trading_model import EnhancedCausalTradingModel
 from real_time_trading_engine import RealTimeTradingEngine
 from .risk_management import PortfolioRiskManager
@@ -432,6 +439,50 @@ class KafkaAIConsumer:
                 logger.debug(f"Recorded option trade outcome: {trade_id}, P&L: {profit_loss:.4f}")
         except Exception as e:
             logger.error(f"Error recording option trade outcome: {e}")
+    
+    async def execute_ai_trade_with_mev(self, trade_signal: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute AI-generated trade signal with MEV protection"""
+        try:
+            if not MEV_ROUTER_AVAILABLE:
+                logger.warning("🚨 Executing AI trade without MEV protection")
+                return {"success": False, "error": "MEV protection not available"}
+            
+            router = get_mev_trade_router()
+            
+            trade_request = TradeExecutionRequest(
+                symbol=trade_signal.get('symbol', 'UNKNOWN'),
+                quantity=float(trade_signal.get('quantity', 100)),
+                action=trade_signal.get('action', 'hold'),
+                user_id=trade_signal.get('user_id', 'ai_consumer'),
+                strategy_id=trade_signal.get('strategy', 'ai_generated'),
+                urgency_ms=trade_signal.get('urgency_ms', 2000),
+                trade_value_usd=float(trade_signal.get('trade_value_usd', 10000)),
+                confidence=trade_signal.get('confidence', 0.75),
+                source_engine="KafkaAIConsumer",
+                causal_analysis=trade_signal.get('causal_analysis'),
+                compliance_data=trade_signal.get('compliance_data')
+            )
+            
+            execution_result = await router.execute_trade(trade_request)
+            
+            if execution_result.success:
+                logger.info(f"✅ AI trade executed with MEV protection: {execution_result.order_id}")
+                self.stats['trades_executed'] += 1
+            else:
+                logger.error(f"❌ AI trade execution failed: {execution_result.error_message}")
+            
+            return {
+                'success': execution_result.success,
+                'order_id': execution_result.order_id,
+                'mev_protected': execution_result.mev_protected,
+                'execution_time_ms': execution_result.execution_time_ms,
+                'mev_metrics': execution_result.mev_metrics,
+                'error': execution_result.error_message
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ AI trade execution with MEV failed: {e}")
+            return {'success': False, 'error': str(e)}
 
 async def main():
     """Main entry point for Kafka AI consumer"""

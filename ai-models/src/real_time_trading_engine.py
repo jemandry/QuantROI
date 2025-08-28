@@ -6,6 +6,13 @@ from queue import Queue
 import json
 
 try:
+    from .mev_trade_execution_router import get_mev_trade_router, TradeExecutionRequest
+    MEV_ROUTER_AVAILABLE = True
+except ImportError:
+    MEV_ROUTER_AVAILABLE = False
+    logging.warning("MEV trade router not available")
+
+try:
     from prometheus_client import Counter, Histogram, Gauge, start_http_server
     PROMETHEUS_AVAILABLE = True
 except ImportError:
@@ -13,9 +20,13 @@ except ImportError:
     logging.warning("Prometheus client not available - monitoring will be disabled")
 
 try:
-    from multi_timescale_decision_engine import MultiTimescaleDecisionEngine
-except ImportError:
     from .multi_timescale_decision_engine import MultiTimescaleDecisionEngine
+except ImportError:
+    try:
+        from multi_timescale_decision_engine import MultiTimescaleDecisionEngine
+    except ImportError:
+        MultiTimescaleDecisionEngine = None
+        logging.warning("MultiTimescaleDecisionEngine not available - using fallback")
 
 try:
     from enhanced_causal_trading_model import QoSRouter, HierarchicalEventProcessor, QoSRequirements, MarketData
@@ -49,7 +60,7 @@ class RealTimeTradingEngine:
     
     def __init__(self, kafka_servers: List[str] = ['localhost:9092']):
         self.event_queue = Queue()
-        self.decision_engine = MultiTimescaleDecisionEngine()
+        self.decision_engine = MultiTimescaleDecisionEngine() if MultiTimescaleDecisionEngine else None
         
         if ENHANCED_COMPONENTS_AVAILABLE:
             try:
@@ -219,9 +230,49 @@ class RealTimeTradingEngine:
         """Handle SIGNAL events (minute-level strategy adjustments)"""
         return decision_result['result']
     
-    async def handle_order(self, event: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle ORDER events (trade execution)"""
-        return {"status": "order_processed", "order_id": event.get('order_id')}
+    async def handle_order(self, event: Dict[str, Any], decision_result: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Handle ORDER events (trade execution with MEV protection)"""
+        try:
+            if MEV_ROUTER_AVAILABLE:
+                router = get_mev_trade_router()
+                
+                symbol = event.get('symbol', 'UNKNOWN')
+                action = event.get('action', 'hold')
+                quantity = event.get('quantity', 100)
+                
+                if decision_result and 'result' in decision_result:
+                    result_data = decision_result['result']
+                    if isinstance(result_data, dict):
+                        action = result_data.get('action', action)
+                        quantity = result_data.get('quantity', quantity)
+                        symbol = result_data.get('symbol', symbol)
+                
+                trade_request = TradeExecutionRequest(
+                    symbol=symbol,
+                    quantity=float(quantity),
+                    action=action,
+                    user_id=event.get('user_id', 'real_time_engine'),
+                    strategy_id=event.get('strategy_id', 'real_time_trading'),
+                    urgency_ms=1000,
+                    trade_value_usd=float(quantity) * 100.0,
+                    source_engine="RealTimeTradingEngine"
+                )
+                
+                execution_result = await router.execute_trade(trade_request)
+                
+                return {
+                    "status": "order_executed" if execution_result.success else "order_failed",
+                    "order_id": execution_result.order_id,
+                    "mev_protected": execution_result.mev_protected,
+                    "execution_time_ms": execution_result.execution_time_ms,
+                    "error": execution_result.error_message
+                }
+            else:
+                return {"status": "order_processed", "order_id": event.get('order_id')}
+                
+        except Exception as e:
+            self.logger.error(f"❌ Order execution failed: {e}")
+            return {"status": "order_failed", "error": str(e)}
     
     async def handle_fill(self, event: Dict[str, Any]) -> Dict[str, Any]:
         """Handle FILL events (executed trades)"""

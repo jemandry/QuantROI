@@ -1,0 +1,166 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: causal-ai-service
+  namespace: quantroi
+  labels:
+    app: causal-ai
+    component: inference-engine
+    version: v1.0.0
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: causal-ai
+      component: inference-engine
+  template:
+    metadata:
+      labels:
+        app: causal-ai
+        component: inference-engine
+        version: v1.0.0
+    spec:
+      containers:
+      - name: causal-ai
+        image: quantroi/causal-ai:latest
+        ports:
+        - containerPort: 8000
+          name: grpc
+        - containerPort: 8001
+          name: http
+        - containerPort: 9091
+          name: metrics
+        env:
+        - name: PYTHONPATH
+          value: "/app/ai-models/src"
+        - name: CUDA_VISIBLE_DEVICES
+          value: "0"
+        - name: NVFP4_OPTIMIZATION
+          value: "true"
+        - name: CAUSAL_ACCURACY_TARGET
+          value: "0.95"
+        - name: LATENCY_TARGET_MS
+          value: "50"
+        - name: ZKP_ENVIRONMENT
+          value: "production"
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+            nvidia.com/gpu: 1
+          limits:
+            memory: "8Gi"
+            cpu: "4000m"
+            nvidia.com/gpu: 1
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8001
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        volumeMounts:
+        - name: model-cache
+          mountPath: /app/models
+        - name: gpu-config
+          mountPath: /etc/nvidia
+          readOnly: true
+      nodeSelector:
+        accelerator: nvidia-tesla-v100
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+      volumes:
+      - name: model-cache
+        persistentVolumeClaim:
+          claimName: causal-ai-models-pvc
+      - name: gpu-config
+        configMap:
+          name: gpu-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: causal-ai-service
+  namespace: quantroi
+  labels:
+    app: causal-ai
+    component: inference-engine
+spec:
+  selector:
+    app: causal-ai
+    component: inference-engine
+  ports:
+  - name: grpc
+    port: 8000
+    targetPort: 8000
+  - name: http
+    port: 8001
+    targetPort: 8001
+  - name: metrics
+    port: 9091
+    targetPort: 9091
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: causal-ai-hpa
+  namespace: quantroi
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: causal-ai-service
+  minReplicas: 5
+  maxReplicas: 50
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Pods
+    pods:
+      metric:
+        name: inference_latency_ms
+      target:
+        type: AverageValue
+        averageValue: "40"
+  - type: Pods
+    pods:
+      metric:
+        name: causal_accuracy_score
+      target:
+        type: AverageValue
+        averageValue: "0.95"
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+      - type: Percent
+        value: 200
+        periodSeconds: 15
+      - type: Pods
+        value: 10
+        periodSeconds: 15
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 180
+      policies:
+      - type: Percent
+        value: 20
+        periodSeconds: 60
