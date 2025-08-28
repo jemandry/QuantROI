@@ -238,8 +238,7 @@ The test suite validates:
 - **Access Control**: Role-based permissions
 - **Audit Trails**: Immutable transaction logs
 - **Quantum Resistance**: Future-proof cryptography
-||||||| bce36b2
-=======
+
 # Braided Cord Data Engine Documentation
 
 ## Overview
@@ -496,4 +495,3 @@ When contributing to the Braided Cord Data Engine:
 ## License
 
 This software is proprietary to QuantROI and subject to the terms of the QuantROI Software License Agreement.
->>>>>>> devin/1754456657-braided-cord-data-engine

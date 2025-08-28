@@ -17,7 +17,6 @@ stable-baselines3==2.2.0
 gym>=0.26.0
 
 # Causal AI (using compatible versions)
-causalnex==0.12.1
 dowhy==0.10.1
 
 # Graph Database

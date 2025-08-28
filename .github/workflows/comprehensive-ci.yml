@@ -50,12 +50,14 @@ jobs:
       run: |
         cd memory-hierarchy
         export DATABASE_URL="sqlite::memory:"
+        export SQLX_OFFLINE=true
         cargo check --verbose
         
     - name: Run Rust clippy
       run: |
         cd memory-hierarchy
         export DATABASE_URL="sqlite::memory:"
+        export SQLX_OFFLINE=true
         cargo clippy -- -D warnings || echo "Clippy warnings found"
         
     - name: Run Rust formatting check
@@ -91,6 +93,7 @@ jobs:
         if [ -d "solana-contracts" ]; then
           cd solana-contracts
           export DATABASE_URL="sqlite::memory:"
+          export SQLX_OFFLINE=true
           cargo check --verbose || echo "Solana contracts check completed"
           cargo clippy -- -D warnings || echo "Clippy warnings found"
         else
