@@ -55,6 +55,9 @@ class ComprehensiveRIAPlatform:
         self.config = config
         self.mode = PlatformMode(config.get('mode', 'development'))
         
+        self.focus_weight = config.get('portfolio_focus_weight', 0.6)  # 60% portfolio management
+        self.advisory_weight = 1.0 - self.focus_weight  # 40% client advisory
+        
         self.nats_integration: Optional[EnhancedNATSIntegration] = None
         self.weaviate_profiling: Optional[WeaviateClientProfiling] = None
         self.regime_orchestrator: Optional[RegimeOrchestrator] = None
@@ -71,8 +74,8 @@ class ComprehensiveRIAPlatform:
         self.active_clients: Dict[str, ClientProfile] = {}
         self.platform_metrics: List[PlatformMetrics] = []
         
-        self.target_latency_ms = 1.0
-        self.target_throughput_eps = 20000
+        self.target_latency_ms = config.get('target_latency_ms', 1.0)
+        self.target_throughput_eps = config.get('target_throughput_eps', 20000)
         
     async def initialize(self) -> bool:
         """Initialize all platform components"""
