@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: causal-ai-engine
+  namespace: quantroi
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: causal-ai-engine
+  template:
+    metadata:
+      labels:
+        app: causal-ai-engine
+    spec:
+      containers:
+      - name: causal-ai
+        image: quantroi/causal-ai:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: REDIS_HOST
+          value: "redis-service"
+        - name: REDIS_PORT
+          value: "6379"
+        - name: MLFLOW_TRACKING_URI
+          value: "http://mlflow-service:5000"
+        - name: SOLANA_RPC_URL
+          valueFrom:
+            secretKeyRef:
+              name: solana-config
+              key: rpc_url
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: causal-ai-service
+  namespace: quantroi
+spec:
+  selector:
+    app: causal-ai-engine
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: causal-ai-ingress
+  namespace: quantroi
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - host: causal-ai.quantroi.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: causal-ai-service
+            port:
+              number: 8000

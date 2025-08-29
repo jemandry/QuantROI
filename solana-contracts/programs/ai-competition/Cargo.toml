@@ -1,0 +1,30 @@
+[package]
+name = "ai-competition"
+version = "0.1.0"
+description = "AI agent competition, ROI tracking, voting, and goal management smart contract"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "ai_competition"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+
+[dependencies]
+anchor-lang = { workspace = true }
+anchor-spl = { workspace = true }
+spl-token = { workspace = true }
+spl-memo = { workspace = true }
+solana-program = { workspace = true }
+sha3 = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rand = { workspace = true }
+sqlx = { version = "0.6", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid", "bigdecimal"] }
+tokio = { version = "1.0", features = ["full"] }
+bigdecimal = "0.3"

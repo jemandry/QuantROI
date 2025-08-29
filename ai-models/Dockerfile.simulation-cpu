@@ -1,0 +1,37 @@
+FROM python:3.9-slim
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV USE_GPU=false
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create working directory
+WORKDIR /app
+
+# Copy requirements
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+RUN pip install ray[default]
+
+# Copy application code
+COPY src/ ./src/
+COPY tests/ ./tests/
+
+# Create entrypoint script
+RUN echo '#!/bin/bash\n\
+echo "Starting QuantROI CPU Simulation Engine..."\n\
+echo "CPU Info:"\n\
+nproc\n\
+echo "Starting simulation with $SIMULATION_COUNT simulations..."\n\
+python3 -m src.simulation_strategy_selector\n\
+' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
+
+ENTRYPOINT ["/app/entrypoint.sh"]

@@ -1,0 +1,350 @@
+
+# This is a YAML-formatted file.
+
+service:
+  type: ClusterIP
+  port: 80
+
+ladderEscalator:
+  enabled: true
+  replicaCount: 3
+  image:
+    repository: pearl-ladder/ladder-escalator
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8001
+    targetPort: 8001
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+
+benchmarkValidator:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: pearl-ladder/benchmark-validator
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8002
+    targetPort: 8002
+  resources:
+    limits:
+      cpu: 300m
+      memory: 384Mi
+    requests:
+      cpu: 150m
+      memory: 192Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  env:
+    - name: GDPR_COMPLIANCE
+      value: "true"
+    - name: EXTERNAL_API_TIMEOUT
+      value: "30"
+
+kafkaRouter:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: pearl-ladder/kafka-router
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8003
+    targetPort: 8003
+  resources:
+    limits:
+      cpu: 400m
+      memory: 512Mi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+  env:
+    - name: KAFKA_BOOTSTRAP_SERVERS
+      value: "kafka:9092"
+    - name: KAFKA_CONSUMER_GROUP
+      value: "causal-router"
+
+nlpVoiceInterface:
+  replicaCount: 2
+  image:
+    repository: quantroi/nlp-voice-interface
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8004
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+  routing:
+    enabled: true
+    defaultMethod: "local_nlp"
+    enableUserPreferences: true
+    enableStorylines: true
+  grok:
+    enabled: false
+    endpoint: "https://api.grok.example.com/v1"
+    timeout: 30
+    maxRetries: 3
+
+autoAgent:
+  replicaCount: 2
+  image:
+    repository: quantroi/auto-agent
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8005
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+
+simulationEngine:
+  replicaCount: 1
+  image:
+    repository: quantroi/simulation-engine
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8006
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+    requests:
+      cpu: 1000m
+      memory: 1Gi
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 80
+
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+  storageClass: ""
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 50
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+  customMetrics:
+    enabled: true
+    executionTimeThreshold: "100m"  # 100ms execution time triggers scale up
+    tradesPerSecondThreshold: "1000m"  # Scale up when trades/sec drops below 1000
+  scaleUp:
+    stabilizationWindowSeconds: 60
+    percentIncrease: 100
+    maxPodsIncrease: 3
+    periodSeconds: 60
+  scaleDown:
+    stabilizationWindowSeconds: 300
+    percentDecrease: 10
+    periodSeconds: 60
+  gpuAutoscaling:
+    enabled: true
+    nodeSelector:
+      accelerator: nvidia-tesla-v100
+    minNodes: 1
+    maxNodes: 10
+    targetGPUUtilization: 80
+
+image:
+  repository: nginx
+  pullPolicy: IfNotPresent
+  tag: ""
+
+replicaCount: 1
+
+serviceAccount:
+  create: true
+  automount: true
+  annotations: {}
+  name: "pearl-ladder-sa"
+
+podSecurityContext:
+  fsGroup: 2000
+  runAsNonRoot: true
+  runAsUser: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: pearl-ladder.local
+      paths:
+        - path: /ladder
+          pathType: Prefix
+          service: ladder-escalator
+        - path: /validator
+          pathType: Prefix
+          service: benchmark-validator
+        - path: /router
+          pathType: Prefix
+          service: kafka-router
+  tls:
+    - secretName: pearl-ladder-tls
+      hosts:
+        - pearl-ladder.local
+
+monitoring:
+  enabled: true
+  prometheus:
+    enabled: true
+    port: 9090
+  grafana:
+    enabled: true
+    port: 3000
+
+performance:
+  hotPath:
+    enabled: true
+    targetLatency: "50μs"
+    maxConcurrency: 1000
+  warmPath:
+    enabled: true
+    targetLatency: "500ms"
+    maxConcurrency: 500
+  coldPath:
+    enabled: true
+    targetLatency: "10s"
+    maxConcurrency: 100
+
+keda:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 50
+  triggers:
+    prometheus:
+      enabled: true
+      serverAddress: "http://prometheus:9090"
+    smartContract:
+      enabled: true
+      governanceRequired: true
+  gpu:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 10
+    targetUtilization: 80
+
+smartContractGovernance:
+  enabled: true
+  boardMembers: 5
+  votingThresholds:
+    simpleMajority: 0.51
+    superMajority: 0.80
+  proposalExpiry: 300  # 5 minutes
+  solanaIntegration:
+    enabled: true
+    rpcUrl: "https://api.mainnet-beta.solana.com"
+
+compliance:
+  sha3Logging: true
+  cloudflareLogpush: true
+  retentionPeriod: "7_years"
+  frameworks: ["SEC_17a4", "MiFID_II", "GDPR"]
+
+dependencies:
+  redis:
+    enabled: true
+    host: "redis-master"
+    port: 6379
+  postgresql:
+    enabled: true
+    host: "postgresql"
+    port: 5432
+    database: "pearl_ladder"
+  kafka:
+    enabled: true
+    brokers: "kafka:9092"
+  neo4j:
+    enabled: true
+    host: "neo4j"
+    port: 7687
+  ipfs:
+    enabled: true
+    host: "ipfs"
+    port: 5001
+  solana:
+    enabled: true
+    rpcUrl: "https://api.mainnet-beta.solana.com"
+
+nodeSelector:
+  workload-type: "hft"
+
+tolerations:
+  - key: "hft-workload"
+    operator: "Equal"
+    value: "true"
+    effect: "NoSchedule"
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchExpressions:
+          - key: app.kubernetes.io/name
+            operator: In
+            values:
+            - pearl-ladder
+        topologyKey: kubernetes.io/hostname

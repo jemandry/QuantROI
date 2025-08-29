@@ -1,0 +1,99 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "pearl-ladder.fullname" . }}-kafka-router
+  labels:
+    {{- include "pearl-ladder.labels" . | nindent 4 }}
+    app.kubernetes.io/component: kafka-router
+spec:
+  {{- if not .Values.kafkaRouter.autoscaling.enabled }}
+  replicas: {{ .Values.kafkaRouter.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "pearl-ladder.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: kafka-router
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+      labels:
+        {{- include "pearl-ladder.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: kafka-router
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "pearl-ladder.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: kafka-router
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.kafkaRouter.image.repository }}:{{ .Values.kafkaRouter.image.tag }}"
+          imagePullPolicy: {{ .Values.kafkaRouter.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.kafkaRouter.service.targetPort }}
+              protocol: TCP
+            - name: metrics
+              containerPort: 9090
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          env:
+            - name: SERVICE_NAME
+              value: "kafka-router"
+            - name: SERVICE_PORT
+              value: "{{ .Values.kafkaRouter.service.targetPort }}"
+            {{- range .Values.kafkaRouter.env }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}
+            - name: REDIS_HOST
+              value: "{{ .Values.dependencies.redis.host }}"
+            - name: REDIS_PORT
+              value: "{{ .Values.dependencies.redis.port }}"
+            - name: KAFKA_BROKERS
+              value: "{{ .Values.dependencies.kafka.brokers }}"
+          resources:
+            {{- toYaml .Values.kafkaRouter.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: cache
+              mountPath: /app/cache
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: cache
+          emptyDir:
+            sizeLimit: 512Mi
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

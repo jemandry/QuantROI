@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  option-analyzer:
+    build:
+      context: .
+      dockerfile: Dockerfile.option-analyzer
+    container_name: quantroi-option-analyzer
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - RAY_DISABLE_IMPORT_WARNING=1
+      - PROMETHEUS_MULTIPROC_DIR=/tmp
+    volumes:
+      - ./models:/app/models
+      - ./logs:/app/logs
+      - /tmp:/tmp
+    ports:
+      - "8000:8000"  # Prometheus metrics
+      - "8265:8265"  # Ray dashboard
+    depends_on:
+      - timescaledb
+      - kafka
+      - redis
+    networks:
+      - quantroi-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: quantroi-timescaledb
+    environment:
+      - POSTGRES_DB=fintech_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - quantroi-network
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: quantroi-kafka
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+    networks:
+      - quantroi-network
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    container_name: quantroi-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - quantroi-network
+
+volumes:
+  timescale_data:
+
+networks:
+  quantroi-network:
+    driver: bridge

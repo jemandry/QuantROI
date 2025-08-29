@@ -1,0 +1,142 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: memory-hierarchy-service
+  namespace: quantroi
+  labels:
+    app: memory-hierarchy
+    component: core-service
+    version: v1.0.0
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: memory-hierarchy
+      component: core-service
+  template:
+    metadata:
+      labels:
+        app: memory-hierarchy
+        component: core-service
+        version: v1.0.0
+    spec:
+      containers:
+      - name: memory-hierarchy
+        image: quantroi/memory-hierarchy:latest
+        ports:
+        - containerPort: 8080
+          name: http
+        - containerPort: 9090
+          name: metrics
+        env:
+        - name: RUST_LOG
+          value: "info"
+        - name: REDIS_URL
+          value: "redis://redis-service:6379"
+        - name: TIMESCALEDB_URL
+          valueFrom:
+            secretKeyRef:
+              name: database-secrets
+              key: timescaledb-url
+        - name: KAFKA_BROKERS
+          value: "kafka-service:9092"
+        - name: ZKP_ENVIRONMENT
+          value: "production"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/config
+          readOnly: true
+      volumes:
+      - name: config-volume
+        configMap:
+          name: memory-hierarchy-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: memory-hierarchy-service
+  namespace: quantroi
+  labels:
+    app: memory-hierarchy
+    component: core-service
+spec:
+  selector:
+    app: memory-hierarchy
+    component: core-service
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+  - name: metrics
+    port: 9090
+    targetPort: 9090
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: memory-hierarchy-hpa
+  namespace: quantroi
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: memory-hierarchy-service
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  - type: Pods
+    pods:
+      metric:
+        name: events_per_second
+      target:
+        type: AverageValue
+        averageValue: "5000"
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+      - type: Pods
+        value: 4
+        periodSeconds: 15
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60

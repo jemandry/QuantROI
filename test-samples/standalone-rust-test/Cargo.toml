@@ -1,0 +1,67 @@
+[package]
+name = "standalone-rust-test"
+version = "0.1.0"
+edition = "2021"
+
+[lints.clippy]
+# Enhanced Clippy rules for testing
+pedantic = "warn"
+nursery = "warn"
+cargo = "warn"
+complexity = "warn"
+correctness = "deny"
+suspicious = "deny"
+style = "warn"
+perf = "warn"
+
+# Quantum security and fintech-specific rules
+unsafe_code = "forbid"
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+unimplemented = "deny"
+todo = "deny"
+unreachable = "deny"
+missing_docs_in_private_items = "warn"
+
+# Memory safety for quantum-resistant operations
+mem_forget = "deny"
+mem_replace_with_default = "deny"
+rc_buffer = "deny"
+rc_mutex = "deny"
+
+# Fintech compliance and audit requirements
+print_stdout = "deny"
+print_stderr = "deny"
+dbg_macro = "deny"
+empty_structs_with_brackets = "deny"
+enum_glob_use = "deny"
+exit = "deny"
+float_cmp = "deny"
+lossy_float_literal = "deny"
+string_slice = "deny"
+
+# Performance for high-frequency trading
+inefficient_to_string = "deny"
+large_enum_variant = "warn"
+large_stack_arrays = "warn"
+linkedlist = "deny"
+mutex_atomic = "warn"
+needless_collect = "deny"
+or_fun_call = "deny"
+redundant_allocation = "deny"
+single_char_lifetime_names = "deny"
+trivially_copy_pass_by_ref = "warn"
+unnecessary_wraps = "warn"
+unused_self = "deny"
+use_self = "warn"
+useless_conversion = "deny"
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+rust_2018_idioms = "warn"
+trivial_casts = "warn"
+trivial_numeric_casts = "warn"
+unused_import_braces = "warn"
+unused_qualifications = "warn"

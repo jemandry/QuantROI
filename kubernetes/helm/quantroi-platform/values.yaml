@@ -1,0 +1,243 @@
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+  storageClass: ""
+
+platform:
+  environment: production
+  namespace: quantroi
+  
+performance:
+  latencyTargetMs: 50
+  throughputEventsPerSecond: 20000
+  causalAccuracyTarget: 0.95
+  gpuAccelerationEnabled: true
+
+memoryHierarchy:
+  enabled: true
+  replicaCount: 3
+  image:
+    repository: quantroi/memory-hierarchy
+    tag: latest
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    port: 8080
+    metricsPort: 9090
+  
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 500m
+    limits:
+      memory: 2Gi
+      cpu: 2000m
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+    customMetrics:
+      eventsPerSecond: 5000
+
+causalAI:
+  enabled: true
+  replicaCount: 5
+  image:
+    repository: quantroi/causal-ai
+    tag: latest
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    grpcPort: 8000
+    httpPort: 8001
+    metricsPort: 9091
+  
+  resources:
+    requests:
+      memory: 2Gi
+      cpu: 1000m
+      nvidia.com/gpu: 1
+    limits:
+      memory: 8Gi
+      cpu: 4000m
+      nvidia.com/gpu: 1
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 5
+    maxReplicas: 50
+    targetCPUUtilizationPercentage: 60
+    targetMemoryUtilizationPercentage: 70
+    customMetrics:
+      inferenceLatencyMs: 40
+      causalAccuracyScore: 0.95
+  
+  gpu:
+    enabled: true
+    nodeSelector:
+      accelerator: nvidia-tesla-v100
+    tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+
+zkpService:
+  enabled: true
+  replicaCount: 3
+  image:
+    repository: quantroi/zkp-service
+    tag: latest
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    grpcPort: 8002
+    httpPort: 8003
+    metricsPort: 9092
+  
+  resources:
+    requests:
+      memory: 1Gi
+      cpu: 500m
+    limits:
+      memory: 4Gi
+      cpu: 2000m
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 15
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 75
+    customMetrics:
+      proofGenerationTimeMs: 150
+  
+  config:
+    environment: production
+    proofCacheSize: 1000
+    recursiveDepthLimit: 10
+
+dataPipeline:
+  enabled: true
+  
+  kafka:
+    enabled: true
+    replicaCount: 3
+    persistence:
+      enabled: true
+      size: 100Gi
+    
+  redis:
+    enabled: true
+    auth:
+      enabled: true
+    master:
+      persistence:
+        enabled: true
+        size: 20Gi
+  
+  timescaledb:
+    enabled: true
+    persistence:
+      enabled: true
+      size: 500Gi
+
+monitoring:
+  enabled: true
+  
+  prometheus:
+    enabled: true
+    server:
+      persistentVolume:
+        enabled: true
+        size: 50Gi
+    
+  grafana:
+    enabled: true
+    persistence:
+      enabled: true
+      size: 10Gi
+    
+  alerts:
+    enabled: true
+    rules:
+      latencyThresholdMs: 50
+      accuracyThreshold: 0.95
+      errorRateThreshold: 0.01
+
+security:
+  enabled: true
+  
+  networkPolicies:
+    enabled: true
+  
+  podSecurityPolicies:
+    enabled: true
+  
+  secrets:
+    zkp:
+      minaEndpoint: ""
+      solanaRpcUrl: ""
+    database:
+      timescaledbUrl: ""
+    
+compliance:
+  enabled: true
+  
+  auditLogging:
+    enabled: true
+    retention: "7y"  # SEC requirement
+  
+  mnpiDetection:
+    enabled: true
+    accuracyTarget: 0.95
+  
+  riaCompliance:
+    enabled: true
+    recordkeepingHours: 4
+
+loadTesting:
+  enabled: false
+  
+  scenarios:
+    - name: high-frequency-trading
+      duration: 300s
+      eventsPerSecond: 20000
+      latencyTarget: 50ms
+    
+    - name: causal-inference
+      duration: 600s
+      inferenceRequests: 1000
+      accuracyTarget: 0.95
+
+backup:
+  enabled: true
+  
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  
+  retention:
+    daily: 30
+    weekly: 12
+    monthly: 12
+    yearly: 7
+  
+  storage:
+    type: s3
+    bucket: quantroi-backups
+    region: us-east-1
+
+development:
+  enabled: false
+  
+  testData:
+    enabled: false
+    size: 1Gi
+  
+  debugMode:
+    enabled: false
+    logLevel: debug

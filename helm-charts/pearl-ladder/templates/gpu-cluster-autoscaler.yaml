@@ -1,0 +1,71 @@
+{{- if .Values.autoscaling.gpuAutoscaling.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "pearl-ladder.fullname" . }}-gpu-autoscaler-config
+  labels:
+    {{- include "pearl-ladder.labels" . | nindent 4 }}
+data:
+  autoscaler-config.yaml: |
+    nodes:
+      - name: gpu-node-pool
+        minSize: {{ .Values.autoscaling.gpuAutoscaling.minNodes }}
+        maxSize: {{ .Values.autoscaling.gpuAutoscaling.maxNodes }}
+        nodeSelector:
+          {{- toYaml .Values.autoscaling.gpuAutoscaling.nodeSelector | nindent 10 }}
+    scaleUpPolicy:
+      gpuUtilizationThreshold: {{ .Values.autoscaling.gpuAutoscaling.targetGPUUtilization }}
+      scaleUpDelaySeconds: 60
+      scaleUpCooldownSeconds: 300
+    scaleDownPolicy:
+      scaleDownDelaySeconds: 600
+      scaleDownCooldownSeconds: 900
+      utilizationThreshold: 50
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "pearl-ladder.fullname" . }}-gpu-autoscaler
+  labels:
+    {{- include "pearl-ladder.labels" . | nindent 4 }}
+    component: gpu-autoscaler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "pearl-ladder.selectorLabels" . | nindent 6 }}
+      component: gpu-autoscaler
+  template:
+    metadata:
+      labels:
+        {{- include "pearl-ladder.selectorLabels" . | nindent 8 }}
+        component: gpu-autoscaler
+    spec:
+      serviceAccountName: {{ include "pearl-ladder.serviceAccountName" . }}
+      containers:
+      - name: gpu-autoscaler
+        image: "{{ .Values.image.repository }}/gpu-autoscaler:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        env:
+        - name: CLUSTER_NAME
+          value: {{ .Values.cluster.name | default "pearl-ladder-cluster" }}
+        - name: NODE_GROUP_AUTO_DISCOVERY
+          value: "asg:tag=k8s.io/cluster-autoscaler/enabled,k8s.io/cluster-autoscaler/{{ .Values.cluster.name | default "pearl-ladder-cluster" }}"
+        - name: AWS_REGION
+          value: {{ .Values.cluster.region | default "us-west-2" }}
+        volumeMounts:
+        - name: autoscaler-config
+          mountPath: /etc/autoscaler
+          readOnly: true
+        resources:
+          limits:
+            cpu: 100m
+            memory: 300Mi
+          requests:
+            cpu: 100m
+            memory: 300Mi
+      volumes:
+      - name: autoscaler-config
+        configMap:
+          name: {{ include "pearl-ladder.fullname" . }}-gpu-autoscaler-config
+{{- end }}
