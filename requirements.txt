@@ -22,7 +22,7 @@ dowhy==0.13
 # Graph Database
 neo4j==5.15.0
 networkx==3.3
-pygraphviz==1.11
+# pygraphviz==1.11  # Removed - requires system graphviz headers not available in CI environment
 
 # ML Tracking (removed due to cachetools dependency conflicts with streamlit and solana)
 # mlflow==2.15.1  # Conflicts: requires cachetools>=5.0.0 while streamlit<6 and solana<5.0.0
