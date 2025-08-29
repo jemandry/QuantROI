@@ -5,7 +5,7 @@ pydantic>=2.7.4,<3.0.0
 python-multipart==0.0.6
 pandas>=2.0.3
 numpy==1.26.4
-streamlit>=1.25.0
+streamlit==1.28.0
 plotly==5.17.0
 
 # AI/ML Dependencies
@@ -21,11 +21,11 @@ dowhy==0.13
 
 # Graph Database
 neo4j==5.15.0
-networkx>=3.3
+networkx==3.3
 pygraphviz==1.11
 
-# ML Tracking
-mlflow>=3.3.0
+# ML Tracking (removed due to cachetools dependency conflicts with streamlit and solana)
+# mlflow==2.15.1  # Conflicts: requires cachetools>=5.0.0 while streamlit<6 and solana<5.0.0
 
 # Streaming
 kafka-python==2.0.2
@@ -40,7 +40,7 @@ cffi==1.17.1
 ipfshttpclient==0.8.0a2
 
 # Web Framework
-aiohttp==3.9.1
+aiohttp==3.9.5
 aiofiles==23.2.1
 websockets>=9.0,<12.0
 
@@ -62,7 +62,7 @@ python-dotenv==1.0.0
 
 # Voice and language processing
 speechrecognition>=3.10.0
-googletrans>=4.0.0
+# googletrans>=4.0.0  # Removed - conflicts with solana httpx requirements
 langdetect>=1.0.9
 
 # Testing
@@ -77,7 +77,7 @@ mypy==1.7.1
 pre-commit==3.5.0
 
 # Solana Integration
-solana>=0.32.0,<0.33.0
+solana==0.32.0
 anchorpy==0.19.1
 
 # GraphQL
@@ -106,8 +106,8 @@ fairlearn==0.9.0
 # Microservices and Real-time Pipeline
 uvloop>=0.17.0
 
-# Langchain Integration
-langchain>=0.0.350
+# Langchain Integration (removed due to dependency conflicts)
+# langchain==0.1.0  # Removed - causes resolution-too-deep errors
 openai>=1.0.0
 
 # Load Testing and Performance
@@ -132,8 +132,8 @@ structlog==23.2.0
 pytest-benchmark==4.0.0
 httpx==0.23.3
 python-jose[cryptography]==3.3.0
-langchain-community==0.2.16
-langchain-core==0.2.38
+# langchain-community==0.0.20  # Removed - causes dependency conflicts
+# langchain-core==0.1.23       # Removed - causes dependency conflicts
 pydantic-core>=2.14.0
 typing-extensions>=4.8.0
 ecdsa>=0.18.0
